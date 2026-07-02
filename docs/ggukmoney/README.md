@@ -1,6 +1,6 @@
 # 꾹머니 백엔드 설계 문서
 
-이 디렉터리는 꾹머니 백엔드 MVP 설계의 Source of Truth다. 이번 문서 정리는 코드, 스캐폴딩, 실제 SQL, 테스트 코드를 만들지 않고 Markdown 설계 문서만 정리한 결과다.
+이 디렉터리는 꾹머니 백엔드 MVP 설계의 Source of Truth다. `CONFIRMED`는 정책/계약 확정 상태이고, Java 구현 완료를 뜻하지 않는다. 구현 상태는 별도 `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`로 관리한다.
 
 ## 문서 구조
 
@@ -18,9 +18,27 @@
 
 문서 상태:
 
+## 기술 기준
+
+- Java 21
+- Spring Boot 4.1.0
+- Jackson 3(`tools.jackson.*`)
+- 실제 저장소: `C:\Users\lucy\Documents\ggukmoney` / branch `main`
+- 테스트 환경: 기본 Gradle `build/` 디렉터리 사용. 한글 경로 우회용 temp build/test working dir 설정은 제거했다.
+
+
 - A API/테이블: `CONFIRMED`
 - B API/테이블: 팀 검토용 `PROPOSED`
 - `PROPOSED`는 구현 전에 팀 합의 후 `CONFIRMED`로 승격한다.
+
+현재 Java 구현 상태:
+
+- Spring Boot Application 클래스와 기본 테스트: `IMPLEMENTED`
+- 공통 응답/예외, `traceId`, Access Log: `IMPLEMENTED`
+- JWT Provider, Redis Refresh Session Lua CAS, logout-all 서비스: `IMPLEMENTED`; refresh/logout API와 감사 로그 연동: `IN_PROGRESS`
+- Auth Audit Log Entity/Repository/Service: `IN_PROGRESS`
+- 게스트 생성/복구, Toss 승격/병합: `NOT_STARTED`
+- 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서: `NOT_STARTED`
 
 ## 서비스 개요
 
@@ -41,7 +59,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 게스트도 랭킹 조회는 가능하지만 실제 랭킹 참가는 `MEMBER`와 지역 설정이 필요하다.
 - 같은 기기의 ACTIVE 게스트가 있으면 기존 계정을 재사용하고 새 access/refresh token을 발급한다.
 - 기존 Refresh Token 원문을 반환하지 않는다.
-- 게스트 복구 시 같은 guest와 같은 device의 Redis Session이 정상이면 기존 `sessionId`를 유지한 Refresh Token Rotation으로 교체할 수 있다.
+- 게스트 복구 시 `POST /guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. Refresh Token 기반 세션 유지/교체는 `POST /auth/refresh`가 담당한다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 게스트 복구의 Session 유지/폐기 방식은 서버가 결정하며 클라이언트가 선택하지 않는다.
 - 신규 Toss 사용자는 현재 게스트를 MEMBER로 승격하고 `GUEST_OWNER`를 `MEMBER_DEVICE`로 변경한다.
@@ -148,20 +166,21 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 
 ## 빵도감 분석 결과 요약
 
-이전 공유 레포인 `Bean-zip-Team/bread-diary-backend` develop 브랜치를 임시 clone하여 읽기 전용으로 확인했다. 첨부 요청의 로컬 빵도감 저장소 경로와 운영 로그 경로는 placeholder 상태라 찾을 수 없었다.
+이전 공유 레포인 `Bean-zip-Team/bread-diary-backend`는 원격에 `develop` 브랜치가 없어 `main` 브랜치 HEAD `e9a6abb73320e61869f91b14293e5da3d1fbe4f2`를 기준 원본으로 사용했다.
 
 - 확인한 코드: `JwtTokenProvider`, `AuthService`, `UserSessionService`, `UserSession`, `UserSessionRepository`, `AuthController`, `AuthInterceptor`, `AccessLogFilter`, `RequestLogContext`, `RateLimitInterceptor`
 - 확인한 테스트: `JwtTokenProviderTest`, `AuthServiceTest`, `AuthServiceConcurrencyTest`, `AuthRefreshMysqlIntegrationTest`, `UserSessionServiceTest`, `AuthControllerTest`, `AuthInterceptorTest`, `AccessLogFilterTest`, `RateLimitInterceptorTest`
 - 확인한 빵도감 로그 패턴을 바탕으로 꾹머니 로그는 `traceId` 중심 구조화 로그로 재정의했다.
 - 꾹머니 문서에서는 요청 추적 id 명칭을 `traceId`로 통일한다.
 - 운영 로그 파일은 경로가 제공되지 않아 확인하지 못했다.
-- 빵도감 develop 코드에는 Redis Refresh Session 구현이 아니라 JPA `user_sessions` 기반 Refresh Rotation이 있다. 꾹머니는 Redis를 활성 인증 세션의 Source of Truth로 사용하므로 저장소 구현은 새로 설계한다.
+- 빵도감 main HEAD 코드에는 Redis Refresh Session 구현이 아니라 JPA `user_sessions` 기반 Refresh Rotation이 있다. 꾹머니는 Redis를 활성 인증 세션의 Source of Truth로 사용하므로 저장소 구현은 새로 설계하고 일부 구현했다.
 
 ## 이번 작업 검증 기준
 
-- 코드 생성 없음
-- Java 파일 변경 없음
-- Gradle 변경 없음
-- 실제 Flyway SQL 생성 없음
+- Java 인증/로그 기반 구현 포함
+- Gradle test task는 Java 21 toolchain과 기본 `build/` 디렉터리를 사용
+- Flyway `auth_session_log` 최소 SQL 생성
 - 빵도감 저장소 변경 없음
 - Git 커밋 없음
+- `./gradlew compileJava compileTestJava` 성공
+- 영문 경로에서 `./gradlew clean test`, `./gradlew check`, `./gradlew bootJar`, 핵심 개별 테스트가 성공했고 `ClassNotFoundException`은 재발하지 않음

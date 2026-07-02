@@ -8,14 +8,19 @@ group = 'com.ggukmoney'
 version = '0.0.1-SNAPSHOT'
 description = 'Ggukmoney backend'
 
+
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(26)
+		languageVersion = JavaLanguageVersion.of(21)
 	}
 }
 
 repositories {
 	mavenCentral()
+}
+
+configurations {
+	mockitoAgent
 }
 
 dependencies {
@@ -52,10 +57,12 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	mockitoAgent('org.mockito:mockito-core') { transitive = false }
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+	jvmArgs += "-javaagent:${configurations.mockitoAgent.singleFile}"
 }

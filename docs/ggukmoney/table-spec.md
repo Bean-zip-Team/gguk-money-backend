@@ -1,5 +1,7 @@
 # 꾹머니 PostgreSQL 테이블 명세
 
+> 구현 기준: Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 계약/테이블 명세는 이 기준으로 해석한다.
+
 이 문서는 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스의 Source of Truth다. A 담당 테이블은 CONFIRMED, B 담당 선작성 제안 테이블은 PROPOSED로 구분한다.
 
 ## 표기 규칙
@@ -186,29 +188,27 @@ A 상세 테이블 공통 정책:
 - 관련 API: `POST /guests`, `POST /auth/toss/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`
 - 관련 Event/Port: 회원 정지/탈퇴 세션 폐기
 - 멱등성 기준: `trace_id + event_type + session_id_hash` 권장
+- 구현 상태: `IN_PROGRESS`. 현재 Java/Flyway 구현은 `app_user`, `device` 구현 전 단계라 FK 없이 `user_public_id`, `device_public_id` UUID 값을 저장한다. 최종 `app_user/device` 마이그레이션을 넣을 때 내부 FK 컬럼 연결 정책을 팀에서 확정한다.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
-| `id` | BIGINT | N | identity | PK | | 내부 id |
-| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
-| `user_id` | BIGINT | Y | | FK `app_user(id)` | | 실패 전 user 미확정 가능 |
-| `device_id` | BIGINT | Y | | FK `device(id)` | | 기기 |
-| `session_id_hash` | VARCHAR(255) | Y | | | | sessionId hash 또는 마스킹값 |
-| `token_family_id_hash` | VARCHAR(255) | Y | | | | token family hash |
+| `id` | UUID | N | generated | PK | | 내부 id |
+| `public_id` | VARCHAR(36) | N | generated UUID string | | UNIQUE | 외부 id |
+| `user_public_id` | VARCHAR(64) | Y | | | | 사용자 public id |
+| `device_public_id` | VARCHAR(64) | Y | | | | 기기 public id |
+| `session_id_hash` | VARCHAR(128) | Y | | | | sessionId hash 또는 마스킹값 |
+| `token_family_id_hash` | VARCHAR(128) | Y | | | | token family hash |
 | `event_type` | VARCHAR(40) | N | | | CHECK event enum | 인증 이벤트 |
 | `result` | VARCHAR(20) | N | | | CHECK `SUCCESS`, `FAILURE`, `DENIED` | 결과 |
-| `failure_code` | VARCHAR(60) | Y | | | | 실패/거부 코드 |
-| `trace_id` | VARCHAR(80) | N | | | | 요청 trace id |
+| `failure_code` | VARCHAR(80) | Y | | | | 실패/거부 코드 |
+| `trace_id` | VARCHAR(80) | Y | | | | 요청 trace id |
 | `ip_address_masked` | VARCHAR(80) | Y | | | | 마스킹 IP |
-| `ip_hash` | VARCHAR(255) | Y | | | | IP hash |
-| `user_agent` | VARCHAR(500) | Y | | | | User-Agent |
-| `metadata` | JSONB | Y | | | | 민감정보 제외 부가 정보 |
+| `user_agent` | VARCHAR(512) | Y | | | | User-Agent |
+| `metadata` | TEXT | Y | | | | 민감정보 제외 JSON 문자열 |
 | `occurred_at` | TIMESTAMPTZ | N | now() | | | 발생 시각 |
-| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
-| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
-- 인덱스: `ix_auth_session_log_user_time(user_id, occurred_at)`, `ix_auth_session_log_session_time(session_id_hash, occurred_at)`, `ix_auth_session_log_event_time(event_type, occurred_at)`, `ix_auth_session_log_trace(trace_id)`
-- FK ON DELETE: `user_id SET NULL`, `device_id SET NULL`
+- 인덱스: `ix_auth_session_log_user_time(user_public_id, occurred_at)`, `ix_auth_session_log_session_time(session_id_hash, occurred_at)`, `ix_auth_session_log_event_time(event_type, occurred_at)`, `ix_auth_session_log_trace(trace_id)`
+- FK ON DELETE: 현재 구현 없음. 최종 내부 FK 도입 시 `SET NULL` 후보.
 - 민감정보와 암호화: Access/Refresh Token 원문 저장 금지, authorizationCode 저장 금지
 - 보관/익명화/삭제: IP/User-Agent 보관 기간은 운영 정책으로 제한
 

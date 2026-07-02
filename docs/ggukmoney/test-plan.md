@@ -1,6 +1,27 @@
 # 꾹머니 테스트 계획
 
-이 문서는 테스트 코드가 아니라 구현 전 테스트 케이스 목록이다.
+이 문서는 테스트 전략과 구현 상태를 함께 기록한다. 2026-07-02 기준 실제 저장소 `C:\Users\lucy\Documents\ggukmoney`의 `main` 브랜치에서 Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`) 환경을 최종 기준으로 확정했다. 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했고 기본 Gradle `build/` 디렉터리로 검증한다.
+
+## 현재 작성된 테스트 코드
+
+| 테스트 | 상태 | 검증 내용 |
+|---|---|---|
+| `AccessLogFilterTest` | 개별 실행 성공 | `X-Trace-Id`, 응답 헤더, sessionId hash/masking |
+| `JwtTokenProviderTest` | 개별 실행 성공 | `sub`, `sid`, `jti`, `type=ACCESS/REFRESH`, `issuedAtMillis`, 만료 시각 |
+| `RedisAuthSessionRepositoryTest` | 개별 실행 성공 | Redis Lua CAS script, `auth:refresh`, `auth:user-sessions`, refresh lock key 미사용 |
+| `AuthServiceLogoutAllTest` | 개별 실행 성공 | logout-all Redis session 삭제, revoke marker, 현재 access denylist |
+| `TestEnvironmentSmokeTest` | 개별 실행 성공 | Java 21 / Spring Boot 4.1.0 테스트 환경 |
+검증 결과:
+
+- `./gradlew --version`: 성공. Gradle 9.5.1, JVM 21.0.9.
+- `./gradlew --stop`: 성공.
+- `./gradlew clean compileJava compileTestJava --info --stacktrace`: 성공.
+- `./gradlew clean test --info --stacktrace`: 성공. 영문 경로 기본 `build/`에서 `ClassNotFoundException` 재발 없음.
+- `./gradlew check --info --stacktrace`: 성공.
+- `./gradlew bootJar --info --stacktrace`: 성공.
+- 개별 테스트 `AccessLogFilterTest`, `JwtTokenProviderTest`, `RedisAuthSessionRepositoryTest`, `AuthServiceLogoutAllTest`, `TestEnvironmentSmokeTest`: 모두 성공.
+- `flywayValidate`: 현재 Gradle Flyway plugin task가 없어 실행 대상이 아님. 실제 DB migration 검증은 Flyway plugin 또는 Testcontainers 통합 테스트로 보완한다.
+- Redis 관련 검증은 현재 Mockito 기반 단위 테스트이며, 실제 Redis 서버 통합 테스트는 아직 추가되지 않았다.
 
 ## 빵도감에서 참고한 테스트 구조
 
@@ -20,11 +41,11 @@
 - 게스트 최초 생성 시 `app_user`, `device`, `user_device(GUEST_OWNER)`가 생성된다.
 - 게스트 최초 생성 시 Access JWT와 Refresh JWT가 발급된다.
 - 게스트 최초 생성 시 Redis `auth:refresh:{sessionId}`가 생성된다.
-- 게스트 최초 생성 시 Redis `auth:user-sessions:{userId}`에 sessionId가 추가된다.
+- 게스트 최초 생성 시 Redis `auth:user-sessions:{userPublicId}`에 sessionId가 추가된다.
 - 게스트 최초 생성 응답은 `201 Created`다.
 - 같은 기기 게스트 복구 시 기존 게스트 계정을 재사용한다.
 - 같은 기기 게스트 복구 시 새 Access/Refresh token이 발급된다.
-- 같은 guest와 같은 device이고 기존 Redis Session이 정상이면 기존 `sessionId`를 유지하고 Refresh Token Rotation으로 교체할 수 있다.
+- `POST /guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token 기반 세션 유지/교체는 `POST /auth/refresh` 테스트에서 검증한다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 게스트 복구의 Session 유지/폐기는 서버가 결정하고 클라이언트가 선택하지 않는다.
 - 같은 기기 게스트 복구 응답은 `200 OK`다.
@@ -51,7 +72,7 @@
 - 동일 Refresh 동시 요청 중 하나만 성공한다.
 - 동시 충돌 요청은 `409 AUTH_REFRESH_CONFLICT`로 실패하고 Session을 폐기하지 않는다.
 - Refresh Rotation 성공 시 Redis TTL이 갱신된다.
-- Refresh Rotation 성공 시 `auth:user-sessions:{userId}` score가 갱신된다.
+- Refresh Rotation 성공 시 `auth:user-sessions:{userPublicId}` score가 갱신된다.
 - 실제 이전 Refresh Token 재사용 시 `401 AUTH_REFRESH_REUSED`가 반환된다.
 - 실제 이전 Refresh Token 재사용 시 해당 Session을 폐기한다.
 - 실제 이전 Refresh Token 재사용 시 `auth_session_log.event_type=REFRESH_REUSE_DETECTED`가 저장된다.
@@ -60,10 +81,10 @@
 - Access denylist TTL은 Access Token 남은 만료 시간과 같다.
 - 현재 기기 로그아웃 시 `auth:deny:access:{jti}`가 생성된다.
 - 현재 기기 로그아웃 시 `auth:refresh:{sessionId}`가 삭제된다.
-- 현재 기기 로그아웃 시 `auth:user-sessions:{userId}`에서 sessionId가 제거된다.
+- 현재 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`에서 sessionId가 제거된다.
 - 전체 기기 로그아웃 시 사용자의 모든 `auth:refresh:{sessionId}`가 삭제된다.
-- 전체 기기 로그아웃 시 `auth:user-sessions:{userId}`가 삭제된다.
-- 전체 기기 로그아웃 시 `auth:revoke:user:{userId}`가 생성된다.
+- 전체 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`가 삭제된다.
+- 전체 기기 로그아웃 시 `auth:revoke:user:{userPublicId}`가 생성된다.
 - 다른 기기의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
 - revoke 전에 발급된 Access Token은 거절된다.
 - 같은 초라도 revoke 이후 발급된 Access Token은 허용된다.

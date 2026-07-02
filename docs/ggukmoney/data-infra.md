@@ -1,5 +1,12 @@
 # 꾹머니 데이터와 인프라 설계
 
+## 테스트/빌드 환경
+
+- Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`)를 기준으로 한다.
+- 실제 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
+- 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했다.
+- 현재 Gradle task 목록에는 `flywayValidate`가 없다. SQL 검증은 Flyway plugin 추가 또는 Testcontainers 기반 DB 통합 테스트로 수행한다.
+
 ## PostgreSQL 원칙
 
 - PostgreSQL은 도메인 최종 원본 데이터다.
@@ -21,11 +28,12 @@
 
 ## Flyway 파일 계획
 
-실제 SQL 파일은 생성하지 않는다. 구현 시 파일 순서는 아래처럼 나눈다.
+현재 구현에서는 인증 감사 로그용 최소 SQL `src/main/resources/db/migration/V1000__create_auth_session_log.sql`을 생성했다. 이 파일은 `auth_session_log`만 포함하며, `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history`는 아직 `NOT_STARTED`다. 최종 구현 시 파일 순서는 아래처럼 확장한다.
 
 | 파일 | 내용 |
 |---|---|
-| `V1000__create_user_auth.sql` | `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history`, `auth_session_log` |
+| `V1000__create_auth_session_log.sql` | 현재 구현: `auth_session_log` |
+| `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history` |
 | `V1100__create_config_legal.sql` | `legal_document`, `user_consent`, `app_config` |
 | `V1200__create_keycap_box.sql` | 키캡, 상자, 드롭, 개봉 결과 |
 | `V1300__create_region_ranking.sql` | 지역, 랭킹 시즌, 참여, 점수, snapshot, reward |
@@ -46,25 +54,25 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 
 | Key | 자료구조 | TTL | 설명 |
 |---|---|---|---|
-| `auth:refresh:{sessionId}` | String(JSON) 또는 Hash | Refresh Token 남은 만료 시간 | 활성 Refresh Session |
-| `auth:user-sessions:{userId}` | Sorted Set | 세션별 만료 정리 | 사용자별 활성 session 목록 |
+| `auth:refresh:{sessionId}` | Hash | Refresh Token 남은 만료 시간 | 활성 Refresh Session |
+| `auth:user-sessions:{userPublicId}` | Sorted Set | 세션별 만료 정리 | 사용자별 활성 session 목록 |
 | `auth:deny:access:{jti}` | String | Access Token 남은 만료 시간 | 현재 Access Token 단위 차단 |
-| `auth:revoke:user:{userId}` | String(JSON) | Access Token 최대 수명 + 여유 | 전체 로그아웃/정지/탈퇴 revoke 시각과 사유 |
+| `auth:revoke:user:{userPublicId}` | String | Access Token 최대 수명 + 여유 | 전체 로그아웃/정지/탈퇴 revoke 시각 millis |
 
 `auth:refresh:{sessionId}` 필수 값:
 
-- `userId`
-- `deviceId`
-- `currentRefreshJti`
+- `userPublicId`
+- `devicePublicId`
+- `currentRefreshJtiHash`
 - `refreshTokenHash`
-- `tokenFamilyId`
+- `tokenFamilyIdHash`
 - `previousRefreshJtiHash`
 - `rotatedAt`
 - `issuedAt`
 - `expiresAt`
 - `status`
 
-`auth:user-sessions:{userId}`:
+`auth:user-sessions:{userPublicId}`:
 
 - Member: `sessionId`
 - Score: `expiresAt` epoch millis
@@ -109,7 +117,7 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 - 새 `currentRefreshJti`와 `refreshTokenHash` 저장
 - `previousRefreshJtiHash`와 `rotatedAt` 저장
 - `expiresAt`과 Redis TTL 갱신
-- `auth:user-sessions:{userId}` ZSet score 갱신
+- `auth:user-sessions:{userPublicId}` ZSet score 갱신
 
 동시 요청과 재사용 판단:
 
@@ -125,22 +133,21 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 ### 현재 기기 로그아웃
 
 1. Access Token의 `jti`와 `exp`를 확인한다.
-2. `auth:deny:access:{jti}`에 로그아웃 사유를 저장한다.
+2. `auth:deny:access:{jti}`에 차단 값을 저장한다.
 3. TTL은 Access Token 남은 만료 시간으로 둔다.
 4. `auth:refresh:{sessionId}`를 삭제한다.
-5. `auth:user-sessions:{userId}`에서 `sessionId`를 제거한다.
+5. `auth:user-sessions:{userPublicId}`에서 `sessionId`를 제거한다.
 6. `auth_session_log`에 `LOGOUT`을 저장한다.
 
 ### 전체 기기 로그아웃
 
-1. `auth:user-sessions:{userId}`에서 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
-2. 모든 `auth:refresh:{sessionId}`를 삭제한다.
-3. 사용자 세션 Sorted Set을 삭제한다.
-4. `auth:revoke:user:{userId}`에 `{ revokedAtMillis, reason: LOGOUT_ALL }`을 저장한다.
-5. 현재 Access Token jti도 `auth:deny:access:{jti}`에 등록한다.
-6. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
+1. `auth:revoke:user:{userPublicId}`에 `revokedAtMillis`와 `reason`을 저장한다.
+2. `auth:user-sessions:{userPublicId}`의 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
+3. 모든 `auth:refresh:{sessionId}`를 삭제하고 `auth:user-sessions:{userPublicId}`를 삭제한다.
+4. 현재 Access Token jti를 `auth:deny:access:{jti}`에 등록한다.
+5. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
 
-Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
+Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userPublicId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 
 정지/탈퇴는 전체 세션 폐기와 동일한 방식으로 처리하고 사유를 `USER_SUSPENDED`, `USER_WITHDRAWN`으로 남긴다.
 
