@@ -12,8 +12,15 @@
 | [table-spec.md](table-spec.md) | 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스 |
 | [data-infra.md](data-infra.md) | DB, Flyway 계획, Redis, JWT Session, 트랜잭션, 동시성 |
 | [test-plan.md](test-plan.md) | 테스트 전략과 구현 전 체크리스트 |
+| [CHANGELOG.md](CHANGELOG.md) | 설계 변경 이력 |
 
 동일한 정책을 여러 문서에 전문으로 반복하지 않는다. 정책은 이 README에서 요약하고, 상세 계약은 위 Source of Truth 문서로 이동한다.
+
+문서 상태:
+
+- A API/테이블: `CONFIRMED`
+- B API/테이블: 팀 검토용 `PROPOSED`
+- `PROPOSED`는 구현 전에 팀 합의 후 `CONFIRMED`로 승격한다.
 
 ## 서비스 개요
 
@@ -45,6 +52,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - Refresh JWT 원문은 클라이언트 Secure Storage가 보관한다.
 - Refresh JWT의 hash와 활성 Session은 Redis에 저장한다.
 - Redis가 활성 인증 세션의 Source of Truth다.
+- 전체 로그아웃·정지·탈퇴는 사용자 revoke 시각으로 기존 Access Token도 즉시 차단한다.
 - PostgreSQL은 인증 감사 로그만 저장하며 활성 Refresh Session 저장소로 쓰지 않는다.
 - 무료 상자 개봉은 1시간마다 1회이고 무료 기회는 누적되지 않는다.
 - 광고 상자 개봉은 하루 2회이며 완료된 `adViewId` 하나로 보유 상자 1개만 개봉한다.
@@ -74,6 +82,47 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 회원 탈퇴 시 A 도메인 데이터 보관, 익명화, 삭제 범위
 - outbox 전달 방식과 재시도 주기
 
+### 와이어프레임 교차 검토 Decision Required
+
+아래 항목은 34페이지 와이어프레임 PDF에서 확인한 표현과 현재 백엔드 MVP 문서가 다르므로 팀 결정 후 `CONFIRMED` 또는 `PROPOSED` 계약을 갱신한다. 현재 문서의 확정 정책을 이 검토만으로 임의 변경하지 않는다.
+
+#### 출금 단위
+
+Decision Required:
+- A안: 최소 10P, 이후 1P 단위 출금
+- B안: 최소 10P, 10P 단위 출금
+- 현재 문서 기준: B안
+- 와이어프레임 표현: A안에 가까움
+
+근거:
+- 와이어프레임은 `1P = 0.7 Toss 포인트`, 최소 출금 `10P`, `134P -> 약 93 Toss 포인트` 예시를 함께 보여준다.
+- 현재 문서는 최소 `10P`, `10P` 단위, `134P` 중 `130P`만 출금, `91 Toss 포인트` 지급으로 제안한다.
+
+#### 탭 배치와 어뷰징 기준
+
+Decision Required:
+- 배치 크기와 전송 주기: 현재 문서의 `50탭 또는 2초`와 와이어프레임의 `30초 또는 100탭` 중 최종 기준 확정 필요
+- `80ms` 최소 간격, 분당 `420` 유효 탭, 최근 `100`탭 간격 표준편차 기준 적용 여부 확정 필요
+- 클라이언트 `intervalStats`는 참고값이며 서버가 이를 신뢰하지 않는다는 점을 계약에 유지할지 확정 필요
+- 어뷰징 기준값을 운영 설정으로 분리할지 결정 필요
+
+근거:
+- 와이어프레임은 최소 클릭 간격 `80ms`, 분당 유효 탭 `420회`, 일일 유효 탭 `12,000회`, 서버 검증 `30초/100탭 배치 전송`을 보여준다.
+- 현재 문서는 `50탭 또는 2초` 전송과 서버 최종 검증을 제안한다.
+
+#### 지역 랭킹 콜드스타트
+
+Decision Required:
+- 와이어프레임 제안 기준: 지역 참여자 `50명` 미만이면 콜드스타트 표시 및 전국 랭킹 fallback 노출
+- 현재 문서 기준: 기준 인원과 fallback 조건 미정
+- 응답 후보 필드: `coldStart`, `participantCount`, `requiredParticipantCount`, `fallbackScope`, `inviteCtaVisible`
+
+#### 와이어프레임과 의도적으로 다른 MVP 정책
+
+- 와이어프레임에는 상자 반복/일괄 개봉 UI가 있으나 MVP 백엔드는 요청당 상자 `1개` 개봉만 지원한다. 일괄 개봉은 향후 확장이다.
+- 와이어프레임에는 주간 보상 받기 버튼이 있으나 현재 백엔드 정책은 정산 시 자동 지급이다. 화면 버튼은 결과 확인 또는 닫기 동작으로 본다.
+- 와이어프레임 내부에도 탭 적립, 광고 상자 개봉 시간, 출금 예시, 상자 모두 열기, 주간 보상 버튼 표현이 서로 충돌한다. 해당 문구를 새 서버 정책으로 자동 추가하지 않는다.
+
 Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-infra.md)에서 확정안으로 둔다.
 
 ## 구현 권장 순서
@@ -88,7 +137,14 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 8. 주간 정산, snapshot, ranking_reward, 한정 키캡 자동 지급
 9. 알림 preference, push_device, notification_log, fake push
 10. 기록 projection, app_config, legal_document
-11. Testcontainers 기반 PostgreSQL/Redis 통합 테스트
+11. B 탭/포인트/출금/광고/부스터/초대 PROPOSED 계약 팀 확정
+12. Testcontainers 기반 PostgreSQL/Redis 통합 테스트
+
+## 현재 명세 완성도
+
+- `api-contract.md`: A 전체 API 상세 `CONFIRMED`, B 전체 API 상세 `PROPOSED`.
+- `table-spec.md`: A 34개 테이블 상세 `CONFIRMED`, B 14개 테이블 상세 `PROPOSED`.
+- B 정책 수치·상태·외부 Toss/광고 응답은 팀 회의에서 최종 조정한다.
 
 ## 빵도감 분석 결과 요약
 

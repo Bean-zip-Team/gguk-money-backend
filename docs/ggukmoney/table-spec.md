@@ -1,6 +1,6 @@
 # 꾹머니 PostgreSQL 테이블 명세
 
-이 문서는 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스의 Source of Truth다. A 담당 테이블은 CONFIRMED, B 담당 미확정 테이블은 DRAFT로 구분한다.
+이 문서는 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스의 Source of Truth다. A 담당 테이블은 CONFIRMED, B 담당 선작성 제안 테이블은 PROPOSED로 구분한다.
 
 ## 표기 규칙
 
@@ -75,16 +75,19 @@ A 상세 테이블 공통 정책:
 | `account_type` | VARCHAR(20) | N | | | CHECK `GUEST`, `MEMBER` | 계정 유형 |
 | `status` | VARCHAR(20) | N | `ACTIVE` | | CHECK `ACTIVE`, `SUSPENDED`, `WITHDRAWN`, `MERGED` | 계정 상태 |
 | `nickname` | VARCHAR(50) | Y | | | | 표시 이름 |
+| `nickname_normalized` | VARCHAR(50) | Y | | | | 중복 검사용 정규화 닉네임 |
 | `merged_to_user_id` | BIGINT | Y | | FK `app_user(id)` | | MERGED 시 target |
 | `last_login_at` | TIMESTAMPTZ | Y | | | | 마지막 로그인 |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 시각 |
 
 - 인덱스: `ix_app_user_status(status)`, `ix_app_user_merged_to_user_id(merged_to_user_id)`
+- Partial Unique Index: `ux_app_user_active_nickname_normalized ON app_user(nickname_normalized) WHERE nickname_normalized IS NOT NULL AND status = 'ACTIVE'`
 - FK ON DELETE: `merged_to_user_id`는 `SET NULL`
 - Lock/version 정책: 회원 병합과 탈퇴 시 row lock 권장
 - 민감정보와 암호화: 직접 민감정보 없음
 - 보관/익명화/삭제: 탈퇴 시 nickname 익명화, 법무 기준에 따라 user id 보관
+- 닉네임 정규화: 앞뒤 공백 제거, 연속 공백 단일화, 대소문자 fold, Unicode NFKC 기준 정규화를 적용한다.
 
 ### auth_identity
 
@@ -286,6 +289,7 @@ A 상세 테이블 공통 정책:
 |---|---|---:|---|---|---|---|
 | `id` | BIGINT | N | identity | PK | | 내부 id |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `code` | VARCHAR(60) | N | | | UNIQUE | API 노출용 안정 코드 |
 | `name` | VARCHAR(80) | N | | | UNIQUE | 이름 |
 | `grade` | VARCHAR(20) | N | | | CHECK `COMMON`, `RARE`, `EPIC`, `LEGENDARY`, `LIMITED` | 등급 |
 | `required_shard_count` | INTEGER | N | | | CHECK `> 0` | 완성 필요 조각 |
@@ -296,6 +300,7 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 인덱스: `ix_keycap_active_grade(active, grade)`
+- `code`는 이름 변경과 무관한 seed/master data 식별자로 사용한다.
 
 ### user_keycap
 
@@ -778,26 +783,366 @@ A 상세 테이블 공통 정책:
 - 인덱스: `ix_event_inbox_processed(processed_at, created_at)`
 - FK ON DELETE: 실제 FK 없음
 
-## B 담당 DRAFT 테이블
+## B 담당 PROPOSED 테이블
 
-아래 테이블은 전체 서비스 ERD 관점에서 필요한 후보지만 B 담당자 최종 확정 전까지 컬럼을 확정하지 않는다.
+아래 테이블은 전체 API 계약을 구현하기 위한 선작성 제안안이다. 소유자는 B이며, 팀 합의 전 상태는 `PROPOSED`다. A 도메인 테이블과 직접 FK를 만들지 않고 `user_public_id`, `device_public_id` 같은 scalar 식별자로 연결한다.
 
-| 테이블 | owner | status | note |
+### B 테이블 요약
+
+| 테이블 | 소유자 | 상태 | Aggregate |
 |---|---|---|---|
-| `tap_batch` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `tap_event` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `user_tap_daily` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `abuse_signal` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `point_account` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `point_ledger` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `cashout_request` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `toss_point_transfer` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `ad_placement` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `ad_view` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `booster_grant` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `invite_code` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `invite_relation` | B | DRAFT | B 담당자 최종 확정 필요 |
-| `analytics_event` | B | DRAFT | B 담당자 최종 확정 필요 |
+| `tap_batch` | B | PROPOSED | Tap |
+| `tap_event` | B | PROPOSED | Tap |
+| `user_tap_daily` | B | PROPOSED | Tap |
+| `abuse_signal` | B | PROPOSED | Tap/Risk |
+| `point_account` | B | PROPOSED | Point |
+| `point_ledger` | B | PROPOSED | Point |
+| `cashout_request` | B | PROPOSED | Cashout |
+| `toss_point_transfer` | B | PROPOSED | Cashout |
+| `ad_placement` | B | PROPOSED | Advertisement |
+| `ad_view` | B | PROPOSED | Advertisement |
+| `booster_grant` | B | PROPOSED | Booster |
+| `invite_code` | B | PROPOSED | Invitation |
+| `invite_relation` | B | PROPOSED | Invitation |
+| `analytics_event` | B | PROPOSED | Analytics |
+
+B 공통 정책:
+
+- 외부 API에는 `public_id`를 노출한다.
+- A 소유 `app_user`, `device`와 DB FK를 만들지 않는다.
+- 금액성/수량성 테이블은 `version BIGINT NOT NULL DEFAULT 0` 또는 row lock을 사용한다.
+- 원장 테이블은 수정·삭제보다 반대 분개를 사용한다.
+- 정책 수치는 코드 상수로 고정하지 않고 B 설정 소유 방식을 구현 전 합의한다.
+
+## Tap
+
+### tap_batch
+
+- 역할: 프론트 탭 배치 수신, 검증 결과와 멱등성 저장.
+- 관련 API: `POST /taps/batches`, `GET /taps/today`
+- 멱등성 기준: `public_id(tapBatchId)`, `user_public_id + tap_session_id + sequence`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | tapBatchId |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 public id |
+| `device_public_id` | UUID | Y | | | INDEX | 기기 public id |
+| `tap_session_id` | UUID | N | | | | 앱 탭 세션 |
+| `sequence` | BIGINT | N | | | CHECK `>= 0` | 세션 내 순서 |
+| `submitted_count` | INTEGER | N | | | CHECK `> 0 AND <= 500` | 제출 탭 수 |
+| `accepted_count` | INTEGER | N | 0 | | CHECK `>= 0` | 인정 탭 수 |
+| `rejected_count` | INTEGER | N | 0 | | CHECK `>= 0` | 거절 탭 수 |
+| `started_at` | TIMESTAMPTZ | N | | | | 클라이언트 시작 |
+| `ended_at` | TIMESTAMPTZ | N | | | | 클라이언트 종료 |
+| `elapsed_ms` | INTEGER | N | | | CHECK `> 0` | 경과 ms |
+| `interval_stats` | JSONB | Y | | | | min/avg/stddev |
+| `status` | VARCHAR(20) | N | `RECEIVED` | | CHECK `RECEIVED`, `ACCEPTED`, `PARTIAL`, `REJECTED` | 처리 상태 |
+| `risk_level` | VARCHAR(20) | N | `NORMAL` | | CHECK `NORMAL`, `SUSPICIOUS`, `BLOCKED` | 위험도 |
+| `request_hash` | VARCHAR(255) | N | | | | 동일 id 다른 body 방지 |
+| `processed_at` | TIMESTAMPTZ | Y | | | | 처리 완료 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_tap_batch_session_sequence(user_public_id, tap_session_id, sequence)`.
+- 인덱스: `ix_tap_batch_user_created(user_public_id, created_at DESC)`, `ix_tap_batch_status_created(status, created_at)`.
+- Lock/version: 동일 public_id insert unique로 멱등 처리.
+
+### tap_event
+
+- 역할: 탭 배치에서 확정된 포인트/상자/랭킹 delta 이벤트 원장.
+- 멱등성 기준: `source_event_id`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 이벤트 id |
+| `tap_batch_id` | BIGINT | N | | FK `tap_batch(id)` | | 원본 배치 |
+| `source_event_id` | UUID | N | | | UNIQUE | A/B 연동 멱등 id |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 |
+| `event_type` | VARCHAR(40) | N | | | CHECK `VALIDATED`, `POINT_GRANTED`, `BOX_PROGRESS_APPLIED`, `RANKING_APPLIED` | 이벤트 |
+| `valid_tap_delta` | INTEGER | N | 0 | | CHECK `>= 0` | 유효 탭 delta |
+| `point_progress_delta` | INTEGER | N | 0 | | CHECK `>= 0` | 포인트 진행도 |
+| `box_progress_delta` | INTEGER | N | 0 | | CHECK `>= 0` | 상자 진행도 |
+| `ranking_tap_delta` | INTEGER | N | 0 | | CHECK `>= 0` | 랭킹 delta |
+| `payload` | JSONB | Y | | | | 부가 정보 |
+| `occurred_at` | TIMESTAMPTZ | N | | | | 발생 시각 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- FK ON DELETE: `tap_batch_id RESTRICT`.
+- 인덱스: `ix_tap_event_user_time(user_public_id, occurred_at DESC)`.
+
+### user_tap_daily
+
+- 역할: 사용자 일별 탭 카운터와 포인트 진행도 원본.
+- 멱등성 기준: `user_public_id + tap_date`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `user_public_id` | UUID | N | | | | 사용자 |
+| `tap_date` | DATE | N | | | | KST 집계일 |
+| `valid_tap_count` | INTEGER | N | 0 | | CHECK `>= 0` | 전체 유효 탭 |
+| `point_eligible_tap_count` | INTEGER | N | 0 | | CHECK `BETWEEN 0 AND 5000` | 포인트 대상 탭 |
+| `point_progress_remainder` | INTEGER | N | 0 | | CHECK `BETWEEN 0 AND 499` | 500 환산 나머지 |
+| `last_sequence` | BIGINT | Y | | | | 마지막 sequence |
+| `version` | BIGINT | N | 0 | | | 낙관적 잠금 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_user_tap_daily(user_public_id, tap_date)`.
+- Lock/version: 포인트 계산 시 row lock 또는 version update.
+
+### abuse_signal
+
+- 역할: 자동 탭·속도 이상·sequence 이상 등 검출 근거 저장.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `tap_batch_id` | BIGINT | Y | | FK `tap_batch(id)` | | 관련 배치 |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 |
+| `device_public_id` | UUID | Y | | | INDEX | 기기 |
+| `signal_type` | VARCHAR(50) | N | | | | 신호 유형 |
+| `severity` | VARCHAR(20) | N | | | CHECK `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | 심각도 |
+| `evidence` | JSONB | N | | | | 민감정보 제외 근거 |
+| `status` | VARCHAR(20) | N | `OPEN` | | CHECK `OPEN`, `IGNORED`, `CONFIRMED`, `RESOLVED` | 검토 상태 |
+| `detected_at` | TIMESTAMPTZ | N | now() | | | 검출 시각 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- 인덱스: `ix_abuse_signal_user_status(user_public_id, status, detected_at DESC)`.
+
+## Point
+
+### point_account
+
+- 역할: 포인트 현재 잔액과 누적 합계.
+- 관련 API: `GET /points/me`, `POST /cashouts`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `user_public_id` | UUID | N | | | UNIQUE | 사용자 |
+| `balance` | BIGINT | N | 0 | | CHECK `>= 0` | 현재 P |
+| `lifetime_earned` | BIGINT | N | 0 | | CHECK `>= 0` | 누적 적립 |
+| `lifetime_spent` | BIGINT | N | 0 | | CHECK `>= 0` | 누적 사용 |
+| `version` | BIGINT | N | 0 | | | 낙관적 잠금 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- Lock/version: 적립·출금 시 row lock 권장.
+
+### point_ledger
+
+- 역할: 포인트 증감 불변 원장.
+- 멱등성 기준: `idempotency_key` 또는 `reference_type + reference_id + reason`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `point_account_id` | BIGINT | N | | FK `point_account(id)` | | 계정 |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 |
+| `entry_type` | VARCHAR(20) | N | | | CHECK `CREDIT`, `DEBIT`, `REVERSAL` | 분개 유형 |
+| `amount` | BIGINT | N | | | CHECK `> 0` | 절대 금액 |
+| `reason` | VARCHAR(50) | N | | | | 사유 |
+| `reference_type` | VARCHAR(40) | N | | | | 참조 유형 |
+| `reference_id` | UUID | N | | | | 참조 id |
+| `idempotency_key` | UUID | Y | | | UNIQUE | 요청 멱등 키 |
+| `balance_after` | BIGINT | N | | | CHECK `>= 0` | 반영 후 잔액 |
+| `occurred_at` | TIMESTAMPTZ | N | now() | | | 발생 시각 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_point_ledger_reference(user_public_id, reference_type, reference_id, reason)`.
+- 수정/삭제 금지, 오류는 REVERSAL 분개.
+
+## Cashout
+
+### cashout_request
+
+- 역할: 포인트→Toss 포인트 전환 요청과 상태.
+- 멱등성 기준: `user_public_id + idempotency_key`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | cashoutId |
+| `user_public_id` | UUID | N | | | INDEX | 회원 |
+| `point_amount` | BIGINT | N | | | CHECK `>= 10 AND point_amount % 10 = 0` | 출금 P |
+| `toss_point_amount` | BIGINT | N | | | CHECK `>= 7` | 지급량 |
+| `rate_point_unit` | INTEGER | N | 10 | | CHECK `> 0` | 환산 snapshot |
+| `rate_toss_unit` | INTEGER | N | 7 | | CHECK `> 0` | 환산 snapshot |
+| `status` | VARCHAR(20) | N | `PENDING` | | CHECK `PENDING`, `PROCESSING`, `SUCCEEDED`, `FAILED`, `CANCELED` | 상태 |
+| `idempotency_key` | UUID | N | | | | 요청 키 |
+| `failure_code` | VARCHAR(80) | Y | | | | 실패 코드 |
+| `requested_at` | TIMESTAMPTZ | N | now() | | | 요청 |
+| `completed_at` | TIMESTAMPTZ | Y | | | | 완료 |
+| `version` | BIGINT | N | 0 | | | 상태 전이 lock |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_cashout_user_idempotency(user_public_id, idempotency_key)`.
+- 인덱스: `ix_cashout_user_requested(user_public_id, requested_at DESC)`, `ix_cashout_status_requested(status, requested_at)`.
+
+### toss_point_transfer
+
+- 역할: 외부 Toss 지급 호출 시도와 결과.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `cashout_request_id` | BIGINT | N | | FK `cashout_request(id)` | | 출금 요청 |
+| `provider_transfer_id` | VARCHAR(255) | Y | | | UNIQUE | Toss transfer id |
+| `status` | VARCHAR(20) | N | `READY` | | CHECK `READY`, `REQUESTED`, `SUCCEEDED`, `FAILED` | 상태 |
+| `attempt_count` | INTEGER | N | 0 | | CHECK `>= 0` | 시도 횟수 |
+| `request_hash` | VARCHAR(255) | Y | | | | 민감정보 없는 요청 hash |
+| `provider_code` | VARCHAR(80) | Y | | | | Provider 결과 코드 |
+| `last_attempt_at` | TIMESTAMPTZ | Y | | | | 마지막 시도 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_toss_transfer_cashout(cashout_request_id)`.
+- FK ON DELETE: `RESTRICT`.
+
+## Advertisement/Booster
+
+### ad_placement
+
+- 역할: 광고 노출 위치와 일 한도 정책.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `code` | VARCHAR(60) | N | | | UNIQUE | placement code |
+| `purpose` | VARCHAR(20) | N | | | CHECK `BOX_OPEN`, `BOOSTER`, `BANNER` | 목적 |
+| `daily_limit` | INTEGER | Y | | | CHECK `> 0` | 일 한도 |
+| `active` | BOOLEAN | N | true | | | 활성 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+### ad_view
+
+- 역할: 광고 시청 시작·완료 검증과 재사용 방지.
+- 멱등성 기준: `user_public_id + idempotency_key`, provider view id
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | adViewId |
+| `placement_id` | BIGINT | N | | FK `ad_placement(id)` | | placement |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 |
+| `device_public_id` | UUID | Y | | | INDEX | 기기 |
+| `purpose` | VARCHAR(20) | N | | | CHECK `BOX_OPEN`, `BOOSTER`, `BANNER` | 목적 |
+| `provider_view_id` | VARCHAR(255) | Y | | | UNIQUE | Provider id |
+| `status` | VARCHAR(20) | N | `STARTED` | | CHECK `STARTED`, `COMPLETED`, `FAILED`, `EXPIRED` | 상태 |
+| `idempotency_key` | UUID | N | | | | 시작 요청 멱등 키 |
+| `started_at` | TIMESTAMPTZ | N | now() | | | 시작 |
+| `completed_at` | TIMESTAMPTZ | Y | | | | 완료 |
+| `expires_at` | TIMESTAMPTZ | N | | | | 완료 가능 만료 |
+| `consumed_at` | TIMESTAMPTZ | Y | | | | BOX_OPEN/BOOSTER 사용 시각 |
+| `failure_code` | VARCHAR(80) | Y | | | | 실패 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_ad_view_user_idempotency(user_public_id, idempotency_key)`.
+- Partial Unique 후보: 목적별 재사용은 `consumed_at IS NULL` 조건과 서비스 lock으로 방어.
+
+### booster_grant
+
+- 역할: 광고 완료로 부여된 5분 2배 부스터.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | boosterId |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 |
+| `ad_view_id` | BIGINT | N | | FK `ad_view(id)` | UNIQUE | 원인 광고 |
+| `grant_date` | DATE | N | | | | KST 일자 |
+| `daily_sequence` | INTEGER | N | | | CHECK `BETWEEN 1 AND 3` | 당일 순번 |
+| `multiplier` | NUMERIC(3,1) | N | 2.0 | | CHECK `= 2.0` | 배수 |
+| `status` | VARCHAR(20) | N | `ACTIVE` | | CHECK `ACTIVE`, `EXPIRED`, `CANCELED` | 상태 |
+| `starts_at` | TIMESTAMPTZ | N | | | | 시작 |
+| `ends_at` | TIMESTAMPTZ | N | | | | 종료 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- UNIQUE: `ux_booster_user_date_sequence(user_public_id, grant_date, daily_sequence)`.
+- Check: `ends_at > starts_at`, MVP duration 5분은 서비스 정책 검증.
+
+## Invitation
+
+### invite_code
+
+- 역할: 사용자별 공유 초대 코드.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `user_public_id` | UUID | N | | | UNIQUE | 코드 소유자 |
+| `code` | VARCHAR(20) | N | | | UNIQUE | 초대 코드 |
+| `active` | BOOLEAN | N | true | | | 활성 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+### invite_relation
+
+- 역할: inviter/invitee 관계, 첫 유효 탭 자격, 양쪽 보상 상태.
+- 멱등성 기준: invitee user, invitee device hash
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | relation id |
+| `invite_code_id` | BIGINT | N | | FK `invite_code(id)` | | 사용 코드 |
+| `inviter_user_public_id` | UUID | N | | | INDEX | 초대자 |
+| `invitee_user_public_id` | UUID | N | | | UNIQUE | 피초대자 |
+| `invitee_device_hash` | VARCHAR(255) | Y | | | | 1기기 1보상 판정 |
+| `status` | VARCHAR(30) | N | `PENDING_FIRST_TAP` | | CHECK `PENDING_FIRST_TAP`, `QUALIFIED`, `REWARDED`, `CANCELED` | 상태 |
+| `accepted_at` | TIMESTAMPTZ | N | now() | | | 수락 |
+| `qualified_at` | TIMESTAMPTZ | Y | | | | 첫 유효 탭 |
+| `rewarded_at` | TIMESTAMPTZ | Y | | | | 양쪽 보상 완료 |
+| `failure_code` | VARCHAR(80) | Y | | | | 실패 |
+| `version` | BIGINT | N | 0 | | | 상태 lock |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- Partial Unique: `ux_invite_device_reward(invitee_device_hash) WHERE invitee_device_hash IS NOT NULL AND status IN ('QUALIFIED','REWARDED')`.
+- Check: inviter와 invitee가 달라야 함은 서비스 검증.
+
+## Analytics
+
+### analytics_event
+
+- 역할: 화면·행동 분석 이벤트 비동기 수집.
+- 멱등성 기준: `event_id`
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | eventId |
+| `user_public_id` | UUID | Y | | | INDEX | 사용자 |
+| `device_public_id` | UUID | Y | | | INDEX | 기기 |
+| `event_name` | VARCHAR(80) | N | | | | 이벤트 이름 |
+| `screen_name` | VARCHAR(80) | Y | | | | 화면 |
+| `schema_version` | INTEGER | N | 1 | | CHECK `> 0` | 이벤트 스키마 버전 |
+| `source` | VARCHAR(20) | N | `CLIENT` | | CHECK `CLIENT`, `SERVER` | 이벤트 생성 주체 |
+| `properties` | JSONB | Y | | | | 민감정보 금지 |
+| `occurred_at` | TIMESTAMPTZ | N | | | | 클라이언트 발생 |
+| `received_at` | TIMESTAMPTZ | N | now() | | | 서버 수신 |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- 인덱스: `ix_analytics_event_name_time(event_name, occurred_at DESC)`, `ix_analytics_event_user_time(user_public_id, occurred_at DESC)`.
+- 보관: 분석 보관 기간과 파티셔닝은 운영 정책에서 확정.
 
 ## COMMON 후보 테이블
 

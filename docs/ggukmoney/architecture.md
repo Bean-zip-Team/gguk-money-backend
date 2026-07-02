@@ -46,7 +46,6 @@ flowchart LR
 ```mermaid
 erDiagram
     APP_USER ||--o{ AUTH_IDENTITY : has
-    APP_USER ||--o{ DEVICE : uses
     DEVICE ||--o{ USER_DEVICE : maps
     APP_USER ||--o{ USER_DEVICE : owns
     APP_USER ||--o{ USER_KEYCAP : owns
@@ -67,6 +66,14 @@ erDiagram
     APP_USER ||--o{ USER_RECORD_DAILY : projects
     APP_USER ||--|| USER_RECORD_SUMMARY : summarizes
     APP_USER ||--o{ AUTH_SESSION_LOG : audits
+
+    TAP_BATCH ||--o{ TAP_EVENT : produces
+    TAP_BATCH ||--o{ ABUSE_SIGNAL : flags
+    POINT_ACCOUNT ||--o{ POINT_LEDGER : records
+    CASHOUT_REQUEST ||--|| TOSS_POINT_TRANSFER : transfers
+    AD_PLACEMENT ||--o{ AD_VIEW : serves
+    AD_VIEW ||--o| BOOSTER_GRANT : grants
+    INVITE_CODE ||--o{ INVITE_RELATION : accepted_by
 ```
 
 Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는 `aggregate_id` 또는 `payload`로 전달한다.
@@ -84,6 +91,29 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 | Config/Legal | `app_config`, `legal_document`, `user_consent` |
 | Reliability | `event_outbox`, `event_inbox` |
 
+`keycap.code`는 API와 seed/master data가 공유하는 안정 코드다. `keycap.public_id`는 리소스 식별자, `code`는 이름 변경과 무관한 카탈로그 코드로 사용한다.
+
+
+## B 도메인 상세 Aggregate — PROPOSED
+
+| Aggregate | 테이블 | 경계 원칙 |
+|---|---|---|
+| Tap/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `abuse_signal` | A에는 검증 결과 delta만 Port/Event로 전달 |
+| Point | `point_account`, `point_ledger` | 포인트 원장은 B만 변경 |
+| Cashout | `cashout_request`, `toss_point_transfer` | 외부 Toss 지급과 포인트 복원을 B가 소유 |
+| Advertisement | `ad_placement`, `ad_view` | A는 완료된 adView 상태만 Port로 조회 |
+| Booster | `booster_grant` | 포인트/상자에만 2배, 랭킹 미적용 |
+| Invitation | `invite_code`, `invite_relation` | 자격 확정 후 A 상자 지급 Port 호출 |
+| Analytics | `analytics_event` | 핵심 트랜잭션과 분리 |
+
+B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 public UUID를 scalar로 저장한다. 상세 컬럼은 [table-spec.md](table-spec.md)의 `PROPOSED` 명세를 따른다.
+
+## 계약 확정 상태
+
+- A HTTP API와 A 테이블은 `CONFIRMED`다.
+- B HTTP API와 B 테이블은 구현 가능한 수준으로 선작성한 `PROPOSED`다.
+- `PROPOSED` 항목은 팀 회의에서 필드·상태·정책 수치를 수정할 수 있으나, 구현 전에 문서 상태를 `CONFIRMED`로 승격한다.
+
 ## 설계 이유
 
 ### app_user 단일 모델
@@ -96,7 +126,7 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 
 ### Redis JWT 인증
 
-Access JWT는 stateless 검증을 유지하되 logout/revoke가 필요한 jti만 Redis denylist에 저장한다. Refresh JWT는 Rotation이 필요하므로 Redis Refresh Session을 활성 세션 원본으로 둔다. PostgreSQL에는 활성 Refresh Session을 저장하지 않고 `auth_session_log`만 남긴다.
+Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti denylist, 전체 로그아웃·정지·탈퇴는 사용자 revoke 시각으로 차단한다. Refresh JWT는 Rotation이 필요하므로 Redis Refresh Session을 활성 세션 원본으로 둔다. PostgreSQL에는 활성 Refresh Session을 저장하지 않고 `auth_session_log`만 남긴다.
 
 ### 상자 보유량과 개봉 조건 분리
 

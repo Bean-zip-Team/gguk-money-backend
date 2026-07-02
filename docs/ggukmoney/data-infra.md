@@ -17,7 +17,7 @@
 - 기존 Refresh Token 저장 테이블은 사용하지 않는다.
 - Redis가 활성 Refresh Session의 원본이고 PostgreSQL은 `auth_session_log`만 영구 보관한다.
 - A 담당 상세 컬럼과 제약은 [table-spec.md](table-spec.md)의 CONFIRMED 테이블을 따른다.
-- B 담당 테이블은 [table-spec.md](table-spec.md)에 DRAFT로만 표기하며 B 담당자 최종 확정 전까지 A 구현 기준으로 삼지 않는다.
+- B 담당 테이블은 [table-spec.md](table-spec.md)에 PROPOSED로 표기하며 B 담당자 최종 확정 전까지 A 구현 기준으로 삼지 않는다.
 
 ## Flyway 파일 계획
 
@@ -33,6 +33,10 @@
 | `V1500__create_record_projection.sql` | 기록 projection |
 | `V1600__create_event_reliability.sql` | outbox, inbox |
 | `V1900__seed_initial_master_data.sql` | 지역, 기본 키캡, 기본 설정 seed |
+| `V2000__create_tap_risk.sql` | B PROPOSED 탭/어뷰징 |
+| `V2100__create_point_cashout.sql` | B PROPOSED 포인트/출금 |
+| `V2200__create_ad_booster.sql` | B PROPOSED 광고/부스터 |
+| `V2300__create_invitation_analytics.sql` | B PROPOSED 초대/분석 |
 
 Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 
@@ -44,7 +48,8 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 |---|---|---|---|
 | `auth:refresh:{sessionId}` | String(JSON) 또는 Hash | Refresh Token 남은 만료 시간 | 활성 Refresh Session |
 | `auth:user-sessions:{userId}` | Sorted Set | 세션별 만료 정리 | 사용자별 활성 session 목록 |
-| `auth:deny:access:{jti}` | String | Access Token 남은 만료 시간 | 로그아웃/정지/탈퇴/관리자 폐기된 Access jti |
+| `auth:deny:access:{jti}` | String | Access Token 남은 만료 시간 | 현재 Access Token 단위 차단 |
+| `auth:revoke:user:{userId}` | String(JSON) | Access Token 최대 수명 + 여유 | 전체 로그아웃/정지/탈퇴 revoke 시각과 사유 |
 
 `auth:refresh:{sessionId}` 필수 값:
 
@@ -63,6 +68,8 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 
 - Member: `sessionId`
 - Score: `expiresAt` epoch millis
+- Sorted Set member에는 개별 TTL이 없으므로 조회·추가·삭제 전 `ZREMRANGEBYSCORE key -inf nowEpochMillis`로 만료 member를 정리한다.
+- 정리 후 member가 없으면 key를 삭제한다.
 
 ### 랭킹, 알림, 설정
 
@@ -126,11 +133,14 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 
 ### 전체 기기 로그아웃
 
-1. `auth:user-sessions:{userId}`를 조회한다.
+1. `auth:user-sessions:{userId}`에서 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
 2. 모든 `auth:refresh:{sessionId}`를 삭제한다.
-3. 사용자 세션 목록을 삭제한다.
-4. 현재 Access Token jti를 denylist에 등록한다.
-5. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
+3. 사용자 세션 Sorted Set을 삭제한다.
+4. `auth:revoke:user:{userId}`에 `{ revokedAtMillis, reason: LOGOUT_ALL }`을 저장한다.
+5. 현재 Access Token jti도 `auth:deny:access:{jti}`에 등록한다.
+6. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
+
+Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 
 정지/탈퇴는 전체 세션 폐기와 동일한 방식으로 처리하고 사유를 `USER_SUSPENDED`, `USER_WITHDRAWN`으로 남긴다.
 
@@ -209,6 +219,37 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 6. target 회원의 `MEMBER_DEVICE`를 생성 또는 활성화한다.
 7. source의 Redis 인증 세션 전체를 폐기한다.
 8. target 기준 새 Redis 인증 세션을 생성한다.
+
+
+## B 트랜잭션과 동시성 — PROPOSED
+
+### 탭 배치
+
+1. `tap_batch.public_id` unique insert로 멱등성을 확보한다.
+2. 같은 id의 `request_hash`가 다르면 충돌로 거절한다.
+3. `user_tap_daily`를 row lock/version으로 갱신한다.
+4. `point_account`와 `point_ledger`를 같은 DB 트랜잭션에서 반영한다.
+5. A 반영용 `tap_event`/outbox를 저장한 뒤 commit한다.
+6. A의 `ValidatedTapApplyUseCase`는 `tapBatchId`로 중복을 방어한다.
+
+### 포인트와 출금
+
+- `point_account` row를 잠근 상태에서 잔액 확인, ledger insert, balance 갱신을 한 트랜잭션으로 처리한다.
+- 출금은 `CASHOUT_HOLD` debit 원장을 먼저 남겨 중복 사용을 막는다.
+- 외부 지급 성공은 `SUCCEEDED`, 최종 실패는 `REVERSAL` 원장으로 복원한다.
+- Toss API 호출은 point account row lock을 잡은 채 수행하지 않는다.
+
+### 광고와 부스터
+
+- 광고 Provider 검증은 `ad_view` 상태 저장 전에 완료한다.
+- 동일 `adViewId` 소비는 `consumed_at` 조건부 update로 한 번만 성공하게 한다.
+- 부스터 활성화는 사용자 당 활성 row 존재 여부와 일 3회 unique 기준을 함께 검증한다.
+
+### 친구초대
+
+- invitee user unique와 기기 보상 partial unique로 중복 관계를 막는다.
+- 첫 유효 탭 자격 변경과 `InvitationQualified` outbox 저장을 같은 트랜잭션으로 처리한다.
+- A 상자 지급은 `inviteRelationId`를 referenceId로 사용해 멱등 처리한다.
 
 ## Outbox/Inbox
 

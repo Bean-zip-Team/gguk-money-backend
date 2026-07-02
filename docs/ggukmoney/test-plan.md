@@ -41,7 +41,7 @@
 
 ## Redis JWT 인증 테스트
 
-- Access JWT에는 `sub`, `sid`, `jti`, `type=ACCESS`, `iat`, `exp`가 포함된다.
+- Access JWT에는 `sub`, `sid`, `jti`, `type=ACCESS`, `iat`, `issuedAtMillis`, `exp`가 포함된다.
 - Refresh JWT에는 `sub`, `sid`, `jti`, `type=REFRESH`, `iat`, `exp`가 포함된다.
 - Access API에 Refresh Token을 보내면 거절된다.
 - Refresh API에 Access Token을 보내면 거절된다.
@@ -55,8 +55,6 @@
 - 실제 이전 Refresh Token 재사용 시 `401 AUTH_REFRESH_REUSED`가 반환된다.
 - 실제 이전 Refresh Token 재사용 시 해당 Session을 폐기한다.
 - 실제 이전 Refresh Token 재사용 시 `auth_session_log.event_type=REFRESH_REUSE_DETECTED`가 저장된다.
-- 동일 Refresh Token 동시 요청은 하나만 성공한다.
-- 중복 Refresh 요청 중 실패한 요청은 충돌 또는 재사용 감지로 처리된다.
 - Refresh Session TTL 만료 후 Refresh는 실패한다.
 - Redis Session이 없으면 Refresh는 실패한다.
 - Access denylist TTL은 Access Token 남은 만료 시간과 같다.
@@ -65,6 +63,14 @@
 - 현재 기기 로그아웃 시 `auth:user-sessions:{userId}`에서 sessionId가 제거된다.
 - 전체 기기 로그아웃 시 사용자의 모든 `auth:refresh:{sessionId}`가 삭제된다.
 - 전체 기기 로그아웃 시 `auth:user-sessions:{userId}`가 삭제된다.
+- 전체 기기 로그아웃 시 `auth:revoke:user:{userId}`가 생성된다.
+- 다른 기기의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
+- revoke 전에 발급된 Access Token은 거절된다.
+- 같은 초라도 revoke 이후 발급된 Access Token은 허용된다.
+- `issuedAtMillis == revokedAtMillis`는 거절한다.
+- `issuedAtMillis > revokedAtMillis`는 허용한다.
+- 사용자 revoke key TTL은 Access Token 최대 수명보다 길다.
+- `auth:user-sessions` 조회 전 만료 member가 정리되고 비어 있으면 key가 삭제된다.
 - 회원 정지 시 전체 세션이 폐기된다.
 - 회원 탈퇴 시 전체 세션이 폐기된다.
 - Redis 장애 시 Refresh는 `503 AUTH_REDIS_UNAVAILABLE`로 실패한다.
@@ -110,6 +116,8 @@
 - 여러 상자 일괄 개봉은 MVP에서 허용하지 않는다.
 - 키캡 조각이 요구 개수에 도달하면 `COMPLETED`가 된다.
 - 한 사용자에게 장착 키캡은 하나만 존재한다.
+- `GET /keycaps`의 `code`는 `keycap.code`와 일치한다.
+- `GET /keycaps`의 상태값은 DB와 동일한 `IN_PROGRESS`, `COMPLETED`만 사용한다.
 
 ## 지역/랭킹 테스트
 
@@ -148,6 +156,44 @@
 - `/app-config`는 A 소유 정책만 반환한다.
 - 법적 문서 API는 `content`를 반환한다.
 
+
+## 홈/탭/포인트/출금 테스트 — PROPOSED
+
+- `/home`은 A/B 조회 결과를 한 응답으로 합성한다.
+- `/taps/batches` 동일 `tapBatchId` 재요청은 같은 결과를 반환한다.
+- 동일 `tapBatchId`에 다른 body hash가 오면 충돌한다.
+- 포인트 대상 탭은 일 5,000회에서 더 증가하지 않는다.
+- 랭킹 탭은 주 12,000회에서 더 증가하지 않는다.
+- 500 유효 탭마다 1P가 적립되고 나머지가 유지된다.
+- 최초 상자는 200탭, 이후 상자는 500 진행도마다 지급된다.
+- 부스터는 포인트와 상자 진행도에만 2배 적용되고 랭킹에는 적용되지 않는다.
+- point account 갱신과 point ledger 기록은 같은 트랜잭션이다.
+- 출금은 최소 10P, 10P 단위, 10P=7 Toss 포인트다.
+- 동일 Idempotency-Key 출금은 한 건만 생성된다.
+- 외부 지급 최종 실패 시 reversal 원장으로 포인트가 복원된다.
+
+## 광고/부스터/초대 테스트 — PROPOSED
+
+- 광고 완료만으로 상자가 지급되거나 열리지 않는다.
+- 완료된 adViewId 하나는 BOX_OPEN 또는 BOOSTER에 한 번만 소비된다.
+- BOX_OPEN 광고 개봉은 일 2회를 초과하지 않는다.
+- 부스터는 일 3회, 회당 5분이다.
+- 활성 부스터 중 중복 활성화는 거절된다.
+- 자기 초대는 거절된다.
+- invitee 사용자당 초대 관계는 한 건이다.
+- 동일 기기는 초대 보상을 중복 수령할 수 없다.
+- 초대 수락 직후 상태는 `PENDING_FIRST_TAP`, `rewardGranted=false`다.
+- 첫 유효 탭 이후 양쪽 상자 지급은 `inviteRelationId`로 멱등 처리된다.
+
+## API 계약 테스트
+
+- 전체 엔드포인트가 `Owner`, `Status`, 인증, 성공 상태, 멱등성, 관련 테이블을 명시한다.
+- A 엔드포인트는 `CONFIRMED`, B 엔드포인트는 `PROPOSED`로 표시된다.
+- 공통 성공/실패 응답에 `traceId`가 포함된다.
+- `204 No Content` API는 body를 반환하지 않고 `X-Trace-Id` 헤더 제공 여부를 검증한다.
+- 목록 API cursor/page 형식이 공통 계약과 일치한다.
+- 내부 BIGINT id가 API 응답에 노출되지 않는다.
+
 ## 제약 테스트
 
 - `auth_identity(provider, provider_user_id)` unique.
@@ -164,6 +210,17 @@
 - `user_region_change(user_id, change_month)` unique.
 - `user_record_reward(user_id, reference_type, reference_id, reward_type)` unique.
 - `event_inbox(event_id)` unique.
+- `tap_batch(public_id)` 및 `(user_public_id, tap_session_id, sequence)` unique.
+- `user_tap_daily(user_public_id, tap_date)` unique.
+- `point_account(user_public_id)` unique.
+- `point_ledger(user_public_id, reference_type, reference_id, reason)` unique.
+- `cashout_request(user_public_id, idempotency_key)` unique.
+- `ad_view(user_public_id, idempotency_key)` unique.
+- `booster_grant(user_public_id, grant_date, daily_sequence)` unique.
+- `invite_relation(invitee_user_public_id)` unique 및 기기 보상 partial unique.
+- `analytics_event(public_id)` unique.
+- `app_user(nickname_normalized) WHERE nickname_normalized IS NOT NULL AND status = 'ACTIVE'` partial unique.
+- `keycap(code)` unique.
 - [table-spec.md](table-spec.md)의 UNIQUE/CHECK/Partial Index와 테스트 계획의 제약 테스트가 일치한다.
 
 ## Redis 복구 테스트
@@ -191,5 +248,9 @@
 - 지역 seed 데이터 적재 방식을 확정했는가.
 - `/app-config`는 A 소유 정책만 반환하고 B/공통 정책은 Query Facade에서 합성한다는 기준을 공유했는가.
 - outbox 전달 방식과 재시도 주기를 확정했는가.
+- 와이어프레임의 지역 랭킹 콜드스타트 `50명` 기준과 전국 fallback 조건을 적용할지 확정했는가.
+- 탭 배치 기준을 현재 `50탭 또는 2초`로 둘지, 와이어프레임의 `30초 또는 100탭`으로 바꿀지 확정했는가.
+- 출금 단위를 현재 `10P` 단위로 둘지, 와이어프레임 예시처럼 `1P` 단위로 바꿀지 확정했는가.
+- Analytics `eventName`, `schemaVersion`, `source`, properties 금지값 검증을 계약 테스트에 포함했는가.
 - 회원 탈퇴 시 개인정보 삭제/익명화 범위를 법무 기준으로 확인했는가.
 - 운영자가 랭킹 정산 실패를 재시도할 관리 방법을 정했는가.
