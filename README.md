@@ -16,3 +16,12 @@
 - 구현됨: 공통 응답 `traceId`, Access Log Filter, JWT Provider, Redis Refresh Session Lua CAS, refresh/logout/logout-all API 뼈대, logout-all Redis 전체 세션 삭제, Auth Audit Log Entity/Repository/Service
 - 미구현: 게스트 생성/복구, Toss 승격/병합, 키캡/랭킹/알림/기록/설정 도메인
 - Blocking Issue: Toss Access Token 없는 일반 로그인에서 필요한 `deviceKey/platform/appVersion` 요청 계약 미확정
+
+## 2026-07-03 인증/로그 통합 테스트 완료
+
+- 기준 저장소: `C:\Users\lucy\Documents\ggukmoney`, 브랜치 `main`.
+- 기준 런타임: Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`).
+- Redis Testcontainers는 `redis:7-alpine`, PostgreSQL Testcontainers는 `postgres:16-alpine`을 사용한다.
+- `./gradlew.bat clean test --info --stacktrace`: 25 tests, 25 passed, failures 0, errors 0, skipped 0.
+- `./gradlew.bat check --info --stacktrace`: 성공.
+- `./gradlew.bat bootJar --info --stacktrace`: 성공, `build/libs/ggukmoney-backend-0.0.1-SNAPSHOT.jar` 생성.

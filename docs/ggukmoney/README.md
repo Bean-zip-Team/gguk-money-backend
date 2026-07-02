@@ -184,3 +184,10 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 - Git 커밋 없음
 - `./gradlew compileJava compileTestJava` 성공
 - 영문 경로에서 `./gradlew clean test`, `./gradlew check`, `./gradlew bootJar`, 핵심 개별 테스트가 성공했고 `ClassNotFoundException`은 재발하지 않음
+
+## 2026-07-03 구현 상태 갱신
+
+- 공통 응답/예외/traceId, Access Log, JWT Provider, Redis Refresh Session Repository, Lua CAS Refresh Rotation, logout/logout-all, Auth Audit Log, Flyway V1000, 인증 API 최소 흐름은 실제 단위/통합 테스트 통과 기준으로 `IMPLEMENTED`로 승격한다.
+- refresh/logout API의 모든 장애 흐름, 감사 로그 실패 재처리, Redis 장애 복구 전체 정책은 `IN_PROGRESS`로 유지한다.
+- Toss device 계약, 게스트 승격/병합, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서는 기존 `BLOCKED` 또는 `NOT_STARTED` 상태를 유지한다.
+- 통합 테스트 실행에는 Docker가 필요하며 Redis/PostgreSQL은 Testcontainers로만 기동한다.

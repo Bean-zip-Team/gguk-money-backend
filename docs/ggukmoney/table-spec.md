@@ -1147,3 +1147,10 @@ B 공통 정책:
 ## COMMON 후보 테이블
 
 현재 COMMON 소유로 확정된 별도 테이블은 없다. 공통 응답, trace, 예외 코드는 코드/문서 규칙으로 관리한다.
+
+## 2026-07-03 실제 마이그레이션 검증 메모
+
+- `auth_session_log`는 `V1000__create_auth_session_log.sql`로 실제 PostgreSQL 16 Testcontainer에 생성됨을 검증했다.
+- 검증된 주요 타입은 `id BIGINT identity`, `public_id UUID`, `user_public_id UUID`, `device_public_id UUID`, `metadata JSONB`, `occurred_at/created_at/updated_at TIMESTAMPTZ`다.
+- Java `AuthSessionLog` Entity는 PostgreSQL `metadata JSONB` 저장/조회와 UUID/enum 문자열 저장을 통합 테스트로 검증했다.
+- `app_user`, `device` 등 나머지 A 전체 테이블과 B 담당 DRAFT 테이블의 상세 정책은 기존 표 명세를 Source of Truth로 유지한다.

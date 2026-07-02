@@ -41,3 +41,11 @@
 - B 탭/포인트/출금/광고/부스터/초대/API 계약 테스트를 추가했습니다.
 
 - logout-all은 auth:revoke:user:{userPublicId} reasoned marker, auth:user-sessions:{userPublicId} 전체 삭제, 모든 auth:refresh:{sessionId} 삭제, 현재 access denylist 등록까지 구현했습니다.
+
+## 2026-07-03 인증/로그 Testcontainers 통합 테스트 마무리
+
+- `FullStackIntegrationTestSupport`에 클래스 종료 후 Spring Context 폐기 정책을 적용해 전체 테스트 실행 중 종료된 Redis/PostgreSQL Testcontainer 포트가 재사용되는 문제를 해결했다.
+- `RedisAuthSessionRepositoryTest`의 Lua CAS Mockito expectation을 production `redisTemplate.execute(...)` 인자 순서와 개수에 맞췄다.
+- Redis/PostgreSQL/API 통합 테스트를 실제 Testcontainers로 검증했다.
+- 최종 `clean test` 결과는 25 tests, failures 0, errors 0, skipped 0이다.
+- `check`와 `bootJar`가 성공했고 실행 jar는 `build/libs/ggukmoney-backend-0.0.1-SNAPSHOT.jar`에 생성된다.

@@ -1968,3 +1968,10 @@ Request:
 - 운영자용 `app_config` append API
 - 운영자용 부정 탭 검토 API
 - 보유 상자 일괄 개봉 API는 MVP 제외
+
+## 2026-07-03 인증 API 구현 상태
+
+- `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`은 실제 Redis/PostgreSQL Testcontainers 기반 API 통합 테스트를 통과했다.
+- 응답은 공통 `traceId` 계약을 유지하며 Access Log에도 `traceId`가 기록된다.
+- `logout-all` 응답은 `loggedOutAll`, `revokedSessionCount`를 분리한다. `revokedSessionCount`는 실제 삭제된 활성 Refresh Session 수 기준이다.
+- 게스트 생성, Toss 승격/병합, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서 API 구현 상태는 이번 작업에서 변경하지 않았다.

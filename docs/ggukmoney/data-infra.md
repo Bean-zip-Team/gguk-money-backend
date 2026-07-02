@@ -264,3 +264,10 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 - B 이벤트는 `event_inbox`에 저장하고 projection 처리 후 `processed_at`을 채운다.
 - 같은 `event_id`는 중복 처리하지 않는다.
 - 기록 API는 B 운영 테이블을 직접 조회하지 않는다.
+
+## 2026-07-03 테스트 인프라 검증
+
+- Redis 통합 테스트는 `redis:7-alpine` Testcontainer를 사용한다. 로컬 Redis 인스턴스에 의존하지 않는다.
+- PostgreSQL/Flyway 통합 테스트는 `postgres:16-alpine` Testcontainer를 사용한다. 빈 DB에서 V1000 migration 적용, `flyway_schema_history`, `auth_session_log` 스키마, JSONB/UUID/identity 매핑을 검증한다.
+- Spring test profile에서는 `spring.jpa.open-in-view=false`, SpringDoc test endpoint 비활성화를 명시한다.
+- Mockito는 Gradle `mockitoAgent` configuration과 test JVM `-javaagent`로 정적 agent를 사용한다. 사용자별 cache 경로를 하드코딩하지 않는다.

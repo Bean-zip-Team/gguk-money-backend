@@ -275,3 +275,31 @@
 - Analytics `eventName`, `schemaVersion`, `source`, properties 금지값 검증을 계약 테스트에 포함했는가.
 - 회원 탈퇴 시 개인정보 삭제/익명화 범위를 법무 기준으로 확인했는가.
 - 운영자가 랭킹 정산 실패를 재시도할 관리 방법을 정했는가.
+
+## 2026-07-03 최종 테스트 결과
+
+| 분류 | 테스트 | 결과 |
+|---|---|---|
+| Unit | `RedisAuthSessionRepositoryTest` | 성공 |
+| Redis Integration | `RedisAuthSessionRepositoryIntegrationTest` | 성공 |
+| Redis Integration | `RefreshLuaCasIntegrationTest` | 성공 |
+| PostgreSQL Integration | `FlywayMigrationIntegrationTest` | 성공 |
+| PostgreSQL Integration | `AuthAuditServiceIntegrationTest` | 성공 |
+| Redis/PostgreSQL Service Integration | `AuthServiceLogoutAllIntegrationTest` | 성공 |
+| API Integration | `AuthApiIntegrationTest` | 성공 |
+
+최종 전체 실행 결과:
+
+- `./gradlew.bat clean test --info --stacktrace`: 25 tests, failures 0, errors 0, skipped 0.
+- `./gradlew.bat check --info --stacktrace`: 성공.
+- `./gradlew.bat bootJar --info --stacktrace`: 성공.
+- Docker Desktop 실행이 필요하다. Testcontainers가 Docker daemon을 찾지 못하면 통합 테스트는 환경 실패로 분류한다.
+- `flywayValidate` Gradle task는 현재 없으며, 실제 migration 검증은 `FlywayMigrationIntegrationTest`가 담당한다.
+
+검증된 핵심 시나리오:
+
+- Redis Hash/ZSet 저장, TTL 설정과 갱신, Lua CAS 실행.
+- 동일 Refresh 동시 요청 중 하나만 성공하고 나머지는 충돌로 처리되며 정상 Session은 폐기되지 않음.
+- Rotation 완료 후 과거 Refresh Token 재사용은 재사용 감지로 처리되고 Session이 폐기됨.
+- logout-all은 활성 Refresh Session 삭제 수를 `revokedSessionCount`로 계산하고 revoke marker와 현재 access denylist를 기록함.
+- Auth Audit Log는 JSONB/UUID/enum 저장을 검증했고, 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않음을 검증함.
