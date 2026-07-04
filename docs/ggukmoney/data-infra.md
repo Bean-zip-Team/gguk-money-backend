@@ -1,11 +1,20 @@
 # 꾹머니 데이터와 인프라 설계
 
+> 현재 구현 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`), Gradle Wrapper 9.5.1. A 담당자는 민재, B 담당자는 은창이다.
+
 ## 테스트/빌드 환경
 
-- Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`)를 기준으로 한다.
+- Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`)를 기준으로 한다.
 - 실제 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
 - 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했다.
-- 현재 Gradle task 목록에는 `flywayValidate`가 없다. SQL 검증은 Flyway plugin 추가 또는 Testcontainers 기반 DB 통합 테스트로 수행한다.
+- Flyway 검증은 PostgreSQL Testcontainers 기반 통합 테스트로 수행한다. 현재 구현은 `V1000__create_auth_session_log.sql`을 실제 DB에 적용해 검증한다.
+
+## Java 26/Testcontainers 기준
+
+- Gradle JVM, compileJava, compileTestJava, test launcher는 Java 26 기준으로 통일한다.
+- Testcontainers 이미지는 Redis `redis:7-alpine`, PostgreSQL `postgres:16-alpine`을 사용한다.
+- Testcontainers BOM 선언은 1.21.3을 유지한다. Spring Boot 4.1.0의 `spring-boot-testcontainers` 경유 core runtime은 dependencyInsight에서 2.0.5로 resolve됨을 확인했다.
+- QueryDSL 5.1.0은 현재 직접 사용처가 없지만 향후 동적 조회 계획 때문에 유지한다. 취약점 suppression은 하지 않고, 구현 시 정렬 allowlist와 명시적 projection을 적용한다.
 
 ## PostgreSQL 원칙
 
@@ -24,7 +33,7 @@
 - 기존 Refresh Token 저장 테이블은 사용하지 않는다.
 - Redis가 활성 Refresh Session의 원본이고 PostgreSQL은 `auth_session_log`만 영구 보관한다.
 - A 담당 상세 컬럼과 제약은 [table-spec.md](table-spec.md)의 CONFIRMED 테이블을 따른다.
-- B 담당 테이블은 [table-spec.md](table-spec.md)에 PROPOSED로 표기하며 B 담당자 최종 확정 전까지 A 구현 기준으로 삼지 않는다.
+- B 담당 테이블은 [table-spec.md](table-spec.md)에 DRAFT로 표기하며 B 담당자 은창의 최종 확정 전까지 A 구현 기준으로 삼지 않는다.
 
 ## Flyway 파일 계획
 
@@ -41,10 +50,10 @@
 | `V1500__create_record_projection.sql` | 기록 projection |
 | `V1600__create_event_reliability.sql` | outbox, inbox |
 | `V1900__seed_initial_master_data.sql` | 지역, 기본 키캡, 기본 설정 seed |
-| `V2000__create_tap_risk.sql` | B PROPOSED 탭/어뷰징 |
-| `V2100__create_point_cashout.sql` | B PROPOSED 포인트/출금 |
-| `V2200__create_ad_booster.sql` | B PROPOSED 광고/부스터 |
-| `V2300__create_invitation_analytics.sql` | B PROPOSED 초대/분석 |
+| `V2000__create_tap_risk.sql` | B DRAFT 탭/어뷰징 |
+| `V2100__create_point_cashout.sql` | B DRAFT 포인트/출금 |
+| `V2200__create_ad_booster.sql` | B DRAFT 광고/부스터 |
+| `V2300__create_invitation_analytics.sql` | B DRAFT 초대/분석 |
 
 Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 

@@ -2,7 +2,7 @@
 
 ## 전체 구조
 
-기술 기준: Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 테스트 기준 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
+기술 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 테스트 기준 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
 
 
 꾹머니는 모듈형 모놀리스로 시작한다. A/B 담당 도메인을 패키지와 Application Port로 분리하고, 서로의 Entity와 Repository를 직접 참조하지 않는다.
@@ -109,13 +109,13 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 | Invitation | `invite_code`, `invite_relation` | 자격 확정 후 A 상자 지급 Port 호출 |
 | Analytics | `analytics_event` | 핵심 트랜잭션과 분리 |
 
-B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 public UUID를 scalar로 저장한다. 상세 컬럼은 [table-spec.md](table-spec.md)의 `PROPOSED` 명세를 따른다.
+B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 public UUID를 scalar로 저장한다. 상세 컬럼은 [table-spec.md](table-spec.md)의 `DRAFT` 명세를 따른다.
 
 ## 계약 확정 상태
 
 - A HTTP API와 A 테이블은 `CONFIRMED`다.
-- B HTTP API와 B 테이블은 구현 가능한 수준으로 선작성한 `PROPOSED`다.
-- `PROPOSED` 항목은 팀 회의에서 필드·상태·정책 수치를 수정할 수 있으나, 구현 전에 문서 상태를 `CONFIRMED`로 승격한다.
+- B HTTP API는 구현 가능한 수준으로 선작성한 `PROPOSED`이고, B 테이블은 은창 최종 확정 전까지 `DRAFT`다.
+- `PROPOSED` API와 `DRAFT` 테이블은 팀 회의에서 필드·상태·정책 수치를 수정할 수 있으며, 구현 전에 문서 상태를 `CONFIRMED`로 승격한다.
 
 ## 설계 이유
 

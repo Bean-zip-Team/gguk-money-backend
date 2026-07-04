@@ -49,3 +49,13 @@
 - Redis/PostgreSQL/API 통합 테스트를 실제 Testcontainers로 검증했다.
 - 최종 `clean test` 결과는 25 tests, failures 0, errors 0, skipped 0이다.
 - `check`와 `bootJar`가 성공했고 실행 jar는 `build/libs/ggukmoney-backend-0.0.1-SNAPSHOT.jar`에 생성된다.
+## 2026-07-04 Java 26 전환
+
+- Java/Javac 26.0.1, Gradle JVM 26, Java Toolchain 26을 기준으로 전환했다.
+- `build.gradle`의 Java toolchain을 26으로 변경했다.
+- `TestEnvironmentSmokeTest`에 Java feature version 26 검증을 추가했다.
+- Preview feature는 사용하지 않는다.
+- QueryDSL 5.1.0은 현재 Java 코드 직접 사용처가 없지만 향후 동적 조회 계획 때문에 유지한다. 임의 버전 변경과 취약점 suppression은 하지 않는다.
+- Redis/PostgreSQL Testcontainers 기반 인증/로그 통합 테스트를 Java 26에서 재실행했다.
+- 전체 테스트 결과: 26 tests, failures 0, errors 0, skipped 0.
+- B API는 PROPOSED, B 테이블은 DRAFT로 유지한다. A 담당자는 민재, B 담당자는 은창이다.

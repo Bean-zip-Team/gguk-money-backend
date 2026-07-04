@@ -20,25 +20,42 @@
 
 ## 기술 기준
 
-- Java 21
+- Java 26
 - Spring Boot 4.1.0
-- Jackson 3(`tools.jackson.*`)
-- 실제 저장소: `C:\Users\lucy\Documents\ggukmoney` / branch `main`
-- 테스트 환경: 기본 Gradle `build/` 디렉터리 사용. 한글 경로 우회용 temp build/test working dir 설정은 제거했다.
+- Jackson 3(tools.jackson.*)
+- Gradle Wrapper 9.5.1
+- 실제 저장소: C:\Users\lucy\Documents\ggukmoney / branch main
+- 테스트 환경: 기본 Gradle build/ 디렉터리 사용. 한글 경로 우회용 temp build/test working dir 설정은 제거했다.
 
+문서 상태:
 
-- A API/테이블: `CONFIRMED`
-- B API/테이블: 팀 검토용 `PROPOSED`
-- `PROPOSED`는 구현 전에 팀 합의 후 `CONFIRMED`로 승격한다.
+- A API/테이블: CONFIRMED, 담당자 민재
+- B API: 팀 검토용 PROPOSED, 담당자 은창
+- B 테이블: DRAFT, 담당자 은창 최종 확정 필요
+- PROPOSED는 구현 전에 팀 합의 후 CONFIRMED로 승격한다.
 
 현재 Java 구현 상태:
 
-- Spring Boot Application 클래스와 기본 테스트: `IMPLEMENTED`
-- 공통 응답/예외, `traceId`, Access Log: `IMPLEMENTED`
-- JWT Provider, Redis Refresh Session Lua CAS, logout-all 서비스: `IMPLEMENTED`; refresh/logout API와 감사 로그 연동: `IN_PROGRESS`
-- Auth Audit Log Entity/Repository/Service: `IN_PROGRESS`
-- 게스트 생성/복구, Toss 승격/병합: `NOT_STARTED`
-- 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서: `NOT_STARTED`
+- Gradle JVM, compileJava, compileTestJava, test launcher는 Java 26 기준으로 통일한다.
+- Preview feature는 사용하지 않는다.
+- QueryDSL 5.1.0은 현재 직접 사용처가 없지만 향후 동적 조회 계획 때문에 유지한다. 취약점 suppression 없이 Sort allowlist와 명시적 projection 기준을 적용한다.
+- Spring Boot Application 클래스와 기본 테스트: IMPLEMENTED
+- 공통 응답/예외, traceId, Access Log: IMPLEMENTED
+- JWT Provider, Redis Refresh Session Lua CAS, logout-all 서비스: IMPLEMENTED; refresh/logout API와 감사 로그 연동: IN_PROGRESS
+- Auth Audit Log Entity/Repository/Service: IN_PROGRESS
+- 게스트 생성/복구, Toss 승격/병합: NOT_STARTED
+- 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서: NOT_STARTED
+
+## 최종 검증 기준
+
+- 실제 Java/Javac: 26.0.1
+- Spring Boot: 4.1.0
+- Jackson: 3(tools.jackson.*)
+- Gradle Wrapper: 9.5.1
+- Redis Testcontainers 이미지: redis:7-alpine
+- PostgreSQL Testcontainers 이미지: postgres:16-alpine
+- Testcontainers BOM 선언: 1.21.3 유지. Spring Boot spring-boot-testcontainers 경유 core runtime은 2.0.5로 resolve됨을 dependencyInsight로 확인했다.
+- 전체 테스트 기준: 26 tests, failures 0, errors 0, skipped 0.
 
 ## 서비스 개요
 
@@ -46,10 +63,10 @@
 
 ## A/B 담당 범위
 
-| 구분 | 담당 |
-|---|---|
-| A | 회원/인증, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서 |
-| B | 탭 검증, 포인트, 출금, 광고/부스터, 친구 초대 |
+| 구분 | 담당자 | 담당 |
+|---|---|---|
+| A | 민재 | 회원/인증, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서 |
+| B | 은창 | 탭 검증, 포인트, 출금, 광고/부스터, 친구 초대 |
 
 A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [api-contract.md](api-contract.md)의 Port와 Event 계약으로만 한다.
 
@@ -161,7 +178,7 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 ## 현재 명세 완성도
 
 - `api-contract.md`: A 전체 API 상세 `CONFIRMED`, B 전체 API 상세 `PROPOSED`.
-- `table-spec.md`: A 34개 테이블 상세 `CONFIRMED`, B 14개 테이블 상세 `PROPOSED`.
+- `table-spec.md`: A 34개 테이블 상세 `CONFIRMED`, B 14개 테이블 상세 `DRAFT`.
 - B 정책 수치·상태·외부 Toss/광고 응답은 팀 회의에서 최종 조정한다.
 
 ## 빵도감 분석 결과 요약
@@ -178,7 +195,7 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 ## 이번 작업 검증 기준
 
 - Java 인증/로그 기반 구현 포함
-- Gradle test task는 Java 21 toolchain과 기본 `build/` 디렉터리를 사용
+- Gradle test task는 Java 26 toolchain과 기본 `build/` 디렉터리를 사용
 - Flyway `auth_session_log` 최소 SQL 생성
 - 빵도감 저장소 변경 없음
 - Git 커밋 없음

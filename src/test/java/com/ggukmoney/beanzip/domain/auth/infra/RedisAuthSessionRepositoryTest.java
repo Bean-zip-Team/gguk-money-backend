@@ -32,7 +32,7 @@ public class RedisAuthSessionRepositoryTest {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<RedisScript<Long>> scriptCaptor = ArgumentCaptor.forClass(RedisScript.class);
-        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.captor();
         when(redisTemplate.execute(
                 scriptCaptor.capture(),
                 keysCaptor.capture(),

@@ -1,6 +1,6 @@
 # 꾹머니 테스트 계획
 
-이 문서는 테스트 전략과 구현 상태를 함께 기록한다. 2026-07-02 기준 실제 저장소 `C:\Users\lucy\Documents\ggukmoney`의 `main` 브랜치에서 Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`) 환경을 최종 기준으로 확정했다. 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했고 기본 Gradle `build/` 디렉터리로 검증한다.
+이 문서는 테스트 전략과 구현 상태를 함께 기록한다. 2026-07-02 기준 실제 저장소 `C:\Users\lucy\Documents\ggukmoney`의 `main` 브랜치에서 Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`) 환경을 최종 기준으로 확정했다. 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했고 기본 Gradle `build/` 디렉터리로 검증한다.
 
 ## 현재 작성된 테스트 코드
 
@@ -10,10 +10,10 @@
 | `JwtTokenProviderTest` | 개별 실행 성공 | `sub`, `sid`, `jti`, `type=ACCESS/REFRESH`, `issuedAtMillis`, 만료 시각 |
 | `RedisAuthSessionRepositoryTest` | 개별 실행 성공 | Redis Lua CAS script, `auth:refresh`, `auth:user-sessions`, refresh lock key 미사용 |
 | `AuthServiceLogoutAllTest` | 개별 실행 성공 | logout-all Redis session 삭제, revoke marker, 현재 access denylist |
-| `TestEnvironmentSmokeTest` | 개별 실행 성공 | Java 21 / Spring Boot 4.1.0 테스트 환경 |
+| `TestEnvironmentSmokeTest` | 개별 실행 성공 | Java 26 / Spring Boot 4.1.0 테스트 환경 |
 검증 결과:
 
-- `./gradlew --version`: 성공. Gradle 9.5.1, JVM 21.0.9.
+- `./gradlew --version`: 성공. Gradle 9.5.1, JVM 26.0.1.
 - `./gradlew --stop`: 성공.
 - `./gradlew clean compileJava compileTestJava --info --stacktrace`: 성공.
 - `./gradlew clean test --info --stacktrace`: 성공. 영문 경로 기본 `build/`에서 `ClassNotFoundException` 재발 없음.
@@ -290,7 +290,7 @@
 
 최종 전체 실행 결과:
 
-- `./gradlew.bat clean test --info --stacktrace`: 25 tests, failures 0, errors 0, skipped 0.
+- `./gradlew.bat clean test --info --stacktrace`: 26 tests, failures 0, errors 0, skipped 0.
 - `./gradlew.bat check --info --stacktrace`: 성공.
 - `./gradlew.bat bootJar --info --stacktrace`: 성공.
 - Docker Desktop 실행이 필요하다. Testcontainers가 Docker daemon을 찾지 못하면 통합 테스트는 환경 실패로 분류한다.

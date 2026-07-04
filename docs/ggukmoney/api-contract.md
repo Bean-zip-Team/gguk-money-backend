@@ -1,8 +1,8 @@
 # 꾹머니 API 계약
 
-> 구현 기준: Java 21, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 계약/테이블 명세는 이 기준으로 해석한다.
+> 구현 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 계약/테이블 명세는 이 기준으로 해석한다.
 
-이 문서는 전체 HTTP API, Application Port, Domain Event 계약의 Source of Truth다. A 담당 API는 `CONFIRMED`, B 담당 API는 팀 논의를 위한 `PROPOSED`로 구분한다.
+이 문서는 전체 HTTP API, Application Port, Domain Event 계약의 Source of Truth다. A 담당자 민재의 API는 `CONFIRMED`, B 담당자 은창의 API는 팀 논의를 위한 `PROPOSED`로 구분한다. 계약 상태와 Java 구현 상태는 별도로 관리한다.
 
 ## 계약 상태
 
@@ -13,6 +13,16 @@
 | `DEPRECATED` | 신규 구현에서 사용하지 않는다. 제거 일정을 별도로 관리한다. |
 
 구현 상태는 별도로 `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`로 표기한다. `CONFIRMED`는 정책/계약 확정이며 Java 코드 구현 완료를 뜻하지 않는다.
+
+## 담당자와 구현 상태
+
+| 구분 | 담당자 | API 계약 상태 | Java 구현 상태 |
+|---|---|---|---|
+| A 인증/로그 | 민재 | CONFIRMED | refresh/logout/logout-all, Access Log, Auth Audit Log IN_PROGRESS |
+| A 나머지 도메인 | 민재 | CONFIRMED | NOT_STARTED |
+| B 도메인 | 은창 | PROPOSED | NOT_STARTED |
+
+Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_REQUIRED`로 blocking 유지한다. `/guests`는 Refresh Token이 있으면 `/auth/refresh`로 보내고, Refresh Token이 없으면 기존 guest 계정을 재사용할 수 있으나 새 Redis auth session과 token pair를 생성한다.
 
 ## 공통 API 규칙
 
@@ -70,6 +80,14 @@
 - 상태 변경 API 중 중복 요청 위험이 있는 API는 `Idempotency-Key: {uuid}`를 사용한다.
 - 동일 사용자·동일 Key·동일 요청은 기존 결과를 반환한다.
 - 동일 Key에 다른 요청 본문이 오면 `409 IDEMPOTENCY_KEY_REUSED`를 반환한다.
+
+## Java 26 인증 구현 기준
+
+- Access/Refresh JWT JSON 처리는 Jackson 3의 `tools.jackson.*` 타입을 기준으로 한다.
+- Refresh Rotation은 Redis Lua CAS로 수행한다.
+- 거의 동시에 들어온 동일 Refresh 요청은 `409 AUTH_REFRESH_CONFLICT`로 응답하고 정상 Session을 폐기하지 않는다.
+- Rotation 완료 후 과거 Refresh Token 재사용은 `401 AUTH_REFRESH_REUSED`로 응답하고 해당 Session을 폐기하며 `REFRESH_REUSE_DETECTED`를 감사 로그에 기록한다.
+- logout-all 응답은 `loggedOutAll`, `revokedSessionCount`를 분리한다.
 
 ## 인증 토큰 계약
 
