@@ -30,6 +30,12 @@
 - 12,000 랭킹 상한 미확정 응답을 `weeklyRankingLimit=null` 기준으로 정리했다.
 - Java/SQL/Gradle/테스트 코드는 수정하지 않았다.
 
+### 후속 문서 정합성 최종 보정
+
+- 공유 문서에 남은 개인 절대경로를 제거했다.
+- `auth_session_log`의 현재 구현 완료 범위와 감사 로그 저장 실패 재처리 상태를 분리했다.
+- Java/SQL/Gradle/테스트 코드는 수정하지 않았다.
+
 ## 2026-07-02 빵도감 main HEAD 기반 인증/로그 구현 반영
 
 - 빵도감 기준 원본을 `develop`에서 `main` HEAD `e9a6abb73320e61869f91b14293e5da3d1fbe4f2`로 변경했습니다. 원격 `develop` 브랜치는 확인되지 않았습니다.

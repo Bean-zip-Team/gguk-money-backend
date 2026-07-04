@@ -5,7 +5,7 @@
 ## 테스트/빌드 환경
 
 - Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`)를 기준으로 한다.
-- 실제 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
+- 저장소 루트 기준, 기준 브랜치 `main`, Windows 환경에서 기본 Gradle `build/` 디렉터리를 사용한다.
 - 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했다.
 - Flyway 검증은 PostgreSQL Testcontainers 기반 통합 테스트로 수행한다. 현재 구현은 `V1000__create_auth_session_log.sql`을 실제 DB에 적용해 검증한다.
 

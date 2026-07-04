@@ -193,7 +193,11 @@ A 상세 테이블 공통 정책:
 - 관련 API: `POST /guests`, `POST /auth/toss/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`
 - 관련 Event/Port: 회원 정지/탈퇴 세션 폐기, `AuthAuditLogPort`
 - 멱등성 기준: `trace_id + event_type + session_id_hash` 권장
-- 구현 상태: `IN_PROGRESS`. 현재 Java/Flyway 구현은 `app_user`, `device` 구현 전 단계라 내부 FK 없이 `user_public_id`, `device_public_id` UUID 값을 저장한다. 최종 `app_user/device` 마이그레이션을 넣을 때 내부 FK 컬럼 연결 정책을 팀에서 확정한다.
+- 현재 구현 상태: `IMPLEMENTED`.
+- `V1000__create_auth_session_log.sql`, AuthSessionLog Entity, Repository, BIGINT identity, `user_public_id`/`device_public_id` UUID scalar 저장, JSONB `metadata`, enum/check 저장은 실제 PostgreSQL 통합 테스트를 통과했다.
+- 검증 기준: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest`.
+- 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구는 `IN_PROGRESS`다.
+- 향후 `app_user`/`device` 도입 시 내부 FK 연결 여부는 Decision Required다.
 
 | 컬럼명 | PostgreSQL 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|

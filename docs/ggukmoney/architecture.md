@@ -2,7 +2,7 @@
 
 ## 전체 구조
 
-기술 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 테스트 기준 저장소는 `C:\Users\lucy\Documents\ggukmoney`이며 기본 Gradle `build/` 디렉터리를 사용한다.
+기술 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 저장소 루트 기준, 기준 브랜치 `main`, Windows 환경에서 기본 Gradle `build/` 디렉터리를 사용해 검증한다. 과거 한글 경로용 임시 build/test 우회 설정은 제거했다.
 
 
 꾹머니는 모듈형 모놀리스로 시작한다. A/B 담당 도메인을 패키지와 Application Port로 분리하고, 서로의 Entity와 Repository를 직접 참조하지 않는다.

@@ -1,6 +1,6 @@
 # 꾹머니 테스트 계획
 
-이 문서는 테스트 전략과 구현 상태를 함께 기록한다. 2026-07-02 기준 실제 저장소 `C:\Users\lucy\Documents\ggukmoney`의 `main` 브랜치에서 Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`) 환경을 최종 기준으로 확정했다. 한글 경로에서 사용했던 temp build/test working dir 우회 설정은 제거했고 기본 Gradle `build/` 디렉터리로 검증한다.
+이 문서는 테스트 전략과 구현 상태를 함께 기록한다. 저장소 루트 기준, 기준 브랜치 `main`, Windows 환경에서 Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`) 환경을 최종 기준으로 확정했다. 과거 한글 경로용 임시 build/test 우회 설정은 제거했고 기본 Gradle `build/` 디렉터리로 검증한다.
 
 ## 현재 작성된 테스트 코드
 
