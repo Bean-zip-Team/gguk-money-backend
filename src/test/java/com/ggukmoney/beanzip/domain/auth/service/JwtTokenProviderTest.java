@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class JwtTokenProviderTest {
 
@@ -47,5 +48,25 @@ public class JwtTokenProviderTest {
         assertThat(claims.type()).isEqualTo("REFRESH");
         assertThat(claims.jti()).isEqualTo("refresh-jti-1");
         assertThat(claims.expiresAt()).isEqualTo(Instant.parse("2026-08-01T00:00:00Z"));
+    }
+
+    @Test
+    void rejectsBlankSecret() {
+        assertThatThrownBy(() -> new JwtTokenProvider(new ObjectMapper(), "   ", "ggukmoney", clock))
+                .hasMessageContaining("JWT_SECRET_REQUIRED");
+    }
+
+    @Test
+    void rejectsSecretShorterThanThirtyTwoUtf8Bytes() {
+        assertThatThrownBy(() -> new JwtTokenProvider(new ObjectMapper(), "short-secret", "ggukmoney", clock))
+                .hasMessageContaining("JWT_SECRET_TOO_SHORT");
+    }
+
+    @Test
+    void rejectsFormerLocalDefaultSecret() {
+        String formerLocalDefaultSecret = "local-dev-secret" + "-change-me";
+
+        assertThatThrownBy(() -> new JwtTokenProvider(new ObjectMapper(), formerLocalDefaultSecret, "ggukmoney", clock))
+                .hasMessageContaining("JWT_SECRET_FORBIDDEN");
     }
 }

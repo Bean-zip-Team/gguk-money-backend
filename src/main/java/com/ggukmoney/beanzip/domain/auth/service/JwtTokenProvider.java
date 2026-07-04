@@ -29,6 +29,7 @@ public class JwtTokenProvider {
     private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
     private static final long ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
     private static final long REFRESH_TOKEN_TTL_SECONDS = 30L * 24 * 60 * 60;
+    private static final String FORMER_LOCAL_DEFAULT_SECRET = "local-dev-secret" + "-change-me";
 
     private final ObjectMapper objectMapper;
     private final String secret;
@@ -38,7 +39,7 @@ public class JwtTokenProvider {
     @Autowired
     public JwtTokenProvider(
             ObjectMapper objectMapper,
-            @Value("${app.auth.jwt.secret:local-dev-secret-change-me}") String secret,
+            @Value("${app.auth.jwt.secret}") String secret,
             @Value("${app.auth.jwt.issuer:ggukmoney}") String issuer
     ) {
         this(objectMapper, secret, issuer, Clock.systemUTC());
@@ -46,7 +47,7 @@ public class JwtTokenProvider {
 
     public JwtTokenProvider(ObjectMapper objectMapper, String secret, String issuer, Clock clock) {
         this.objectMapper = objectMapper;
-        this.secret = secret;
+        this.secret = validateSecret(secret);
         this.issuer = issuer;
         this.clock = clock;
     }
@@ -62,7 +63,6 @@ public class JwtTokenProvider {
     }
 
     public JwtTokenClaims parseToken(String token) {
-        validateSecretConfigured();
         String[] segments = splitToken(token);
         String unsignedToken = segments[0] + "." + segments[1];
         String expectedSignature = sign(unsignedToken);
@@ -96,8 +96,6 @@ public class JwtTokenProvider {
             Instant issuedAt,
             Instant expiresAt
     ) {
-        validateSecretConfigured();
-
         try {
             String encodedHeader = encodeJson(Map.of("alg", "HS256", "typ", "JWT"));
             Map<String, Object> claims = new LinkedHashMap<>();
@@ -182,10 +180,18 @@ public class JwtTokenProvider {
         return value.trim();
     }
 
-    private void validateSecretConfigured() {
+    private static String validateSecret(String secret) {
         if (!StringUtils.hasText(secret)) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "JWT_SECRET_REQUIRED");
+            throw new IllegalStateException("JWT_SECRET_REQUIRED");
         }
+        String trimmed = secret.trim();
+        if (FORMER_LOCAL_DEFAULT_SECRET.equals(trimmed)) {
+            throw new IllegalStateException("JWT_SECRET_FORBIDDEN");
+        }
+        if (trimmed.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT_SECRET_TOO_SHORT");
+        }
+        return trimmed;
     }
 
     public record JwtTokenClaims(

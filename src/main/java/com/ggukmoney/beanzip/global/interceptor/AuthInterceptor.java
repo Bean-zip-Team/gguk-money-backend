@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
 import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
+import com.ggukmoney.beanzip.global.common.ApiPaths;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -63,20 +64,23 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private boolean isPublicEndpoint(HttpServletRequest request) {
         String method = request.getMethod();
-        String requestUri = request.getRequestURI();
+        String path = request.getServletPath();
+        if (!StringUtils.hasText(path)) {
+            path = request.getRequestURI();
+        }
 
         if ("OPTIONS".equalsIgnoreCase(method)
-                || "/error".equals(requestUri)
-                || "/swagger-ui.html".equals(requestUri)
-                || PATH_MATCHER.match("/swagger-ui/**", requestUri)
-                || PATH_MATCHER.match("/v3/api-docs/**", requestUri)) {
+                || "/error".equals(path)
+                || "/swagger-ui.html".equals(path)
+                || PATH_MATCHER.match("/swagger-ui/**", path)
+                || PATH_MATCHER.match("/v3/api-docs/**", path)) {
             return true;
         }
 
         return "POST".equalsIgnoreCase(method)
-                && ("/guests".equals(requestUri)
-                || "/auth/refresh".equals(requestUri)
-                || "/auth/toss/login".equals(requestUri));
+                && (ApiPaths.GUESTS.equals(path)
+                || (ApiPaths.AUTH + "/refresh").equals(path)
+                || (ApiPaths.AUTH + "/toss/login").equals(path));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

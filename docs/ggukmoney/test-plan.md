@@ -10,6 +10,8 @@
 | `JwtTokenProviderTest` | 개별 실행 성공 | `sub`, `sid`, `jti`, `type=ACCESS/REFRESH`, `issuedAtMillis`, 만료 시각 |
 | `RedisAuthSessionRepositoryTest` | 개별 실행 성공 | Redis Lua CAS script, `auth:refresh`, `auth:user-sessions`, refresh lock key 미사용 |
 | `AuthServiceLogoutAllTest` | 개별 실행 성공 | logout-all Redis session 삭제, revoke marker, 현재 access denylist |
+| `AuthApiIntegrationTest` | 관련 테스트 성공 | `/api/v1` refresh/logout/logout-all, legacy `/auth/refresh` 비성공, logout Refresh Token mismatch 보호 |
+| `AuthAuditServiceIntegrationTest` | 관련 테스트 성공 | JSONB/UUID/enum 저장, invalid UUID null row 저장 방지 |
 | `TestEnvironmentSmokeTest` | 개별 실행 성공 | Java 26 / Spring Boot 4.1.0 테스트 환경 |
 검증 결과:
 
@@ -34,7 +36,7 @@
 | `UserSessionServiceTest` | 세션 생성/회전/폐기 테스트를 Redis Session Adapter 테스트로 대체 |
 | `AuthInterceptorTest` | Access JWT 검증과 request attribute 설정 테스트 재사용 |
 | `AccessLogFilterTest` | 토큰/민감 query/header가 로그에 남지 않는 테스트 재사용 |
-| `RateLimitInterceptorTest` | `/auth/refresh` rate limit 테스트 후보 |
+| `RateLimitInterceptorTest` | `/api/v1/auth/refresh` rate limit 테스트 후보 |
 
 ## 회원/인증 테스트
 
@@ -45,7 +47,7 @@
 - 게스트 최초 생성 응답은 `201 Created`다.
 - 같은 기기 게스트 복구 시 기존 게스트 계정을 재사용한다.
 - 같은 기기 게스트 복구 시 새 Access/Refresh token이 발급된다.
-- `POST /guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token 기반 세션 유지/교체는 `POST /auth/refresh` 테스트에서 검증한다.
+- `POST /api/v1/guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token 기반 세션 유지/교체는 `POST /api/v1/auth/refresh` 테스트에서 검증한다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 게스트 복구의 Session 유지/폐기는 서버가 결정하고 클라이언트가 선택하지 않는다.
 - 같은 기기 게스트 복구 응답은 `200 OK`다.
@@ -82,9 +84,12 @@
 - 현재 기기 로그아웃 시 `auth:deny:access:{jti}`가 생성된다.
 - 현재 기기 로그아웃 시 `auth:refresh:{sessionId}`가 삭제된다.
 - 현재 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`에서 sessionId가 제거된다.
+- 현재 기기 로그아웃 대상은 Access Token의 `sid`이며, Request Body의 Refresh Token은 동일 Session 검증용으로만 사용된다.
+- 다른 Session의 Refresh Token을 Body에 넣으면 `AUTH_LOGOUT_SESSION_MISMATCH`로 실패하고 어떤 Session도 삭제하지 않는다.
 - 전체 기기 로그아웃 시 사용자의 모든 `auth:refresh:{sessionId}`가 삭제된다.
 - 전체 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`가 삭제된다.
 - 전체 기기 로그아웃 시 `auth:revoke:user:{userPublicId}`가 생성된다.
+- 전체 기기 로그아웃은 Lua Script 한 번으로 처리하며 만료 Session은 `revokedSessionCount`에서 제외한다.
 - 다른 기기의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
 - revoke 전에 발급된 Access Token은 거절된다.
 - 같은 초라도 revoke 이후 발급된 Access Token은 허용된다.
@@ -334,7 +339,7 @@
 
 최종 전체 실행 결과:
 
-- `./gradlew.bat clean test --info --stacktrace`: 26 tests, failures 0, errors 0, skipped 0.
+- `./gradlew.bat check bootJar --stacktrace`: 성공, 36 tests, failures 0, errors 0, skipped 0.
 - `./gradlew.bat check --info --stacktrace`: 성공.
 - `./gradlew.bat bootJar --info --stacktrace`: 성공.
 - Docker Desktop 실행이 필요하다. Testcontainers가 Docker daemon을 찾지 못하면 통합 테스트는 환경 실패로 분류한다.
@@ -345,5 +350,6 @@
 - Redis Hash/ZSet 저장, TTL 설정과 갱신, Lua CAS 실행.
 - 동일 Refresh 동시 요청 중 하나만 성공하고 나머지는 충돌로 처리되며 정상 Session은 폐기되지 않음.
 - Rotation 완료 후 과거 Refresh Token 재사용은 재사용 감지로 처리되고 Session이 폐기됨.
-- logout-all은 활성 Refresh Session 삭제 수를 `revokedSessionCount`로 계산하고 revoke marker와 현재 access denylist를 기록함.
-- Auth Audit Log는 JSONB/UUID/enum 저장을 검증했고, 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않음을 검증함.
+- logout-all은 Lua 원자 처리로 활성 Refresh Session 삭제 수를 `revokedSessionCount`로 계산하고 revoke marker와 현재 access denylist를 기록함.
+- Auth Audit Log는 JSONB/UUID/enum 저장을 검증했고, invalid UUID가 null row로 저장되지 않으며 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않음을 검증함.
+- `GlobalExceptionHandlerTest`는 validation 실패 응답이 `traceId`를 유지하고 `data`, `error.details`, token/Authorization 값을 노출하지 않음을 검증함.

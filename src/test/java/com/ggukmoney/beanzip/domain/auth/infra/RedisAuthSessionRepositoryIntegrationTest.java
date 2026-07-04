@@ -68,12 +68,26 @@ class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupp
 
         long revokedCount = repository.revokeAllUserSessions(userPublicId, "access-jti", now.plusSeconds(900), now, "LOGOUT_ALL");
 
-        assertThat(revokedCount).isEqualTo(2);
+        assertThat(revokedCount).isEqualTo(1);
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(liveSessionId)))).isFalse();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userPublicId)))).isFalse();
         assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userPublicId))
                 .contains("\"revokedAtMillis\":" + now.toEpochMilli())
                 .contains("\"reason\":\"LOGOUT_ALL\"");
         assertThat(redisTemplate.opsForValue().get("auth:deny:access:access-jti")).isEqualTo("1");
+    }
+
+    @Test
+    void revokeAllStoresMarkerWhenUserHasNoSessions() {
+        String userPublicId = UUID.randomUUID().toString();
+        Instant now = Instant.now();
+
+        long revokedCount = repository.revokeAllUserSessions(userPublicId, null, null, now, "LOGOUT_ALL");
+
+        assertThat(revokedCount).isZero();
+        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userPublicId))
+                .contains("\"revokedAtMillis\":" + now.toEpochMilli())
+                .contains("\"reason\":\"LOGOUT_ALL\"");
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userPublicId)))).isFalse();
     }
 }

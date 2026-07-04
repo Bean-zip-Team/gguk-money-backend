@@ -14,7 +14,7 @@
 - Gradle JVM, compileJava, compileTestJava, test launcher는 Java 26 기준으로 통일한다.
 - Testcontainers 이미지는 Redis `redis:7-alpine`, PostgreSQL `postgres:16-alpine`을 사용한다.
 - Testcontainers BOM 선언은 1.21.3을 유지한다. Spring Boot 4.1.0의 `spring-boot-testcontainers` 경유 core runtime은 dependencyInsight에서 2.0.5로 resolve됨을 확인했다.
-- QueryDSL 5.1.0은 현재 직접 사용처가 없지만 향후 동적 조회 계획 때문에 유지한다. 취약점 suppression은 하지 않고, 구현 시 정렬 allowlist와 명시적 projection을 적용한다.
+- QueryDSL은 `io.github.openfeign.querydsl:querydsl-jpa:7.4.0`, `io.github.openfeign.querydsl:querydsl-apt:7.4.0:jpa`를 사용한다. 기존 `com.querydsl` 5.1.0 좌표는 `GHSA-6q3q-6v5j-h6vg` 때문에 사용하지 않는다. Java package는 계속 `com.querydsl.*`이며, 구현 시 사용자 sort 문자열을 `PathBuilder.get()`에 직접 전달하지 않고 enum/switch allowlist와 명시적 projection을 사용한다.
 
 ## PostgreSQL 원칙
 
@@ -150,20 +150,26 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 
 ### 현재 기기 로그아웃
 
-1. Access Token의 `jti`와 `exp`를 확인한다.
-2. `auth:deny:access:{jti}`에 차단 값을 저장한다.
-3. TTL은 Access Token 남은 만료 시간으로 둔다.
-4. `auth:refresh:{sessionId}`를 삭제한다.
-5. `auth:user-sessions:{userPublicId}`에서 `sessionId`를 제거한다.
-6. `auth_session_log`에 `LOGOUT`을 저장한다.
+1. Access JWT를 검증한다.
+2. 로그아웃 대상 Session은 항상 Access Token의 `sid`로 결정한다.
+3. Request Body의 Refresh Token은 선택 값이며, 전달되면 `type=REFRESH`, `sub`, `sid`, current refresh jti/hash가 현재 Access Session과 일치하는지만 검증한다.
+4. 불일치하면 `AUTH_LOGOUT_SESSION_MISMATCH`로 실패하고 현재 Session과 다른 Session을 모두 삭제하지 않는다.
+5. `auth:deny:access:{jti}`에 차단 값을 Access Token 남은 만료 시간만큼 저장한다.
+6. `auth:refresh:{sessionId}`를 삭제한다.
+7. `auth:user-sessions:{userPublicId}`에서 `sessionId`를 제거한다.
+8. `auth_session_log`에 `LOGOUT`을 저장한다.
 
 ### 전체 기기 로그아웃
 
-1. `auth:revoke:user:{userPublicId}`에 `revokedAtMillis`와 `reason`을 저장한다.
-2. `auth:user-sessions:{userPublicId}`의 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
-3. 모든 `auth:refresh:{sessionId}`를 삭제하고 `auth:user-sessions:{userPublicId}`를 삭제한다.
-4. 현재 Access Token jti를 `auth:deny:access:{jti}`에 등록한다.
-5. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
+1. Lua Script 한 번으로 `auth:user-sessions:{userPublicId}`의 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
+2. 같은 Lua 실행에서 존재하는 각 `auth:refresh:{sessionId}`를 삭제하고 실제 삭제 수를 `revokedSessionCount`로 반환한다.
+3. 같은 Lua 실행에서 `auth:user-sessions:{userPublicId}`를 삭제한다.
+4. 같은 Lua 실행에서 `auth:revoke:user:{userPublicId}`에 `revokedAtMillis`와 `reason`을 저장한다.
+5. 현재 Access Token jti가 있으면 같은 Lua 실행에서 `auth:deny:access:{jti}`에 등록한다.
+6. Redis 장애 시 부분 삭제 성공처럼 응답하지 않고 `AUTH_REDIS_UNAVAILABLE`로 실패한다.
+7. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
+
+현재 구현은 단일 Redis MVP 기준의 Lua 원자 처리를 사용한다. Redis Cluster 전환 시 `auth:refresh:{sessionId}`, `auth:user-sessions:{userPublicId}`, `auth:revoke:user:{userPublicId}`, access denylist key의 hash slot 설계를 다시 해야 한다.
 
 Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userPublicId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 
@@ -186,6 +192,9 @@ Refresh:
 Access Token 인증:
 
 - JWT 서명과 exp는 서버에서 검증한다.
+- JWT secret은 기본값이 없고 `app.auth.jwt.secret` 또는 환경변수 `APP_AUTH_JWT_SECRET`로 주입한다.
+- blank, UTF-8 32 byte 미만, 과거 로컬 기본 문자열은 거절한다.
+- 테스트는 운영 Secret이 아닌 `integration-test-secret-at-least-32-bytes-long` 같은 명시적 테스트 전용 값을 사용한다.
 - denylist 검사가 필요한 인증 API는 Redis 조회가 필요하다.
 - Redis denylist 조회 장애 시 고위험 API는 fail-closed다.
 - 고위험 API: 회원 정보 변경, 출금, 지역 변경, 랭킹 보상 관련 API, 상자 개봉, Push Token 변경.
@@ -289,3 +298,4 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 - PostgreSQL/Flyway 통합 테스트는 `postgres:16-alpine` Testcontainer를 사용한다. 빈 DB에서 V1000 migration 적용, `flyway_schema_history`, `auth_session_log` 스키마, JSONB/UUID/identity 매핑을 검증한다.
 - Spring test profile에서는 `spring.jpa.open-in-view=false`, SpringDoc test endpoint 비활성화를 명시한다.
 - Mockito는 Gradle `mockitoAgent` configuration과 test JVM `-javaagent`로 정적 agent를 사용한다. 사용자별 cache 경로를 하드코딩하지 않는다.
+- CI는 `.github/workflows/ci.yml`에서 push/pull_request main에 대해 Java 26, Gradle Wrapper, Docker 확인, `check bootJar`를 실행한다. `CI_APP_AUTH_JWT_SECRET` repository secret이 없으면 기본 JWT Secret으로 우회하지 않고 실패한다.

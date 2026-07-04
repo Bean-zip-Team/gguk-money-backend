@@ -1,5 +1,18 @@
 # 수정 내역
 
+## 2026-07-04 인증/API hardening과 CI
+
+- 인증 API 실제 경로를 `/api/v1/auth/**`로 통일하고 기존 `/auth/**`가 성공 API로 동작하지 않도록 정리했다.
+- 빵도감 공통 응답 구조를 참고하되 꾹머니 `traceId`를 유지하고 `error:null`, `data:null`, `error.details`를 사용하지 않는 형식으로 문서를 맞췄다.
+- JWT Secret 기본값을 제거하고 `APP_AUTH_JWT_SECRET` 또는 `app.auth.jwt.secret` 명시 주입, blank/짧은 값/과거 로컬 기본 문자열 거절 기준을 추가했다.
+- 현재 기기 logout은 Access Token의 현재 Session을 대상으로 하고, optional Refresh Token은 동일 Session 검증용으로만 사용하도록 보강했다.
+- logout-all은 Redis Lua Script 한 번으로 만료 Session 정리, 활성 Refresh Session 삭제, 사용자 revoke marker, 현재 access denylist 저장을 처리하도록 정리했다.
+- QueryDSL을 OpenFeign `io.github.openfeign.querydsl` 7.4.0으로 전환하고 정렬 allowlist/projection 보안 규칙을 유지했다.
+- 감사 로그 UUID scalar는 null/blank만 nullable로 허용하고 non-blank invalid UUID는 조용히 null row로 저장하지 않도록 정리했다.
+- V1000 `auth_session_log`의 DB DEFAULT 없음, `result` CHECK만 존재하는 실제 SQL 기준을 table-spec에 반영했다.
+- GitHub Actions CI workflow를 추가하고 `CI_APP_AUTH_JWT_SECRET` 수동 설정 절차를 문서화했다.
+- 게스트 생성, Toss 승격/병합, 랭킹, 온보딩, 키캡/상자, 포인트/출금, 운영 배포는 구현하지 않았다.
+
 ## 2026-07-04 최신 랭킹·온보딩 와이어프레임 문서 정합화
 
 - 최신 전체 랭킹 와이어프레임을 반영해 지역/전국 랭킹을 전체 유저 단일 랭킹으로 변경했다.

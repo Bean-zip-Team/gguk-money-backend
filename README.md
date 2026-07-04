@@ -29,7 +29,7 @@
 - Preview feature: 사용하지 않음
 - 테스트 환경: 기본 Gradle `build/` 디렉터리 사용, 과거 한글 경로 우회용 temp build 설정 없음
 - 구현 상태 정의: `NOT_STARTED` 코드 없음, `IN_PROGRESS` 코드가 있으나 필수 흐름/운영 보강/일부 검증 남음, `BLOCKED` 외부 계약·팀 결정·환경 문제로 완료 불가, `IMPLEMENTED` 코드와 필수 단위/통합 테스트가 문서와 일치
-- 구현됨: 공통 응답 `traceId`, Access Log Filter, JWT Provider, Redis Refresh Session Repository/Lua CAS, logout-all Redis 전체 세션 삭제, Redis/PostgreSQL Testcontainers 인증/로그 통합 테스트
+- 구현됨: 공통 응답 `traceId`, `/api/v1` 인증 API, Access Log Filter, JWT Provider, Redis Refresh Session Repository/Lua CAS, 현재 Session 기준 logout, Lua 원자 logout-all, Redis/PostgreSQL Testcontainers 인증/로그 통합 테스트
 - 구분 필요: Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증은 구현됨. 인증 API 연동 범위와 운영 저장 실패 재처리는 `IN_PROGRESS`
 - 미구현: 게스트 생성/복구, Toss 승격/병합, 키캡/랭킹/온보딩/알림/기록/설정 도메인 Java 구현
 - B API는 `PROPOSED`, B 테이블은 `DRAFT`
@@ -61,7 +61,16 @@ Decision Required:
 - `javac -version`: `26.0.1`
 - `./gradlew.bat --version`: Gradle JVM 26 확인
 - `./gradlew.bat javaToolchains`: Oracle JDK 26과 Gradle provisioned JDK 26 확인
-- `./gradlew.bat clean test`: 26 tests, failures 0, errors 0, skipped 0
-- `./gradlew.bat check`: 성공
-- `./gradlew.bat bootJar`: 성공, `build/libs/ggukmoney-backend-0.0.1-SNAPSHOT.jar` 생성
-- QueryDSL 5.1.0은 현재 Java 코드에서 직접 사용하지 않지만 향후 동적 조회 계획 때문에 유지한다. 임의 버전 변경이나 취약점 suppression은 하지 않는다.
+- `./gradlew.bat check bootJar --stacktrace`: 성공, 36 tests, failures 0, errors 0, skipped 0
+- `bootJar`: 성공, `build/libs/ggukmoney-backend-0.0.1-SNAPSHOT.jar` 생성
+- JWT secret은 기본값 없이 `APP_AUTH_JWT_SECRET` 또는 `app.auth.jwt.secret`로 주입한다. Git에는 운영 Secret을 저장하지 않는다.
+- QueryDSL은 `io.github.openfeign.querydsl` 7.4.0 좌표로 사용한다. 사용자 sort 문자열은 QueryDSL `PathBuilder.get()`에 직접 전달하지 않고 enum/switch allowlist와 명시적 projection을 사용한다.
+
+## GitHub Actions CI
+
+- Workflow: `.github/workflows/ci.yml`
+- Trigger: `push` main, `pull_request` main
+- 실행: Java 26, Docker 확인, Gradle Wrapper `check bootJar`
+- Repository secret `CI_APP_AUTH_JWT_SECRET`을 GitHub에서 직접 등록해야 한다. 값은 UTF-8 기준 32 byte 이상의 임의 문자열이며 문서나 Git에 저장하지 않는다.
+- 설정 경로: Repository `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
+- 첫 CI 성공 후 Branch protection에서 `build` check를 필수로 설정한다.

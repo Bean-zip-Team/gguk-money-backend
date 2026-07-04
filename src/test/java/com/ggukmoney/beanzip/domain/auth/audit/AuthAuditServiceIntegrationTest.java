@@ -59,4 +59,20 @@ class AuthAuditServiceIntegrationTest extends FullStackIntegrationTestSupport {
 
         assertThat(jdbcTemplate.queryForObject("select count(*) from auth_session_log", Long.class)).isZero();
     }
+
+    @Test
+    void invalidNonBlankUserUuidDoesNotPersistNullUuidAuditRow() {
+        authAuditService.record(
+                "invalid-user-public-id",
+                UUID.randomUUID().toString(),
+                UUID.randomUUID(),
+                "family-hash",
+                AuthAuditEventType.LOGOUT,
+                AuthAuditResult.SUCCESS,
+                null,
+                "{\"source\":\"integration\"}"
+        );
+
+        assertThat(jdbcTemplate.queryForObject("select count(*) from auth_session_log", Long.class)).isZero();
+    }
 }

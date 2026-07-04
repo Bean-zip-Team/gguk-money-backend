@@ -12,15 +12,11 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 @Repository
@@ -62,6 +58,28 @@ public class RedisAuthSessionRepository {
             redis.call('PEXPIREAT', KEYS[1], ARGV[7])
             redis.call('ZADD', KEYS[2], ARGV[7], ARGV[8])
             return 1
+            """;
+
+    private static final String REVOKE_ALL_USER_SESSIONS_LUA = """
+            redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+            local sessionIds = redis.call('ZRANGE', KEYS[1], 0, -1)
+            local revokedCount = 0
+            for _, sessionId in ipairs(sessionIds) do
+              local refreshKey = 'auth:refresh:' .. sessionId
+              if redis.call('EXISTS', refreshKey) == 1 then
+                redis.call('DEL', refreshKey)
+                revokedCount = revokedCount + 1
+              end
+            end
+            redis.call('DEL', KEYS[1])
+            redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])
+            if ARGV[4] and ARGV[4] ~= '' and ARGV[5] and ARGV[5] ~= '' then
+              local denyTtl = tonumber(ARGV[5]) - tonumber(ARGV[1])
+              if denyTtl > 0 then
+                redis.call('SET', 'auth:deny:access:' .. ARGV[4], '1', 'PX', denyTtl)
+              end
+            end
+            return revokedCount
             """;
 
     private final StringRedisTemplate redisTemplate;
@@ -171,22 +189,18 @@ public class RedisAuthSessionRepository {
         try {
             String userSessionsKey = userSessionsKey(userPublicId);
             long revokedAtMillis = revokedAt.toEpochMilli();
-            redisTemplate.opsForZSet().removeRangeByScore(userSessionsKey, Double.NEGATIVE_INFINITY, revokedAtMillis);
-            Set<String> sessionIds = redisTemplate.opsForZSet().range(userSessionsKey, 0, -1);
-            long revokedCount = sessionIds == null ? 0 : sessionIds.size();
-
-            redisTemplate.opsForValue().set(
-                    revokeUserKey(userPublicId),
+            DefaultRedisScript<Long> script = new DefaultRedisScript<>(REVOKE_ALL_USER_SESSIONS_LUA, Long.class);
+            Long revokedCount = redisTemplate.execute(
+                    script,
+                    List.of(userSessionsKey, revokeUserKey(userPublicId)),
+                    String.valueOf(revokedAtMillis),
                     revokeMarker(revokedAtMillis, reason),
-                    ACCESS_REVOKE_TTL
+                    String.valueOf(ACCESS_REVOKE_TTL.toMillis()),
+                    StringUtils.hasText(accessJti) ? accessJti : "",
+                    accessExpiresAt == null ? "" : String.valueOf(accessExpiresAt.toEpochMilli())
             );
-
-            if (sessionIds != null && !sessionIds.isEmpty()) {
-                redisTemplate.delete(refreshKeys(sessionIds));
-            }
-            redisTemplate.delete(userSessionsKey);
-            if (StringUtils.hasText(accessJti) && accessExpiresAt != null) {
-                addAccessDeny(accessJti, accessExpiresAt);
+            if (revokedCount == null) {
+                throw new IllegalStateException("Redis logout-all script returned null");
             }
             return revokedCount;
         } catch (RuntimeException exception) {
@@ -210,14 +224,6 @@ public class RedisAuthSessionRepository {
 
     private String revokeUserKey(String userPublicId) {
         return "auth:revoke:user:" + userPublicId;
-    }
-
-    private Collection<String> refreshKeys(Set<String> sessionIds) {
-        List<String> keys = new ArrayList<>();
-        for (String sessionId : sessionIds) {
-            keys.add("auth:refresh:" + sessionId);
-        }
-        return keys;
     }
 
     private String revokeMarker(long revokedAtMillis, String reason) {

@@ -6,23 +6,15 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class RedisAuthSessionRepositoryTest {
@@ -89,15 +81,17 @@ public class RedisAuthSessionRepositoryTest {
     void revokeAllUserSessionsDeletesRefreshSessionsAndStoresReasonedRevokeMarker() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
-        ZSetOperations<String, String> zSetOperations = mock(ZSetOperations.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
-        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(zSetOperations.range("auth:user-sessions:usr_public_1", 0, -1)).thenReturn(Set.of(
-                "00000000-0000-0000-0000-000000000001",
-                "00000000-0000-0000-0000-000000000002"
-        ));
+        ArgumentCaptor<RedisScript<Long>> scriptCaptor = ArgumentCaptor.forClass(RedisScript.class);
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.captor();
+        when(redisTemplate.execute(
+                scriptCaptor.capture(),
+                keysCaptor.capture(),
+                eq("1782950400000"),
+                eq("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"),
+                eq("1200000"),
+                eq("access-jti-1"),
+                eq("1782951300000")
+        )).thenReturn(2L);
 
         RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
         long revokedCount = repository.revokeAllUserSessions(
@@ -109,18 +103,16 @@ public class RedisAuthSessionRepositoryTest {
         );
 
         assertThat(revokedCount).isEqualTo(2);
-        verify(zSetOperations).removeRangeByScore(eq("auth:user-sessions:usr_public_1"), anyDouble(), eq(1782950400000.0));
-        verify(valueOperations).set(
-                eq("auth:revoke:user:usr_public_1"),
-                eq("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"),
-                any(Duration.class)
+        assertThat(keysCaptor.getValue()).containsExactly(
+                "auth:user-sessions:usr_public_1",
+                "auth:revoke:user:usr_public_1"
         );
-        verify(redisTemplate).delete(argThat((Collection<String> keys) -> keys.containsAll(List.of(
-                "auth:refresh:00000000-0000-0000-0000-000000000001",
-                "auth:refresh:00000000-0000-0000-0000-000000000002"
-        ))));
-        verify(redisTemplate).delete("auth:user-sessions:usr_public_1");
-        verify(valueOperations).set(eq("auth:deny:access:access-jti-1"), eq("1"), any(Duration.class));
+        assertThat(scriptCaptor.getValue().getScriptAsString())
+                .contains("redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])")
+                .contains("redis.call('DEL', refreshKey)")
+                .contains("redis.call('DEL', KEYS[1])")
+                .contains("redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])")
+                .contains("redis.call('SET', 'auth:deny:access:' .. ARGV[4], '1', 'PX', denyTtl)");
     }
 
     @Test

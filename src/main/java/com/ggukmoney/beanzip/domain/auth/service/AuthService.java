@@ -3,7 +3,6 @@ package com.ggukmoney.beanzip.domain.auth.service;
 import com.ggukmoney.beanzip.domain.auth.audit.AuthAuditEventType;
 import com.ggukmoney.beanzip.domain.auth.audit.AuthAuditResult;
 import com.ggukmoney.beanzip.domain.auth.audit.AuthAuditService;
-import com.ggukmoney.beanzip.domain.auth.dto.request.LogoutRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.RefreshTokenRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
@@ -112,44 +111,36 @@ public class AuthService {
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_NOT_FOUND");
     }
 
-    public LogoutResponse logout(LogoutRequest request) {
-        if (request == null || !StringUtils.hasText(request.refreshToken())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
-        }
-        JwtTokenProvider.JwtTokenClaims claims = parseRefreshToken(request.refreshToken());
-        authSessionRepository.findBySessionId(claims.sessionId()).ifPresent(session ->
-                authAuditService.record(
-                        session.userPublicId(),
-                        session.devicePublicId(),
-                        session.sessionId(),
-                        session.tokenFamilyIdHash(),
-                        AuthAuditEventType.LOGOUT,
-                        AuthAuditResult.SUCCESS,
-                        null,
-                        null
-                )
-        );
-        authSessionRepository.deleteSession(claims.sessionId());
-        return new LogoutResponse(true);
-    }
+    public LogoutResponse logoutCurrentSession(
+            String currentUserPublicId,
+            UUID currentSessionId,
+            String currentAccessJti,
+            Instant currentAccessExpiresAt,
+            String optionalRefreshToken
+    ) {
+        AuthSession currentSession = authSessionRepository.findBySessionId(currentSessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_NOT_FOUND"));
 
-    public LogoutResponse logoutCurrentSession(UUID sessionId, String accessJti, Instant accessExpiresAt) {
-        authSessionRepository.findBySessionId(sessionId).ifPresent(session ->
-                authAuditService.record(
-                        session.userPublicId(),
-                        session.devicePublicId(),
-                        session.sessionId(),
-                        session.tokenFamilyIdHash(),
-                        AuthAuditEventType.LOGOUT,
-                        AuthAuditResult.SUCCESS,
-                        null,
-                        null
-                )
-        );
-        if (StringUtils.hasText(accessJti) && accessExpiresAt != null) {
-            authSessionRepository.addAccessDeny(accessJti, accessExpiresAt);
+        if (!currentUserPublicId.equals(currentSession.userPublicId())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_USER_MISMATCH");
         }
-        authSessionRepository.deleteSession(sessionId);
+
+        validateOptionalLogoutRefreshToken(optionalRefreshToken, currentSession);
+
+        if (StringUtils.hasText(currentAccessJti) && currentAccessExpiresAt != null) {
+            authSessionRepository.addAccessDeny(currentAccessJti, currentAccessExpiresAt);
+        }
+        authSessionRepository.deleteSession(currentSessionId);
+        authAuditService.record(
+                currentSession.userPublicId(),
+                currentSession.devicePublicId(),
+                currentSession.sessionId(),
+                currentSession.tokenFamilyIdHash(),
+                AuthAuditEventType.LOGOUT,
+                AuthAuditResult.SUCCESS,
+                null,
+                null
+        );
         return new LogoutResponse(true);
     }
 
@@ -186,6 +177,24 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_EXPIRED");
         }
         return claims;
+    }
+
+    private void validateOptionalLogoutRefreshToken(String optionalRefreshToken, AuthSession currentSession) {
+        if (!StringUtils.hasText(optionalRefreshToken)) {
+            return;
+        }
+
+        JwtTokenProvider.JwtTokenClaims refreshClaims = parseRefreshToken(optionalRefreshToken);
+        boolean sameUser = currentSession.userPublicId().equals(refreshClaims.userPublicId());
+        boolean sameSession = currentSession.sessionId().equals(refreshClaims.sessionId());
+        boolean sameCurrentJti = currentSession.currentRefreshJtiHash()
+                .equals(TokenHash.sha256Base64Url(refreshClaims.jti()));
+        boolean sameRefreshToken = currentSession.refreshTokenHash()
+                .equals(TokenHash.sha256Base64Url(optionalRefreshToken));
+
+        if (!sameUser || !sameSession || !sameCurrentJti || !sameRefreshToken) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_LOGOUT_SESSION_MISMATCH");
+        }
     }
 
     public JwtTokenProvider.JwtTokenClaims parseAccessToken(String accessToken) {

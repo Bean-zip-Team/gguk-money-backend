@@ -122,8 +122,8 @@ public class AuthSessionLog {
     ) {
         return new AuthSessionLog(
                 UUID.randomUUID(),
-                parseUuidOrNull(userPublicId),
-                parseUuidOrNull(devicePublicId),
+                parseNullableUuid(userPublicId),
+                parseNullableUuid(devicePublicId),
                 sessionIdHash,
                 tokenFamilyIdHash,
                 eventType,
@@ -149,14 +149,14 @@ public class AuthSessionLog {
         this.updatedAt = Instant.now();
     }
 
-    private static UUID parseUuidOrNull(String value) {
+    private static UUID parseNullableUuid(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
         try {
             return UUID.fromString(value);
         } catch (IllegalArgumentException exception) {
-            return null;
+            throw new IllegalArgumentException("Invalid UUID value");
         }
     }
 }

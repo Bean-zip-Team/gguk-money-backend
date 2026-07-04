@@ -167,7 +167,7 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 
 Session 처리 분기:
 
-- 같은 guest와 같은 device라도 `POST /guests`는 Refresh Token 원문을 받지 않으므로 기존 guest 계정을 재사용하되 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token을 가진 클라이언트의 세션 유지/교체는 `POST /auth/refresh`가 담당한다.
+- 같은 guest와 같은 device라도 `POST /api/v1/guests`는 Refresh Token 원문을 받지 않으므로 기존 guest 계정을 재사용하되 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token을 가진 클라이언트의 세션 유지/교체는 `POST /api/v1/auth/refresh`가 담당한다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 폐기 또는 교체 방식은 서버가 결정하며 클라이언트가 선택하지 않는다.
 - `auth_session_log`에는 `GUEST_RECOVERED`를 저장한다.
@@ -204,8 +204,9 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 현재 꾹머니 구현 상태:
 
 - `AccessLogFilter`, `RequestLogContext`, `ApiResponse`, `ApiError`, `ApiErrorResponse`, `GlobalExceptionHandler`: `IMPLEMENTED`
-- `JwtTokenProvider`: `IMPLEMENTED`; `AuthController`, `AuthInterceptor`, 인증 DTO: `IN_PROGRESS`
-- `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp: `RedisAuthSessionRepositoryIntegrationTest`, `RefreshLuaCasIntegrationTest`, `AuthServiceLogoutAllIntegrationTest`, `AuthApiIntegrationTest` 기준 `IMPLEMENTED`
+- `JwtTokenProvider`: 기본 secret 없음, blank/짧은 secret/과거 로컬 기본 문자열 거절 기준 `IMPLEMENTED`
+- `AuthController`, `AuthInterceptor`, 인증 DTO: `/api/v1` 실제 경로 기준 `IMPLEMENTED`
+- `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp, Lua 원자 logout-all: `RedisAuthSessionRepositoryIntegrationTest`, `RefreshLuaCasIntegrationTest`, `AuthServiceLogoutAllIntegrationTest`, `AuthApiIntegrationTest` 기준 `IMPLEMENTED`
 - `auth_session_log` Entity/Repository, JSONB/UUID/enum 저장, 최소 Flyway SQL 적용: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest` 기준 `IMPLEMENTED`
 - 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구 전체 정책: `IN_PROGRESS`
 - 게스트 생성/복구와 Toss 승격/병합: `NOT_STARTED`
@@ -217,11 +218,11 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 | `UserSessionService` | 세션 생성/조회/회전/폐기 | JPA Repository | Redis Session Adapter | 2 | JPA 저장소 제거, Redis TTL/Sorted Set 관리로 변경 | Redis가 Source of Truth | `UserSessionServiceTest` |
 | `UserSession` | refresh hash, current jti, expires, revoked 관리 | JPA Entity | Redis Session JSON/Hash DTO | 2 | Entity로 복사하지 않고 값 객체로 축소 | PostgreSQL 활성 세션 테이블 금지 | `AuthRefreshMysqlIntegrationTest`는 Redis 통합 테스트로 대체 |
 | `UserSessionRepository` | Pessimistic row lock | MySQL/JPA | Redis Lua CAS | 3 | 직접 재사용하지 않음 | 일반 Redis 명령 조합 대안을 쓰는 경우에만 lock 필요 | `AuthRefreshMysqlIntegrationTest` 참고 |
-| `AuthController` | Toss login, refresh, logout API | Bread auth path | 꾹머니 인증 API | 2 | `/auth/toss/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`로 변경 | `/auth/toss/login`은 device 계약 미확정으로 `TOSS_DEVICE_CONTRACT_REQUIRED` Blocking 처리 | `AuthControllerTest` |
+| `AuthController` | Toss login, refresh, logout API | Bread auth path | 꾹머니 인증 API | 2 | `/api/v1/auth/toss/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/auth/logout-all`로 변경 | `/api/v1/auth/toss/login`은 device 계약 미확정으로 `TOSS_DEVICE_CONTRACT_REQUIRED` Blocking 처리 | `AuthApiIntegrationTest` |
 | `AuthInterceptor` | Access JWT 검증, 세션 조회, request attribute 설정 | JPA UserSession | Authentication Filter/Interceptor | 2 | Redis denylist와 Redis session 조회 정책 추가 | 고위험 API는 Redis 장애 fail-closed | `AuthInterceptorTest` |
 | `AccessLogFilter` | request trace, access log, IP, userId/sessionId 기록 | Global web | 공통 Access Log Filter | 1 | `traceId` 명칭으로 통일 | query/header/token 미기록 유지 | `AccessLogFilterTest` |
 | `RequestLogContext` | 요청 추적 id 조회 | Global logging | 공통 trace context | 1 | `traceId` 명칭으로 통일 | 응답 wrapper의 `traceId`와 동일 값 사용 | `AccessLogFilterTest` |
-| `RateLimitInterceptor` | `/auth/refresh` rate limit 로그 | Global rate limit | 인증 rate limit 후보 | 2 | Redis 기반 rate limit로 변경 가능 | refresh brute-force 방어 | `RateLimitInterceptorTest` |
+| `RateLimitInterceptor` | `/api/v1/auth/refresh` rate limit 로그 | Global rate limit | 인증 rate limit 후보 | 2 | Redis 기반 rate limit로 변경 가능 | refresh brute-force 방어 | `RateLimitInterceptorTest` |
 | Toss 회원 생성/동기화 로직 | 빵도감 User 생성/복구 | Bread User | Toss Adapter/Fake Adapter | 3 | 직접 복사하지 않음 | 게스트 승격/병합 정책과 다름 | `AuthServiceTest` 일부 참고 |
 | Redis Session Repository | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:refresh`, `auth:user-sessions`, denylist 설계 필요 | Redis 장애 정책 필수 | 꾹머니 신규 테스트 |
 | Access denylist | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:deny:access:{jti}` | logout/정지/탈퇴 즉시 차단 | 꾹머니 신규 테스트 |

@@ -66,6 +66,7 @@ public abstract class FullStackIntegrationTestSupport {
         registry.add("spring.data.redis.repositories.enabled", () -> "false");
         registry.add("springdoc.api-docs.enabled", () -> "false");
         registry.add("springdoc.swagger-ui.enabled", () -> "false");
+        registry.add("app.auth.jwt.secret", () -> "integration-test-secret-at-least-32-bytes-long");
     }
 
     @BeforeEach

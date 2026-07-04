@@ -29,7 +29,7 @@
 | A 나머지 도메인 | 민재 | CONFIRMED | NOT_STARTED |
 | B 도메인 | 은창 | PROPOSED | NOT_STARTED |
 
-Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_REQUIRED`로 blocking 유지한다. `/guests`는 Refresh Token이 있으면 `/auth/refresh`로 보내고, Refresh Token이 없으면 기존 guest 계정을 재사용할 수 있으나 새 Redis auth session과 token pair를 생성한다.
+Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_REQUIRED`로 blocking 유지한다. `/api/v1/guests`는 Refresh Token이 있으면 `/api/v1/auth/refresh`로 보내고, Refresh Token이 없으면 기존 guest 계정을 재사용할 수 있으나 새 Redis auth session과 token pair를 생성한다.
 
 ## 공통 API 규칙
 
@@ -49,7 +49,6 @@ Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_RE
 {
   "success": true,
   "data": {},
-  "error": null,
   "traceId": "01J..."
 }
 ```
@@ -65,15 +64,15 @@ Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_RE
 ```json
 {
   "success": false,
-  "data": null,
   "error": {
     "code": "ERROR_CODE",
-    "message": "요청을 처리할 수 없습니다.",
-    "details": []
+    "message": "요청을 처리할 수 없습니다."
   },
   "traceId": "01J..."
 }
 ```
+
+성공 응답에는 `error: null`을 넣지 않고, 실패 응답에는 `data: null`이나 `error.details`를 넣지 않는다. Body의 `traceId`는 응답 헤더 `X-Trace-Id`와 같은 값을 사용한다.
 
 페이지네이션:
 
@@ -91,6 +90,7 @@ Toss 일반 로그인은 device 계약 확정 전까지 `TOSS_DEVICE_CONTRACT_RE
 ## Java 26 인증 구현 기준
 
 - Access/Refresh JWT JSON 처리는 Jackson 3의 `tools.jackson.*` 타입을 기준으로 한다.
+- JWT secret은 기본값 없이 `app.auth.jwt.secret` 또는 환경변수 `APP_AUTH_JWT_SECRET`로 주입한다. blank, UTF-8 32 byte 미만, 과거 로컬 기본 문자열은 거절한다.
 - Refresh Rotation은 Redis Lua CAS로 수행한다.
 - 거의 동시에 들어온 동일 Refresh 요청은 `409 AUTH_REFRESH_CONFLICT`로 응답하고 정상 Session을 폐기하지 않는다.
 - Rotation 완료 후 과거 Refresh Token 재사용은 `401 AUTH_REFRESH_REUSED`로 응답하고 해당 Session을 폐기하며 `REFRESH_REUSE_DETECTED`를 감사 로그에 기록한다.
@@ -135,11 +135,11 @@ Refresh Token payload:
 
 | Owner | Status | 도메인 | Method | Path | 설명 |
 |---|---|---|---|---|---|
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/guests` | 게스트 최초 생성 또는 복구 |
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/auth/toss/login` | Toss 로그인, 승격 또는 병합 |
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/auth/refresh` | Access/Refresh Rotation |
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/auth/logout` | 현재 Session 로그아웃 |
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/auth/logout-all` | 전체 기기 로그아웃 |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/guests` | 게스트 최초 생성 또는 복구 |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/toss/login` | Toss 로그인, 승격 또는 병합 |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/refresh` | Access/Refresh Rotation |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/logout` | 현재 Session 로그아웃 |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/logout-all` | 전체 기기 로그아웃 |
 | `A` | `CONFIRMED` | 회원/인증 | `GET` | `/members/me` | 내 정보 조회 |
 | `A` | `CONFIRMED` | 회원/인증 | `PATCH` | `/members/me` | 내 프로필 수정 |
 | `A` | `CONFIRMED` | 회원/인증 | `DELETE` | `/members/me` | 회원 탈퇴 |
@@ -192,7 +192,7 @@ Refresh Token payload:
 
 ### 회원 및 인증
 
-### POST /guests
+### POST /api/v1/guests
 
 | 항목 | 내용 |
 |---|---|
@@ -235,14 +235,14 @@ Response data:
 
 - 같은 기기에 ACTIVE GUEST `GUEST_OWNER`가 있으면 기존 게스트를 재사용한다.
 - 기존 토큰 원문을 반환하지 않는다.
-- `POST /guests`는 기존 guest 계정을 재사용할 수 있지만, Refresh Token 원문을 받지 않으므로 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token을 가진 클라이언트의 세션 유지/교체는 `POST /auth/refresh`가 담당한다.
+- `POST /api/v1/guests`는 기존 guest 계정을 재사용할 수 있지만, Refresh Token 원문을 받지 않으므로 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token을 가진 클라이언트의 세션 유지/교체는 `POST /api/v1/auth/refresh`가 담당한다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 신규 Toss 회원 승격은 guest Session 폐기 후 MEMBER Session을 생성한다.
 - 기존 Toss 회원 병합은 source guest Session 전체 폐기 후 target MEMBER Session을 생성한다.
 - 폐기 또는 교체 방식은 서버가 결정하며 클라이언트가 선택하지 않는다.
 - `auth_session_log`에 `GUEST_CREATED` 또는 `GUEST_RECOVERED`를 기록한다.
 
-### POST /auth/toss/login
+### POST /api/v1/auth/toss/login
 
 | 항목 | 내용 |
 |---|---|
@@ -261,7 +261,7 @@ Toss 로그인으로 게스트를 회원으로 승격하거나 기존 회원에 
 인증 조건:
 
 - Access Token 없이 호출하는 일반 Toss 로그인은 `deviceKey`, `platform`, `appVersion` 요청 계약이 확정되어야 구현 가능하다.
-- 온보딩 완료 CTA처럼 이미 `POST /guests`로 발급받은 guest Access Token을 가진 사용자의 MEMBER 승격은 별도 흐름이며, Access Token 없는 일반 Toss 로그인의 BLOCKED 상태를 해소하지 않는다.
+- 온보딩 완료 CTA처럼 이미 `POST /api/v1/guests`로 발급받은 guest Access Token을 가진 사용자의 MEMBER 승격은 별도 흐름이며, Access Token 없는 일반 Toss 로그인의 BLOCKED 상태를 해소하지 않는다.
 - 현재 게스트를 승격하거나 기존 Toss 회원에 병합하려면 guest Access Token이 필요하다.
 - 로그인된 회원의 Toss 재연결은 member Access Token 기반 별도 정책으로 다루며 MVP 범위에서는 이 API가 자동 재연결을 수행하지 않는다.
 
@@ -300,7 +300,7 @@ Response data:
 - 게스트 랭킹 점수는 기존 회원의 진행 중 랭킹 점수에 합산하지 않는다.
 - 온보딩 중 게스트에게 서버 저장된 포인트와 키캡은 MEMBER 승격 후 유지한다.
 
-### POST /auth/refresh
+### POST /api/v1/auth/refresh
 
 | 항목 | 내용 |
 |---|---|
@@ -349,13 +349,13 @@ Refresh 실패 의미:
 - Rotation 완료 후 과거 Refresh Token이 다시 사용되면 `401 AUTH_REFRESH_REUSED`로 처리하고 해당 Session을 폐기한다.
 - 실제 재사용 감지는 `auth_session_log.event_type=REFRESH_REUSE_DETECTED`로 남긴다.
 
-### POST /auth/logout
+### POST /api/v1/auth/logout
 
 | 항목 | 내용 |
 |---|---|
 | Owner | `A` |
 | Status | `CONFIRMED` |
-| 구현 상태 | `IN_PROGRESS` |
+| 구현 상태 | `IMPLEMENTED` |
 | 인증 | Access Token |
 | 게스트 허용 | 예 |
 | 성공 | `200 OK` |
@@ -363,7 +363,21 @@ Refresh 실패 의미:
 | 관련 테이블 | `auth_session_log` |
 | Redis/Port/Event | `auth:deny:access`, `auth:refresh`, `auth:user-sessions` |
 
-현재 기기 로그아웃이다. Access Token jti를 denylist에 저장하고 Redis Refresh Session을 삭제한다.
+현재 기기 로그아웃이다. 로그아웃 대상 Session은 항상 Access Token의 `sid`이며, Request Body의 Refresh Token은 선택적 동일 Session 검증용으로만 사용한다. Access Token jti를 denylist에 저장하고 Redis Refresh Session을 삭제한다.
+
+Request Body 없음 또는:
+
+```json
+{
+  "refreshToken": "optional-refresh-token"
+}
+```
+
+검증:
+
+- Refresh Token이 있으면 `type=REFRESH`, `sub`, `sid`, current refresh jti/hash가 현재 Access Token의 Session과 모두 일치해야 한다.
+- 불일치하면 `401 AUTH_LOGOUT_SESSION_MISMATCH`를 반환하고 현재 Session과 다른 Session을 모두 삭제하지 않는다.
+- Refresh Token이 없으면 Access Token의 현재 Session만 로그아웃한다.
 
 Response data:
 
@@ -373,13 +387,13 @@ Response data:
 }
 ```
 
-### POST /auth/logout-all
+### POST /api/v1/auth/logout-all
 
 | 항목 | 내용 |
 |---|---|
 | Owner | `A` |
 | Status | `CONFIRMED` |
-| 구현 상태 | `IN_PROGRESS` |
+| 구현 상태 | `IMPLEMENTED` |
 | 인증 | Access Token |
 | 게스트 허용 | 예 |
 | 성공 | `200 OK` |
@@ -387,7 +401,7 @@ Response data:
 | 관련 테이블 | `auth_session_log` |
 | Redis/Port/Event | `auth:revoke:user`, `auth:refresh`, `auth:user-sessions` |
 
-사용자의 모든 Redis Refresh Session을 폐기한다. 현재 Access Token jti는 denylist에 저장한다.
+사용자의 모든 Redis Refresh Session을 Lua Script 한 번으로 폐기한다. 현재 Access Token jti는 같은 Lua 실행에서 denylist에 저장한다.
 
 Response data:
 
@@ -400,10 +414,12 @@ Response data:
 
 정책:
 
-- 모든 Refresh Session은 즉시 폐기한다.
+- 만료된 ZSet Session을 정리한 뒤 실제 `auth:refresh:{sessionId}`가 존재하는 활성 Refresh Session만 삭제 수에 포함한다.
+- `auth:user-sessions:{userPublicId}`와 각 활성 `auth:refresh:{sessionId}`를 같은 Lua 실행에서 삭제한다.
 - `auth:revoke:user:{userPublicId}`에 현재 epoch millis인 `revokedAtMillis`와 사유 `LOGOUT_ALL`을 저장한다.
 - Access Token 인증 시 token `issuedAtMillis <= revokedAtMillis`이면 거절하므로 다른 기기의 기존 Access Token도 즉시 무효화된다.
 - revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
+- Redis 장애 시 부분 성공으로 응답하지 않고 `AUTH_REDIS_UNAVAILABLE`로 실패한다.
 
 ### GET /members/me
 
@@ -2095,6 +2111,7 @@ Request:
 | 401 | `AUTH_ACCESS_EXPIRED` | Access Token 만료 |
 | 401 | `AUTH_REFRESH_EXPIRED` | Refresh Token 만료 |
 | 401 | `AUTH_SESSION_NOT_FOUND` | Redis Refresh Session 없음 |
+| 401 | `AUTH_LOGOUT_SESSION_MISMATCH` | 로그아웃 요청 Refresh Token이 현재 Access Session과 불일치 |
 | 401 | `AUTH_REFRESH_REUSED` | Rotation 완료된 과거 Refresh 재사용 |
 | 409 | `AUTH_REFRESH_CONFLICT` | 거의 동시에 들어온 Refresh 충돌 |
 | 503 | `AUTH_REDIS_UNAVAILABLE` | 인증 Redis 장애 |
@@ -2124,9 +2141,11 @@ Request:
 - 운영자용 부정 탭 검토 API
 - 보유 상자 일괄 개봉 API는 MVP 제외
 
-## 2026-07-03 인증 API 구현 상태
+## 2026-07-04 인증 API 구현 상태
 
-- `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`은 실제 Redis/PostgreSQL Testcontainers 기반 API 통합 테스트를 통과했다.
+- 실제 Java API 경로는 `/api/v1` prefix를 사용한다. 기존 `/auth/**` 경로는 성공 API로 동작하지 않는다.
+- `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`은 실제 Redis/PostgreSQL Testcontainers 기반 API 통합 테스트를 통과했다.
 - 응답은 공통 `traceId` 계약을 유지하며 Access Log에도 `traceId`가 기록된다.
+- `logout`은 Access Token의 현재 Session을 대상으로 삼고, optional Refresh Token은 동일 Session 검증용으로만 사용한다.
 - `logout-all` 응답은 `loggedOutAll`, `revokedSessionCount`를 분리한다. `revokedSessionCount`는 실제 삭제된 활성 Refresh Session 수 기준이다.
 - 게스트 생성, Toss 승격/병합, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서 API 구현 상태는 이번 작업에서 변경하지 않았다.
