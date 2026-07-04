@@ -40,26 +40,18 @@
 
 ## 회원/인증 테스트
 
-- 게스트 최초 생성 시 `app_user`, `device`, `user_device(GUEST_OWNER)`가 생성된다.
-- 게스트 최초 생성 시 Access JWT와 Refresh JWT가 발급된다.
-- 게스트 최초 생성 시 Redis `auth:refresh:{sessionId}`가 생성된다.
-- 게스트 최초 생성 시 Redis `auth:user-sessions:{userPublicId}`에 sessionId가 추가된다.
-- 게스트 최초 생성 응답은 `201 Created`다.
-- 같은 기기 게스트 복구 시 기존 게스트 계정을 재사용한다.
-- 같은 기기 게스트 복구 시 새 Access/Refresh token이 발급된다.
-- `POST /api/v1/guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token 기반 세션 유지/교체는 `POST /api/v1/auth/refresh` 테스트에서 검증한다.
+- Toss identity가 없으면 MEMBER `app_user`, `auth_identity`, 필요 시 `device`, `user_device`가 생성된다.
+- Toss identity가 이미 있으면 기존 MEMBER와 `auth_identity`를 재사용한다.
+- Toss 로그인 성공 시 Access JWT와 Refresh JWT가 발급된다.
+- Toss 로그인 성공 시 Redis `auth:refresh:{sessionId}`가 생성된다.
+- Toss 로그인 성공 시 Redis `auth:user-sessions:{userPublicId}`에 sessionId가 추가된다.
+- Toss 로그인 응답은 `200 OK`다.
+- 로그인 전에는 서버 사용자, 인증 Session, 포인트, 키캡, 일반 상자 보상이 생성되지 않는다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
-- 게스트 복구의 Session 유지/폐기는 서버가 결정하고 클라이언트가 선택하지 않는다.
-- 같은 기기 게스트 복구 응답은 `200 OK`다.
 - 기존 토큰 원문을 반환하지 않는다.
-- 신규 Toss 사용자는 기존 게스트 계정이 MEMBER로 승격된다.
-- 신규 Toss 승격 시 `GUEST_OWNER`가 `MEMBER_DEVICE`로 변경된다.
-- 신규 Toss 승격 시 게스트 세션은 폐기되고 MEMBER 세션이 새로 생성된다.
-- 기존 Toss 회원 로그인 시 게스트 키캡과 상자가 target 회원에게 병합된다.
-- 기존 Toss 회원 병합 시 source guest의 `GUEST_OWNER`는 비활성화된다.
-- 기존 Toss 회원 병합 시 target member의 `MEMBER_DEVICE`가 생성 또는 활성화된다.
-- 기존 Toss 회원 병합 시 게스트 랭킹 점수는 진행 중 랭킹 점수에 합산되지 않는다.
-- 병합 실패 단계는 `user_merge_history.progress` 기준으로 재시도된다.
+- `onboardingAttemptId`가 같으면 로그인 응답 유실 후 재시도해도 같은 정산 결과를 반환한다.
+- 신규 회원 정산은 `rewardEligible=true`, 기존 회원 정산은 `rewardEligible=false`다.
+- 회원 생성 후 부분 실패 시 같은 `onboardingAttemptId`로 신규/기존 판정과 보상 지급 여부가 보존된다.
 - 탈퇴/정지 사용자는 인증 API 접근이 차단된다.
 
 ## Redis JWT 인증 테스트
@@ -118,7 +110,7 @@
 - 로그아웃/전체 로그아웃 로그가 남는다.
 - Redis 세션 없음 로그가 남는다.
 - 중복 재발급 요청 로그가 남는다.
-- 동일 기기 게스트 복구 로그가 남는다.
+- Toss 로그인 신규/기존 회원 판정과 세션 생성 로그가 남는다.
 - 다른 기기 로그인 로그가 남는다.
 - 강제 로그아웃 또는 회원 정지 세션 폐기 로그가 남는다.
 - Access Log에는 `traceId`, `method`, `pathTemplate`, `status`, `durationMs`, `userPublicId`, `sessionIdHash`, `devicePublicId`, `clientIpMasked`, `userAgent`, `errorCode`가 남는다.
@@ -162,7 +154,7 @@
 - Region 기능은 유지하지만 Ranking Aggregate와 직접 연결하지 않는다.
 - 전체 랭킹 응답에는 지역 필드가 없다.
 - 지역/전국 Query를 받지 않는다.
-- 신규 게스트가 별도 참가 API 없이 현재 시즌에 포함된다.
+- Toss 로그인 후 인정 탭이 반영된 사용자가 별도 참가 API 없이 현재 시즌에 포함된다.
 - 7일 시즌 경계가 정확하다.
 - 동일 시즌에 같은 사용자는 한 번만 자동 포함된다.
 - 동일 탭 배치는 랭킹 점수에 한 번만 반영된다.
@@ -222,28 +214,27 @@
 
 - 0~14탭: 포인트 없음.
 - 15탭: 1P 한 번 지급.
-- 16~29탭: 추가 지급 없음.
-- 30탭: 추가 1P 한 번 지급.
-- 31~44탭: 추가 지급 없음.
-- 45탭: 온보딩 완성 키캡 1개 지급.
-- 46탭 이후: 온보딩 키캡 추가 지급 없음.
-- 0~44탭 상태는 `IN_PROGRESS`, 45탭 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`다.
-- `IN_PROGRESS`와 `LOGIN_REQUIRED`는 `active=true`, `COMPLETED`는 `active=false`다.
+- `submittedTapCount`는 0..45로 clamp된다.
+- `acceptedTapCount`는 `min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`로 계산된다.
+- `acceptedTapCount`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영된다.
+- 로그인 전 온보딩 탭에는 부스터가 소급 적용되지 않는다.
+- 신규 회원에게만 15탭 1P, 30탭 추가 1P에 해당하는 총 2P와 고정 온보딩 키캡 1개가 한 번 지급된다.
+- 기존 회원에게는 온보딩 포인트와 키캡 보상이 지급되지 않는다.
+- 일반 랜덤 상자 개봉과 온보딩 고정 보상 reveal은 분리된다.
 
 재시도/동시성:
 
-- 같은 tapBatchId 재전송 시 보상 중복 없음.
-- 15/30/45 경계 동시 요청 시 한 번만 지급.
-- 한 배치가 여러 milestone을 넘으면 모든 해당 milestone을 한 번씩 지급.
-- B 포인트 ledger와 onboarding progress 정합성.
+- 같은 `onboardingAttemptId` 재전송 시 탭 반영과 보상 중복 없음.
+- 같은 사용자와 KST 일자에 다른 attempt가 와도 로그인 전 온보딩 탭은 중복 반영되지 않음.
+- B 포인트 ledger와 onboarding settlement 정합성.
 - A 키캡 지급 referenceId 멱등성.
 - A Port 재시도 시 같은 `userKeycapId`와 같은 keycap 결과 반환.
 - 일반 상자 잔액과 온보딩 상자를 혼동하지 않음.
 - 온보딩 키캡은 조각이 아니라 COMPLETED 상태.
-- 프론트 수동 open API 없이 지급 완료.
-- 앱 재실행 시 진행 상태 복원.
-- 로그인 실패 후 `LOGIN_REQUIRED`와 보상 유지.
-- 게스트에서 회원으로 승격할 때 2P와 키캡 유지.
+- 온보딩 고정 키캡은 일반 랜덤 드롭 테이블, 상자 잔액, 무료 쿨다운, 광고 검증, 일반 상자 개봉 원장을 사용하지 않음.
+- 서버는 reveal 완료 여부를 저장하지 않으며 앱 재실행 후 reveal을 다시 보여줘도 보상 중복 지급이 발생하지 않음.
+- 프론트 수동 open API 없이 로그인 정산에서 지급 완료.
+- 프론트 reveal 이벤트가 서버 지급 완료로 해석되지 않음.
 
 ## 광고/부스터/초대 테스트 — PROPOSED
 
@@ -270,7 +261,7 @@
 ## 제약 테스트
 
 - `auth_identity(provider, provider_user_id)` unique.
-- `user_device(device_id) WHERE active = true AND account_role = 'GUEST_OWNER'` partial unique.
+- `user_device(user_id, device_id)` unique.
 - `user_keycap(user_id, keycap_id)` unique.
 - `user_keycap(user_id) WHERE equipped = true` partial unique.
 - `keycap_box_open(user_id, idempotency_key)` unique.
@@ -278,7 +269,8 @@
 - `ranking_score_event(source_type, source_event_id)` unique.
 - `ranking_participation(season_id, user_id)` unique.
 - `ranking_snapshot(season_id, user_id)` unique.
-- `user_onboarding_progress(user_public_id)` unique.
+- `onboarding_settlement(onboarding_attempt_id)` unique.
+- `onboarding_settlement(user_public_id, settlement_date)` unique.
 - `notification_log.push_device_id`는 `NOT NULL`.
 - `notification_log(dedupe_key, push_device_id)` unique.
 - `user_region_change(user_id, change_month)` unique.

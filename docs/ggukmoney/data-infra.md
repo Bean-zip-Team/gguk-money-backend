@@ -37,12 +37,12 @@
 
 ## Flyway 파일 계획
 
-현재 구현에서는 인증 감사 로그용 최소 SQL `src/main/resources/db/migration/V1000__create_auth_session_log.sql`을 생성했다. 이 파일은 `auth_session_log`만 포함하며, `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history`는 아직 `NOT_STARTED`다. 최종 구현 시 파일 순서는 아래처럼 확장한다.
+현재 구현에서는 인증 감사 로그용 최소 SQL `src/main/resources/db/migration/V1000__create_auth_session_log.sql`을 생성했다. 이 파일은 `auth_session_log`만 포함하며, `app_user`, `auth_identity`, `device`, `user_device`는 아직 `NOT_STARTED`다. 최종 구현 시 파일 순서는 아래처럼 확장한다.
 
 | 파일 | 내용 |
 |---|---|
 | `V1000__create_auth_session_log.sql` | 현재 구현: `auth_session_log` |
-| `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history` |
+| `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity`, `device`, `user_device` |
 | `V1100__create_config_legal.sql` | `legal_document`, `user_consent`, `app_config` |
 | `V1200__create_keycap_box.sql` | 키캡, 상자, 드롭, 개봉 결과 |
 | `V1300__create_region_ranking.sql` | 지역, 전체 랭킹 시즌, 자동 포함, 점수, snapshot, reward |
@@ -51,7 +51,7 @@
 | `V1600__create_event_reliability.sql` | outbox, inbox |
 | `V1900__seed_initial_master_data.sql` | 지역, 기본 키캡, 기본 설정 seed |
 | `V2000__create_tap_risk.sql` | B DRAFT 탭/어뷰징 |
-| `V2050__create_user_onboarding_progress.sql` | B DRAFT 온보딩 진행 상태 |
+| `V2050__create_onboarding_settlement.sql` | B DRAFT 로그인 전 온보딩 정산 결과 |
 | `V2100__create_point_cashout.sql` | B DRAFT 포인트/출금 |
 | `V2200__create_ad_booster.sql` | B DRAFT 광고/부스터 |
 | `V2300__create_invitation_analytics.sql` | B DRAFT 초대/분석 |
@@ -183,7 +183,7 @@ Session save와 logout-all 사이 race 방지:
 - logout-all Lua 내부 처리는 `IMPLEMENTED`다.
 - 현재 `RedisAuthSessionRepository.save(AuthSession)`은 `auth:refresh:{sessionId}` hash 저장, refresh key TTL 설정, `auth:user-sessions:{userPublicId}` ZSet 추가를 분리 실행한다.
 - hash 저장 후 ZSet 추가 전에 logout-all이 실행되면 logout-all이 새 session을 발견하지 못하고, 이후 ZSet member가 추가되어 stale refresh session이 남을 수 있다.
-- 이 race 방지는 `IN_PROGRESS`이며 `POST /api/v1/guests` 구현 전에 완료한다.
+- 이 race 방지는 `IN_PROGRESS`이며 Toss 로그인/회원 인증 Session 운영 전에 완료한다.
 - 후속 구현은 Session save를 단일 Redis Lua Script로 만들고, 사용자 revoke marker를 확인해 `issuedAtMillis <= revokedAtMillis`인 session 생성을 거절하며, hash 저장, TTL 설정, ZSet 추가를 한 번에 처리한다.
 - Redis Cluster 전환 시 Lua에 전달되는 모든 key가 같은 hash slot에 있어야 한다. 후보는 `{userPublicId}` hash tag 기반 key 설계이며, MVP의 기존 Redis key는 이번 문서 작업에서 변경하지 않는다.
 
@@ -259,16 +259,15 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 10. 다음 7일 시즌을 생성한다. 지역 변경 예약은 Region 기능에서 별도 처리하며 Ranking Aggregate와 연결하지 않는다.
 11. Redis lock을 해제한다.
 
-### 게스트 병합
+### 온보딩 로그인 정산
 
-1. Toss identity로 기존 MEMBER를 찾는다.
-2. 현재 게스트를 source, 기존 회원을 target으로 `user_merge_history`를 생성한다.
-3. A 도메인 자산을 병합한다.
-4. B 도메인 병합은 Port/Event로 요청하고 progress를 남긴다.
-5. source 게스트의 `GUEST_OWNER`를 비활성화한다.
-6. target 회원의 `MEMBER_DEVICE`를 생성 또는 활성화한다.
-7. source의 Redis 인증 세션 전체를 폐기한다.
-8. target 기준 새 Redis 인증 세션을 생성한다.
+1. `POST /api/v1/auth/toss/login`에서 Toss identity로 신규 MEMBER 생성 또는 기존 MEMBER 조회를 수행한다.
+2. 온보딩 정산 입력이 있으면 `onboardingAttemptId` 기준 기존 정산을 조회하거나 새 `onboarding_settlement`를 생성한다.
+3. `submittedTapCount`를 0..45로 clamp하고 `acceptedTapCount`는 KST 당일 남은 유효 탭 한도까지만 계산한다.
+4. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다. 로그인 전 탭에는 부스터를 소급 적용하지 않는다.
+5. 신규 가입자에게만 총 2P와 고정 온보딩 키캡을 멱등 지급한다.
+6. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
+7. 응답 유실 또는 부분 실패 후 재시도에서도 같은 `onboardingAttemptId`의 신규/기존 판정과 지급 여부를 유지한다.
 
 
 ## B 트랜잭션과 동시성 — PROPOSED

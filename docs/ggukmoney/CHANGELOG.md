@@ -1,5 +1,15 @@
 # 수정 내역
 
+## 2026-07-05 로그인 전 사용자 미생성 온보딩 정산 모델 정합화
+
+- 앱인토스 온보딩을 로그인 전 프론트 로컬 체험으로 정리하고 서버 사용자/인증 Session 사전 생성을 제거했다.
+- 로그인 전 사용자 생성 API, pre-login 복구, 회원 전환/데이터 결합 API와 테이블 설계를 제거했다.
+- Toss 로그인 API가 `onboardingAttemptId`, `onboardingTapCount`, `onboardingCompleted` 후보 값을 받아 로그인 후 정산하는 구조로 정리했다.
+- 신규 가입자에게만 총 2P와 고정 온보딩 키캡을 한 번 지급하고, 기존 회원은 인정 가능한 탭만 반영하도록 문서화했다.
+- B DRAFT 온보딩 저장소를 로그인 전 진행 상태 저장소에서 `onboarding_settlement`로 변경했다.
+- `/api/v1/taps/batches`는 로그인 후 일반 탭 API로 유지하고 온보딩 milestone 직접 지급 응답을 제거했다.
+- Java/Test/SQL/Gradle/CI workflow는 수정하지 않았다.
+
 ## 2026-07-04 인증/API hardening과 CI
 
 - 인증 API 실제 경로를 `/api/v1/auth/**`로 통일하고 기존 `/auth/**`가 성공 API로 동작하지 않도록 정리했다.
@@ -11,7 +21,7 @@
 - 감사 로그 UUID scalar는 null/blank만 nullable로 허용하고 non-blank invalid UUID는 조용히 null row로 저장하지 않도록 정리했다.
 - V1000 `auth_session_log`의 DB DEFAULT 없음, `result` CHECK만 존재하는 실제 SQL 기준을 table-spec에 반영했다.
 - GitHub Actions CI workflow를 추가하고 `CI_APP_AUTH_JWT_SECRET` 수동 설정 절차를 문서화했다.
-- 게스트 생성, Toss 승격/병합, 랭킹, 온보딩, 키캡/상자, 포인트/출금, 운영 배포는 구현하지 않았다.
+- Toss 로그인/회원 생성, 온보딩 로그인 정산, 랭킹, 키캡/상자, 포인트/출금, 운영 배포는 구현하지 않았다.
 
 ## 2026-07-04 최신 랭킹·온보딩 와이어프레임 문서 정합화
 
@@ -26,7 +36,7 @@
 - 온보딩 총 2P와 45탭 완성 키캡 1개 보상을 명시했다.
 - 온보딩 자동 개봉과 완료 후 Toss 로그인 gate를 반영했다.
 - 일반 상자/경제 정책과 온보딩 전용 정책을 분리했다.
-- B DRAFT `user_onboarding_progress` 명세를 추가했다.
+- B DRAFT 온보딩 저장소 명세를 추가했다.
 - B에서 A 키캡 지급을 동기 호출하는 `OnboardingKeycapGrantUseCase` 계약을 추가했다.
 - 랭킹/온보딩 이벤트 카탈로그를 최신 화면 기준으로 갱신했다.
 - Java, SQL, Gradle, 테스트 코드는 수정하지 않았다.
@@ -37,7 +47,7 @@
 - 개인 로컬 저장소 절대경로를 공유 문서에서 제거했다.
 - architecture의 Redis Session/Lua CAS 통합 테스트 상태를 실제 Testcontainers 결과에 맞췄다.
 - Flyway 검증 설명을 `FlywayMigrationIntegrationTest`의 PostgreSQL Testcontainers 실제 검증 기준으로 수정했다.
-- 온보딩 상태 전이를 `IN_PROGRESS` -> `LOGIN_REQUIRED` -> `COMPLETED`로 명확화했다.
+- 이후 온보딩 상태 모델은 로그인 정산 모델로 재정리했다.
 - `GET /api/v1/home`의 `milestonesGranted` 필드와 누적 milestone 의미를 정리했다.
 - 온보딩 완성 키캡 지급 모델에 `grant_mode=COMPLETE_KEYCAP`과 `userKeycapId` 의미를 보강했다.
 - 12,000 랭킹 상한 미확정 응답을 `weeklyRankingLimit=null` 기준으로 정리했다.
@@ -56,7 +66,15 @@
 - GitHub Actions CI의 `build` job `check bootJar` 성공 상태를 문서에 반영했다.
 - logout-all Lua 내부 원자 처리와 Session save/logout-all race 방지 상태를 분리했다.
 - Session save Lua 전환, 사용자 revoke marker 확인, Refresh Rotation revoke marker 연동을 후속 과제로 문서화했다.
-- `V1010__create_user_auth.sql`, `POST /api/v1/guests`, Toss 승격/병합은 후속 phase로 유지했다.
+- `V1010__create_user_auth.sql`, Toss 로그인/회원 생성, 온보딩 로그인 정산은 후속 phase로 유지했다.
+- Java/Test/SQL/Gradle/CI workflow는 수정하지 않았다.
+
+### 온보딩 고정 보상 정합화
+
+- 온보딩 45탭 보상을 일반 랜덤 상자 드롭이 아니라 고정 키캡 직접 지급으로 정리했다.
+- 온보딩 상자 화면은 일반 상자 경제가 아닌 프론트 reveal 연출이며, 서버는 reveal 완료 여부를 저장하지 않는 기준으로 맞췄다.
+- 랜덤 상자 또는 서버 reveal 상태로 오해되는 온보딩 필드/이벤트 표현을 제거하거나 고정 보상 표현으로 대체했다.
+- 일반 드롭 테이블은 일반 랜덤 상자 전용으로 유지하고 온보딩 보상과 분리했다.
 - Java/Test/SQL/Gradle/CI workflow는 수정하지 않았다.
 
 ## 2026-07-02 빵도감 main HEAD 기반 인증/로그 구현 반영
@@ -85,7 +103,7 @@
 - 닉네임 중복 방지를 위해 `nickname_normalized`와 ACTIVE 사용자 partial unique 정책을 문서화했습니다.
 - `204 No Content` API는 공통 response body를 사용하지 않고 `X-Trace-Id` 헤더로 추적 id를 제공할 수 있도록 예외를 명시했습니다.
 - 사용자 전체 revoke 비교 기준을 `issuedAtMillis <= revokedAtMillis`로 바꾸고 같은 초 발급 토큰 경계 테스트를 추가했습니다.
-- Toss 로그인 인증 조건을 일반 로그인, 게스트 승격/병합, 회원 재연결 범위로 분리해 명시했습니다.
+- Toss 로그인 인증 조건을 일반 로그인, 온보딩 로그인 정산, 회원 재연결 범위로 분리해 명시했습니다.
 - 랭킹 결과 API 응답 스키마와 분석 이벤트 카탈로그/스키마 버전/source 정책을 보강했습니다.
 
 ## 2026-07-02 최신 후보 문서 반영

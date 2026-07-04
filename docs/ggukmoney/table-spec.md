@@ -22,7 +22,6 @@
 | `auth_identity` | A | CONFIRMED | User/Auth |
 | `device` | A | CONFIRMED | User/Auth |
 | `user_device` | A | CONFIRMED | User/Auth |
-| `user_merge_history` | A | CONFIRMED | User/Auth |
 | `auth_session_log` | A | CONFIRMED | User/Auth |
 | `legal_document` | A | CONFIRMED | Config/Legal |
 | `user_consent` | A | CONFIRMED | Config/Legal |
@@ -67,28 +66,25 @@ A 상세 테이블 공통 정책:
 
 ### app_user
 
-- 역할: 게스트와 회원을 하나의 계정으로 관리한다.
-- 관련 API: `POST /api/v1/guests`, `POST /api/v1/auth/toss/login`, `GET /api/v1/members/me`, `DELETE /api/v1/members/me`
+- 역할: Toss 로그인 완료 사용자를 관리한다. MVP 계정 유형은 MEMBER만 생성한다.
+- 관련 API: `POST /api/v1/auth/toss/login`, `GET /api/v1/members/me`, `DELETE /api/v1/members/me`
 - 관련 Event/Port: `RecordEventIngestUseCase`, `UserWithdrawalGuardPort`
-- 멱등성 기준: `deviceKeyHash + GUEST_OWNER`, Toss provider identity
+- 멱등성 기준: Toss provider identity
 
 | 컬럼명 | PostgreSQL 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
 | `id` | BIGINT | N | identity | PK | | 내부 식별자 |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 사용자 id |
-| `account_type` | VARCHAR(20) | N | | | CHECK `GUEST`, `MEMBER` | 계정 유형 |
-| `status` | VARCHAR(20) | N | `ACTIVE` | | CHECK `ACTIVE`, `SUSPENDED`, `WITHDRAWN`, `MERGED` | 계정 상태 |
+| `status` | VARCHAR(20) | N | `ACTIVE` | | CHECK `ACTIVE`, `SUSPENDED`, `WITHDRAWN` | 계정 상태 |
 | `nickname` | VARCHAR(50) | Y | | | | 표시 이름 |
 | `nickname_normalized` | VARCHAR(50) | Y | | | | 중복 검사용 정규화 닉네임 |
-| `merged_to_user_id` | BIGINT | Y | | FK `app_user(id)` | | MERGED 시 target |
 | `last_login_at` | TIMESTAMPTZ | Y | | | | 마지막 로그인 |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 시각 |
 
-- 인덱스: `ix_app_user_status(status)`, `ix_app_user_merged_to_user_id(merged_to_user_id)`
+- 인덱스: `ix_app_user_status(status)`
 - Partial Unique Index: `ux_app_user_active_nickname_normalized ON app_user(nickname_normalized) WHERE nickname_normalized IS NOT NULL AND status = 'ACTIVE'`
-- FK ON DELETE: `merged_to_user_id`는 `SET NULL`
-- Lock/version 정책: 회원 병합과 탈퇴 시 row lock 권장
+- Lock/version 정책: 탈퇴, 정지, 로그인 갱신 시 row lock 권장
 - 민감정보와 암호화: 직접 민감정보 없음
 - 보관/익명화/삭제: 탈퇴 시 nickname 익명화, 법무 기준에 따라 user id 보관
 - 닉네임 정규화: 앞뒤 공백 제거, 연속 공백 단일화, 대소문자 fold, Unicode NFKC 기준 정규화를 적용한다.
@@ -118,7 +114,7 @@ A 상세 테이블 공통 정책:
 ### device
 
 - 역할: 앱 설치/기기를 식별한다.
-- 관련 API: `POST /api/v1/guests`, `PUT /api/v1/push-devices/current`
+- 관련 API: `POST /api/v1/auth/toss/login`, `PUT /api/v1/push-devices/current`
 - 멱등성 기준: `device_key_hash`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -139,9 +135,9 @@ A 상세 테이블 공통 정책:
 
 ### user_device
 
-- 역할: 사용자와 기기의 관계, 게스트 소유 기기와 회원 기기를 표현한다.
-- 관련 API: `POST /api/v1/guests`, `POST /api/v1/auth/toss/login`
-- 멱등성 기준: 활성 `GUEST_OWNER` partial unique
+- 역할: 로그인 완료 사용자와 기기의 관계를 표현한다.
+- 관련 API: `POST /api/v1/auth/toss/login`
+- 멱등성 기준: `user_id + device_id`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -149,40 +145,15 @@ A 상세 테이블 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `user_id` | BIGINT | N | | FK `app_user(id)` | | 사용자 |
 | `device_id` | BIGINT | N | | FK `device(id)` | | 기기 |
-| `account_role` | VARCHAR(30) | N | | | CHECK `GUEST_OWNER`, `MEMBER_DEVICE` | 계정-기기 역할 |
 | `active` | BOOLEAN | N | true | | | 활성 여부 |
 | `last_login_at` | TIMESTAMPTZ | Y | | | | 마지막 로그인 |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 인덱스: `ix_user_device_user_active(user_id, active)`, `ix_user_device_device_active(device_id, active)`
-- Partial Unique Index: `ux_user_device_active_guest ON user_device(device_id) WHERE active = true AND account_role = 'GUEST_OWNER'`
+- UNIQUE: `ux_user_device_user_device(user_id, device_id)`
 - FK ON DELETE: `RESTRICT`
-- Lock/version 정책: 게스트 복구와 Toss 승격/병합 시 row lock 권장
-
-### user_merge_history
-
-- 역할: 게스트 데이터를 기존 회원으로 병합하는 절차를 기록한다.
-- 관련 API: `POST /api/v1/auth/toss/login`, `GET /api/v1/members/me/merge-status`, `POST /api/v1/members/me/merge-retry`
-- 멱등성 기준: `source_user_id`
-
-| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
-|---|---|---:|---|---|---|---|
-| `id` | BIGINT | N | identity | PK | | 내부 id |
-| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
-| `source_user_id` | BIGINT | N | | FK `app_user(id)` | UNIQUE | 게스트 source |
-| `target_user_id` | BIGINT | N | | FK `app_user(id)` | | 회원 target |
-| `status` | VARCHAR(20) | N | `PENDING` | | CHECK `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` | 병합 상태 |
-| `progress` | VARCHAR(50) | N | `STARTED` | | | 재시도 기준 단계 |
-| `reason` | VARCHAR(50) | N | | | | 병합 사유 |
-| `failure_code` | VARCHAR(50) | Y | | | | 실패 코드 |
-| `completed_at` | TIMESTAMPTZ | Y | | | | 완료 시각 |
-| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
-| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
-
-- 인덱스: `ix_user_merge_target_status(target_user_id, status)`
-- FK ON DELETE: `RESTRICT`
-- Lock/version 정책: source user 기준 단일 병합 lock
+- Lock/version 정책: 로그인 기기 연결 갱신 시 row lock 권장
 
 ### auth_session_log
 
@@ -190,7 +161,7 @@ A 상세 테이블 공통 정책:
 - 상태: CONFIRMED
 - 역할: 인증 상태 변경과 거부 이벤트를 영구 감사 로그로 남긴다.
 - Aggregate: User/Auth
-- 관련 API: `POST /api/v1/guests`, `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`
+- 관련 API: `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`
 - 관련 Event/Port: 회원 정지/탈퇴 세션 폐기, `AuthAuditLogPort`
 - 멱등성 기준: `trace_id + event_type + session_id_hash` 권장
 - 현재 구현 상태: `IMPLEMENTED`.
@@ -254,7 +225,7 @@ A 상세 테이블 공통 정책:
 ### user_consent
 
 - 역할: 사용자 법적 문서 동의 이력을 저장한다.
-- 관련 API: 회원 가입/승격, 약관 동의
+- 관련 API: Toss 로그인 회원 생성, 약관 동의
 - 멱등성 기준: `user_id + document_type + version`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -291,6 +262,7 @@ A 상세 테이블 공통 정책:
 - UNIQUE: `ux_app_config_key_effective(config_key, effective_at)`
 - 인덱스: `ix_app_config_active(config_key, effective_at)`
 - Lock/version 정책: update 금지, 새 row append
+- 온보딩 완료 고정 키캡은 MVP에서 `config_key=onboarding_completion_keycap_code`로 관리한다. 값은 활성 `keycap.code`를 가리키며, 로그인 정산 지급 시점에는 `onboarding_settlement.granted_user_keycap_public_id`로 결과를 고정한다.
 
 ## Keycap/Box
 
@@ -350,7 +322,7 @@ A 상세 테이블 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `name` | VARCHAR(100) | N | | | | 테이블명 |
 | `priority` | INTEGER | N | 0 | | | 우선순위 |
-| `purpose` | VARCHAR(20) | N | `STANDARD` | | CHECK `STANDARD`, `ONBOARDING` | 드롭 목적 |
+| `purpose` | VARCHAR(20) | N | `STANDARD` | | CHECK `STANDARD` | 드롭 목적. MVP는 일반 랜덤 상자 전용 |
 | `active_from` | TIMESTAMPTZ | N | | | | 시작 |
 | `active_until` | TIMESTAMPTZ | Y | | | CHECK null or `> active_from` | 종료 |
 | `active` | BOOLEAN | N | true | | | 활성 |
@@ -358,7 +330,7 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 인덱스: `ix_keycap_drop_table_active(active, active_from, active_until, priority)`
-- 온보딩 키캡 후보군은 `purpose=ONBOARDING`으로 일반 상자 후보군과 분리한다. SQL 구현 전까지 상태는 명세 제안이며, 일반 상자 정책을 온보딩 정책으로 바꾸지 않는다.
+- 이 테이블은 일반 랜덤 상자 전용이다. 온보딩 45탭 고정 키캡은 일반 드롭 테이블, 드롭 확률, 상자 잔액, 무료 쿨다운, 광고 검증을 사용하지 않고 `OnboardingKeycapGrantUseCase`로 직접 지급한다.
 
 ### keycap_drop_item
 
@@ -378,9 +350,8 @@ A 상세 테이블 공통 정책:
 
 - 인덱스: `ix_keycap_drop_item_table(drop_table_id)`
 - 지급 방식 조건: `(grant_mode = 'SHARD' AND shard_count IS NOT NULL AND shard_count > 0) OR (grant_mode = 'COMPLETE_KEYCAP' AND shard_count IS NULL)`.
-- `purpose=STANDARD` 드롭 테이블은 기본적으로 `grant_mode=SHARD`를 사용한다.
-- `purpose=ONBOARDING` 드롭 테이블은 `grant_mode=COMPLETE_KEYCAP`을 사용한다.
-- 온보딩 지급은 필요한 조각 수를 채우는 방식으로 위장하지 않고 `user_keycap.status=COMPLETED` 결과를 만든다.
+- 일반 랜덤 상자는 기본적으로 `grant_mode=SHARD`를 사용한다. 일반 경제 정책에서 완성 키캡 직접 지급이 필요하면 `grant_mode=COMPLETE_KEYCAP`을 사용할 수 있지만, 온보딩 45탭 고정 보상과 연결하지 않는다.
+- 온보딩 고정 키캡 지급은 필요한 조각 수를 채우는 방식으로 위장하지 않고 `user_keycap.status=COMPLETED` 결과를 직접 만든다.
 - 기존 일반 상자 조각 지급 정책은 유지한다.
 
 ### keycap_box_account
@@ -561,7 +532,7 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - UNIQUE: `ux_ranking_participation_user(season_id, user_id)`
-- 프론트 수동 참여 API와 연결하지 않는다. 신규 게스트 생성, 신규 시즌 시작, 첫 유효 탭 또는 최초 랭킹 조회 중 어느 시점에 row를 만들지는 Decision Required다.
+- 프론트 수동 참여 API와 연결하지 않는다. Toss 로그인 후 인정 탭 반영, 신규 시즌 시작, 첫 유효 탭 또는 최초 랭킹 조회 중 어느 시점에 row를 만들지는 Decision Required다.
 
 ### ranking_score
 
@@ -827,7 +798,7 @@ A 상세 테이블 공통 정책:
 | `ad_placement` | B | DRAFT | Advertisement |
 | `ad_view` | B | DRAFT | Advertisement |
 | `booster_grant` | B | DRAFT | Booster |
-| `user_onboarding_progress` | B | DRAFT | Onboarding |
+| `onboarding_settlement` | B | DRAFT | Onboarding |
 | `invite_code` | B | DRAFT | Invitation |
 | `invite_relation` | B | DRAFT | Invitation |
 | `analytics_event` | B | DRAFT | Analytics |
@@ -921,37 +892,45 @@ B 공통 정책:
 - UNIQUE: `ux_user_tap_daily(user_public_id, tap_date)`.
 - Lock/version: 포인트 계산 시 row lock 또는 version update.
 
-### user_onboarding_progress
+### onboarding_settlement
 
-- 역할: 신규 사용자 온보딩 진행 상태와 15/30/45 milestone 지급 멱등성.
+- 역할: 로그인 전 로컬 온보딩 탭을 Toss 로그인 시 서버 기준으로 한 번 정산하고 신규 가입 보상 지급 멱등성을 보장한다.
 - 소유자/상태: B / DRAFT.
 - A 소유 `app_user`와 DB FK를 만들지 않고 `user_public_id` scalar만 저장한다.
-- 관련 API: `GET /api/v1/home`, `POST /api/v1/taps/batches`.
+- 관련 API: `POST /api/v1/auth/toss/login`.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
 | `id` | BIGINT | N | identity | PK | | 내부 id |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
-| `user_public_id` | UUID | N | | | UNIQUE | 사용자 public id |
-| `valid_tap_count` | INTEGER | N | 0 | | CHECK `>= 0` | 온보딩 유효 탭 수 |
-| `point_15_granted_at` | TIMESTAMPTZ | Y | | | | 15탭 1P 지급 시각 |
-| `point_30_granted_at` | TIMESTAMPTZ | Y | | | | 30탭 추가 1P 지급 시각 |
-| `first_keycap_granted_at` | TIMESTAMPTZ | Y | | | | 45탭 온보딩 키캡 지급 시각 |
+| `user_public_id` | UUID | N | | | INDEX | 사용자 public id |
+| `onboarding_attempt_id` | UUID | N | | | UNIQUE | 프론트 로컬 온보딩 시도 id |
+| `submitted_tap_count` | INTEGER | N | | | CHECK `BETWEEN 0 AND 45` | 제출 탭 수. 서버가 0..45로 clamp |
+| `accepted_tap_count` | INTEGER | N | 0 | | CHECK `>= 0` | 실제 반영 탭 수 |
+| `settlement_date` | DATE | N | | | | KST 정산일 |
+| `new_member` | BOOLEAN | N | | | | Toss identity 기준 신규 가입 여부 |
+| `reward_eligible` | BOOLEAN | N | | | | 신규 가입 온보딩 보상 지급 대상 여부 |
+| `point_reward_amount` | INTEGER | N | 0 | | CHECK `>= 0` | 신규 보상 포인트 총액 |
+| `point_reward_granted_at` | TIMESTAMPTZ | Y | | | | 2P 지급 완료 시각 |
 | `granted_user_keycap_public_id` | UUID | Y | | | | A가 지급한 `user_keycap.public_id` |
-| `status` | VARCHAR(20) | N | `IN_PROGRESS` | | CHECK `IN_PROGRESS`, `LOGIN_REQUIRED`, `COMPLETED` | 온보딩 상태 |
+| `status` | VARCHAR(20) | N | `PENDING` | | CHECK `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` | 정산 상태 |
+| `failure_code` | VARCHAR(50) | Y | | | | 실패 코드 |
+| `settled_at` | TIMESTAMPTZ | Y | | | | 정산 완료 시각 |
 | `version` | BIGINT | N | 0 | | | 낙관적 lock |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
-- 사용자당 1행이다.
-- 상태 전이: 0~44 유효 탭은 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`.
-- `IN_PROGRESS`와 `LOGIN_REQUIRED`는 API에서 `active=true`, `COMPLETED`는 `active=false`로 계산한다.
-- 45탭 보상 지급으로 탭 기반 온보딩 보상 단계는 완료되지만, 회원 로그인/승격 전까지 전체 온보딩 상태는 `LOGIN_REQUIRED`다.
-- 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 포인트/키캡 보상은 유지한다.
+- UNIQUE: `ux_onboarding_settlement_attempt(onboarding_attempt_id)`.
+- UNIQUE: `ux_onboarding_settlement_user_date(user_public_id, settlement_date)`.
+- CHECK: `accepted_tap_count <= submitted_tap_count`.
+- CHECK: `reward_eligible = false`이면 `point_reward_amount = 0`이고 `granted_user_keycap_public_id IS NULL`.
+- CHECK: `status = 'COMPLETED'`이면 `settled_at IS NOT NULL`.
+- 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 원장으로 총 2P를 지급하고 고정 온보딩 키캡을 1회 지급한다.
+- 기존 회원은 `reward_eligible=false`이며 온보딩 포인트와 키캡 보상을 지급하지 않는다.
+- `accepted_tap_count`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
 - `granted_user_keycap_public_id`는 `OnboardingKeycapGrantUseCase`가 반환한 `userKeycapId`를 FK 없이 UUID scalar로 저장한다. 카탈로그 정보는 A가 `user_keycap -> keycap` 조회로 제공한다.
-- 각 milestone timestamp는 한 번만 설정한다.
-- optimistic lock 또는 row lock으로 포인트와 키캡 중복 지급을 방지한다.
-- `box opening animation started/ended` 같은 UI 상태는 DB에 저장하지 않는다.
+- `box opening animation started/ended` 같은 UI 상태는 DB에 저장하지 않는다. 상자 개봉과 키캡 reveal은 로그인 전 실제 서버 지급이 아닌 신규 가입 보상 미리보기 연출이다.
+- MVP의 고정 온보딩 키캡 code는 A 소유 `app_config`의 `onboarding_completion_keycap_code`로 관리하고, 지급 시점의 `keycap.public_id`를 `granted_user_keycap_public_id`로 복구한다.
 - 실제 SQL 파일은 아직 만들지 않았고, B DRAFT 마이그레이션 계획에 포함한다.
 
 ### abuse_signal
@@ -1215,5 +1194,5 @@ B 공통 정책:
 - V1000의 DB CHECK는 `result IN ('SUCCESS', 'FAILURE', 'DENIED')`에만 존재한다. `event_type`은 Java Enum 문자열 저장으로 검증하며 DB CHECK는 후속 migration 결정 사항이다.
 - Java `AuthSessionLog` Entity는 PostgreSQL `metadata JSONB` 저장/조회와 UUID/enum 문자열 저장을 통합 테스트로 검증했다.
 - `app_user`, `device` 등 나머지 A 전체 테이블과 B 담당 DRAFT 테이블의 상세 정책은 기존 표 명세를 Source of Truth로 유지한다.
-- `V1010__create_user_auth.sql`은 아직 생성하지 않았고 `PLANNED/NOT_STARTED`다. `app_user`, `device`, `user_device`, `auth_identity`, `user_merge_history` 구현과 `POST /api/v1/guests` API는 `NOT_STARTED`다.
-- 후속 순서는 Redis Session save/revoke race 보강, Refresh Rotation revoke marker 확인, V1010 User/Auth 테이블, Entity/Repository, `POST /api/v1/guests`, Toss 승격/병합 순으로 진행한다.
+- `V1010__create_user_auth.sql`은 아직 생성하지 않았고 `PLANNED/NOT_STARTED`다. `app_user`, `device`, `user_device`, `auth_identity` 구현과 Toss 로그인/회원 생성 API는 `NOT_STARTED`다.
+- 후속 순서는 Redis Session save/revoke race 보강, Refresh Rotation revoke marker 확인, V1010 User/Auth 테이블, Entity/Repository, Toss 로그인/회원 생성, 온보딩 로그인 정산 순으로 진행한다.

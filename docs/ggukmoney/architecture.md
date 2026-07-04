@@ -85,7 +85,7 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 
 | Aggregate | 테이블 |
 |---|---|
-| User/Auth | `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history`, `auth_session_log` |
+| User/Auth | `app_user`, `auth_identity`, `device`, `user_device`, `auth_session_log` |
 | Keycap/Box | `keycap`, `user_keycap`, `keycap_drop_table`, `keycap_drop_item`, `keycap_box_account`, `keycap_box_ledger`, `keycap_box_open`, `keycap_box_open_result` |
 | Region | `region`, `user_region`, `user_region_change` |
 | Ranking | `ranking_season`, `ranking_participation`, `ranking_score`, `ranking_score_event`, `ranking_snapshot`, `ranking_reward` |
@@ -101,7 +101,7 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 
 | Aggregate | 테이블 | 경계 원칙 |
 |---|---|---|
-| Tap/Onboarding/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `user_onboarding_progress`, `abuse_signal` | A에는 검증 결과 delta와 온보딩 키캡 지급 요청만 Port/Event로 전달 |
+| Tap/Onboarding/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `onboarding_settlement`, `abuse_signal` | A에는 검증 결과 delta와 온보딩 정산/보상 지급 요청만 Port/Event로 전달 |
 | Point | `point_account`, `point_ledger` | 포인트 원장은 B만 변경 |
 | Cashout | `cashout_request`, `toss_point_transfer` | 외부 Toss 지급과 포인트 복원을 B가 소유 |
 | Advertisement | `ad_placement`, `ad_view` | A는 완료된 adView 상태만 Port로 조회 |
@@ -121,11 +121,11 @@ B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 publ
 
 ### app_user 단일 모델
 
-게스트와 회원을 별도 테이블로 분리하지 않는다. 게스트가 획득한 키캡, 상자, 기록성 데이터를 회원 전환 시 복사하지 않고 상태 전환과 병합 이력으로 처리하기 위해서다.
+`app_user`는 Toss 로그인 완료 사용자를 관리한다. MVP에서는 MEMBER만 생성하며, 로그인 전 온보딩 로컬 체험을 위한 임시 서버 사용자나 서버 Session을 만들지 않는다.
 
 ### device와 user_device 분리
 
-기기 자체의 식별자와 사용자-기기 관계를 분리한다. 같은 기기에서 활성 `GUEST_OWNER`가 있으면 기존 게스트를 재사용하고, 회원 승격 시 `MEMBER_DEVICE`로 전환할 수 있다.
+기기 자체의 식별자와 사용자-기기 관계를 분리한다. 기기 정보는 Toss 로그인 후 회원 인증 Session, Push, 운영 추적에 필요한 범위에서 연결한다. 로그인 전 복구를 위한 기기 소유 관계는 만들지 않는다.
 
 ### Redis JWT 인증
 
@@ -141,48 +141,46 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 
 ### 온보딩 A/B 경계
 
-온보딩 진행 상태, 유효 탭 수, 15/30 포인트 지급, 45탭 milestone 감지는 B가 소유한다. 온보딩 키캡 후보군, 자동 개봉 기록, 완성 키캡 지급, 게스트에서 회원으로 승격된 뒤의 키캡 유지는 A가 소유한다. B는 A Entity/Repository를 직접 참조하지 않고 `OnboardingKeycapGrantUseCase`를 동기 호출해 즉시 표시할 키캡 결과를 받는다. 프론트의 자동 개봉은 서버가 확정한 보상 결과를 표현하는 UI 동작이며, 온보딩에서 별도 수동 상자 개봉 API를 호출하지 않는다.
+앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다. 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상은 Toss 로그인 전 생성하지 않는다.
 
-온보딩 상태는 0~44 유효 탭 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`로 전이한다. `IN_PROGRESS`와 `LOGIN_REQUIRED`는 API에서 `active=true`, `COMPLETED`는 `active=false`로 계산한다. 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 포인트/키캡 보상은 유지한다.
+`POST /api/v1/auth/toss/login`은 Toss auth 정보와 온보딩 정산 후보(`onboardingAttemptId`, `onboardingTapCount`, `onboardingCompleted`)를 함께 받을 수 있다. 서버는 `submittedTapCount`를 0..45로 clamp하고, `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
+
+신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 포인트 원장으로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 인정 가능한 탭만 반영한다. `onboardingAttemptId` 정산 결과는 재시도 멱등성을 위해 저장하며, 같은 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
 
 ### 기록 Projection
 
 기록 화면은 A/B 운영 테이블을 직접 조인하지 않는다. A 내부 이벤트와 B 이벤트를 `event_inbox`로 수신해 `user_record_daily`, `user_record_summary`, `user_record_reward`에 투영한다.
 
-## 게스트·회원 병합
+## Toss 로그인과 온보딩 정산
 
-### 게스트 최초 생성
+### 로그인 전 로컬 온보딩
 
-1. `deviceKey`를 hash한다.
-2. 기존 device를 찾거나 생성한다.
-3. 활성 `GUEST_OWNER`가 없으면 `app_user` GUEST를 생성한다.
-4. `user_device`를 `GUEST_OWNER`로 연결한다.
-5. Access JWT와 Refresh JWT를 발급한다.
-6. Redis `auth:refresh:{sessionId}`와 `auth:user-sessions:{userPublicId}`를 생성한다.
-7. `auth_session_log`에 `GUEST_CREATED`를 저장한다.
+1. 앱 시작 시 서버 API를 호출해 임시 서버 사용자나 인증 Session을 만들지 않는다.
+2. 프론트는 `onboardingAttemptId`, 탭 수, 완료 여부를 로컬에 저장한다.
+3. 15/30/45 보상 화면은 서버 지급 완료가 아니라 신규 가입 보상 미리보기와 애니메이션으로 처리한다.
 
-### 같은 기기 게스트 복구
+### Toss 신규 회원 로그인
 
-기존 ACTIVE GUEST 계정을 재사용한다. 기존 토큰 원문은 반환하지 않는다.
+1. Toss identity로 기존 `auth_identity`가 없으면 MEMBER `app_user`를 생성한다.
+2. 필요 시 `device`, `user_device`를 로그인 완료 회원 기기로 연결한다.
+3. Redis auth Session과 token pair를 생성한다.
+4. 온보딩 정산 입력이 있으면 `onboarding_settlement`를 생성 또는 조회한다.
+5. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
+6. 신규 가입 보상으로 총 2P와 고정 온보딩 키캡을 멱등 지급한다.
+7. `auth_session_log`, `PreloginOnboardingSettled`, `OnboardingPointRewardGranted`, `OnboardingKeycapGranted` 이벤트를 남긴다.
 
-Session 처리 분기:
+### Toss 기존 회원 로그인
 
-- 같은 guest와 같은 device라도 `POST /api/v1/guests`는 Refresh Token 원문을 받지 않으므로 기존 guest 계정을 재사용하되 새 Redis auth session과 token pair를 생성한다. 기존 Refresh Token을 가진 클라이언트의 세션 유지/교체는 `POST /api/v1/auth/refresh`가 담당한다.
-- Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
-- 폐기 또는 교체 방식은 서버가 결정하며 클라이언트가 선택하지 않는다.
-- `auth_session_log`에는 `GUEST_RECOVERED`를 저장한다.
+1. Toss identity로 기존 MEMBER를 찾는다.
+2. 필요 시 `device`, `user_device`를 로그인 완료 회원 기기로 연결한다.
+3. Redis auth Session과 token pair를 생성한다.
+4. 온보딩 정산 입력이 있으면 `onboarding_settlement`를 생성 또는 조회한다.
+5. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
+6. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
 
-### 신규 Toss 사용자
+### 복구와 재시도
 
-현재 게스트를 MEMBER로 승격하고 `auth_identity`를 연결한다. 현재 기기의 `user_device.account_role`은 `GUEST_OWNER`에서 `MEMBER_DEVICE`로 변경한다. 게스트 인증 세션은 폐기하고 MEMBER 기준 새 Redis 인증 세션을 생성한다.
-
-### 기존 Toss 회원 로그인
-
-현재 게스트를 source, 기존 Toss 회원을 target으로 병합한다. source의 `GUEST_OWNER`는 `active=false`로 비활성화하고 target과 현재 device의 `MEMBER_DEVICE`를 생성 또는 활성화한다. source 인증 세션은 전체 폐기하고 target 기준 새 Redis 인증 세션을 생성한다. 온보딩에서 게스트에게 서버 저장된 2P와 `user_keycap.public_id` 기준 키캡 결과는 회원 승격 시 유지한다. 기존 Toss 회원 병합 시 진행 중 랭킹 점수 합산 여부는 별도 병합 정책에서 결정한다.
-
-### 온보딩 시작과 로그인 시점
-
-UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 앱 시작 시 `POST /api/v1/guests`로 게스트 계정과 Redis 세션을 먼저 만든다. 15/30/45 보상은 로그인 전 로컬에만 저장하지 않고 게스트 사용자에게 멱등 저장한다. 완료 CTA의 Toss 로그인은 이미 저장된 게스트 데이터를 MEMBER로 영구 승격/귀속하는 단계다. Access Token 없는 일반 Toss 로그인은 `deviceKey/platform/appVersion` 계약 미확정으로 계속 `BLOCKED`이며, guest Access Token 기반 온보딩 완료 승격과는 별도 흐름이다.
+`onboardingAttemptId` 기준으로 정산 결과를 저장해 응답 유실, 앱 재실행, 부분 실패 후 재시도에서도 신규/기존 회원 판정과 보상 지급 여부를 유지한다. 로그인과 A/B 보상 정산의 트랜잭션 경계, 회원 생성 후 부분 실패 복구 방식은 Decision Required다.
 
 ## A/B Port와 Event
 
@@ -190,7 +188,7 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 |---|---|---|
 | B -> A | `ValidatedTapApplyUseCase` | 검증 완료 탭을 A 상자 진행도와 랭킹 점수에 반영 |
 | B -> A | `KeycapBoxGrantUseCase` | 친구초대 등 B 도메인 사유로 A 상자 보유량 지급 |
-| B -> A | `OnboardingKeycapGrantUseCase` | 45탭 온보딩 milestone에서 완성 키캡 1개를 멱등 지급하고 즉시 표시할 결과 반환 |
+| B -> A | `OnboardingKeycapGrantUseCase` | 로그인 정산 중 신규 가입자에게 고정 온보딩 키캡 1개를 멱등 지급하고 결과 반환 |
 | B -> A | `RecordEventIngestUseCase` | 포인트/출금/광고 등 B 이벤트를 A 기록 조회 모델에 투영 |
 | A -> B | `AdvertisementVerificationPort` | 광고 상자 개봉 전에 B의 완료된 `ad_view` 상태를 로컬 조회 |
 | A -> B | `UserWithdrawalGuardPort` | 회원 탈퇴 전에 B 처리 중 출금 등 차단 사유 조회 |
@@ -209,7 +207,7 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 - `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp, Lua 원자 logout-all: `RedisAuthSessionRepositoryIntegrationTest`, `RefreshLuaCasIntegrationTest`, `AuthServiceLogoutAllIntegrationTest`, `AuthApiIntegrationTest` 기준 `IMPLEMENTED`
 - `auth_session_log` Entity/Repository, JSONB/UUID/enum 저장, 최소 Flyway SQL 적용: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest` 기준 `IMPLEMENTED`
 - 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구 전체 정책: `IN_PROGRESS`
-- 게스트 생성/복구와 Toss 승격/병합: `NOT_STARTED`
+- Toss 로그인/회원 생성과 온보딩 로그인 정산: `NOT_STARTED`
 
 | 빵도감 파일 또는 클래스 | 현재 역할 | 의존 도메인 | 꾹머니 대응 | 재사용 등급 | 변경 사항 | 주의 | 관련 테스트 |
 |---|---|---|---|---|---|---|---|
@@ -223,7 +221,7 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 | `AccessLogFilter` | request trace, access log, IP, userId/sessionId 기록 | Global web | 공통 Access Log Filter | 1 | `traceId` 명칭으로 통일 | query/header/token 미기록 유지 | `AccessLogFilterTest` |
 | `RequestLogContext` | 요청 추적 id 조회 | Global logging | 공통 trace context | 1 | `traceId` 명칭으로 통일 | 응답 wrapper의 `traceId`와 동일 값 사용 | `AccessLogFilterTest` |
 | `RateLimitInterceptor` | `/api/v1/auth/refresh` rate limit 로그 | Global rate limit | 인증 rate limit 후보 | 2 | Redis 기반 rate limit로 변경 가능 | refresh brute-force 방어 | `RateLimitInterceptorTest` |
-| Toss 회원 생성/동기화 로직 | 빵도감 User 생성/복구 | Bread User | Toss Adapter/Fake Adapter | 3 | 직접 복사하지 않음 | 게스트 승격/병합 정책과 다름 | `AuthServiceTest` 일부 참고 |
+| Toss 회원 생성/동기화 로직 | 빵도감 User 생성/복구 | Bread User | Toss Adapter/Fake Adapter | 3 | 직접 복사하지 않음 | 앱인토스 auth 계약과 온보딩 정산 경계 확정 필요 | `AuthServiceTest` 일부 참고 |
 | Redis Session Repository | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:refresh`, `auth:user-sessions`, denylist 설계 필요 | Redis 장애 정책 필수 | 꾹머니 신규 테스트 |
 | Access denylist | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:deny:access:{jti}` | logout/정지/탈퇴 즉시 차단 | 꾹머니 신규 테스트 |
 | 인증 감사 테이블 | 빵도감 main HEAD에서 미발견 | 없음 | `auth_session_log` | 4 | 영구 감사 로그 설계 | 토큰 원문 저장 금지 | 꾹머니 신규 테스트 |
@@ -276,6 +274,6 @@ Auth Audit Log는 [table-spec.md](table-spec.md)의 `auth_session_log`를 기준
 - Redis Refresh Rotation은 Lua CAS 방식으로 유지한다. 별도 Redis refresh lock key는 사용하지 않는다.
 - 거의 동시 Refresh 충돌은 `AUTH_REFRESH_CONFLICT`로 처리하고 Session을 폐기하지 않는다. Rotation 완료 후 과거 Refresh Token 재사용은 `AUTH_REFRESH_REUSED`로 처리하고 Session을 폐기하며 `REFRESH_REUSE_DETECTED` 감사 로그를 남긴다.
 - logout-all Lua 내부 처리는 만료 Session 정리, 활성 Refresh Session 삭제, user session ZSet 삭제, 사용자 revoke marker 저장, 현재 access denylist 저장까지 `IMPLEMENTED`다. 다만 `RedisAuthSessionRepository.save(AuthSession)`이 refresh hash 저장, TTL 설정, user-sessions ZSet 추가를 분리 실행하므로 Session save와 logout-all 사이 race 방지는 `IN_PROGRESS`다.
-- `POST /api/v1/guests` 구현 전에 Session save를 단일 Redis Lua Script로 만들고, `issuedAtMillis <= revokedAtMillis`인 세션 생성을 거절해야 한다. 같은 보강에서 Refresh Rotation도 사용자 revoke marker를 확인하고 revoked session이면 refresh hash/ZSet을 정리한 뒤 `AUTH_USER_REVOKED`를 반환한다.
+- Toss 로그인/회원 인증 Session 운영 전 Session save를 단일 Redis Lua Script로 만들고, `issuedAtMillis <= revokedAtMillis`인 세션 생성을 거절해야 한다. 같은 보강에서 Refresh Rotation도 사용자 revoke marker를 확인하고 revoked session이면 refresh hash/ZSet을 정리한 뒤 `AUTH_USER_REVOKED`를 반환한다.
 - Redis Cluster 전환 시 관련 Lua key는 같은 hash slot에 있어야 하며, `{userPublicId}` hash tag 기반 key 설계는 후속 결정 사항이다.
 - `AuthAuditService`는 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않도록 인증 상태 변경 경계 밖에서 실패를 삼키고 Error/Infrastructure Log를 남긴다.
