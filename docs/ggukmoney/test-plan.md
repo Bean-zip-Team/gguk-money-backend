@@ -21,7 +21,7 @@
 - `./gradlew bootJar --info --stacktrace`: 성공.
 - 개별 테스트 `AccessLogFilterTest`, `JwtTokenProviderTest`, `RedisAuthSessionRepositoryTest`, `AuthServiceLogoutAllTest`, `TestEnvironmentSmokeTest`: 모두 성공.
 - `flywayValidate`: 현재 Gradle Flyway plugin task가 없어 실행 대상이 아님. 실제 DB migration 검증은 Flyway plugin 또는 Testcontainers 통합 테스트로 보완한다.
-- Redis 관련 검증은 현재 Mockito 기반 단위 테스트이며, 실제 Redis 서버 통합 테스트는 아직 추가되지 않았다.
+- Redis/PostgreSQL 관련 인증 검증은 Testcontainers 통합 테스트로 확인했다.
 
 ## 빵도감에서 참고한 테스트 구조
 
@@ -148,16 +148,28 @@
 - 같은 사용자와 같은 `change_month`로 지역 변경을 두 번 생성할 수 없다.
 - 같은 사용자에게 `SCHEDULED` 지역 변경 예약이 두 개 생길 수 없다.
 - 지역 변경 예약은 다음 주 월요일 00:00부터 적용된다.
-- 진행 중 시즌의 참여 지역은 변경되지 않는다.
-- 게스트는 랭킹 조회는 가능하지만 참여 확정은 불가능하다.
-- MEMBER와 지역 설정이 있어야 랭킹 참여가 가능하다.
-- 동일 시즌에 같은 사용자는 한 번만 참여할 수 있다.
+- Region 기능은 유지하지만 Ranking Aggregate와 직접 연결하지 않는다.
+- 전체 랭킹 응답에는 지역 필드가 없다.
+- 지역/전국 Query를 받지 않는다.
+- 신규 게스트가 별도 참가 API 없이 현재 시즌에 포함된다.
+- 7일 시즌 경계가 정확하다.
+- 동일 시즌에 같은 사용자는 한 번만 자동 포함된다.
 - 동일 탭 배치는 랭킹 점수에 한 번만 반영된다.
 - 동점 사용자는 `score DESC`, `reached_at ASC`, `user_public_id ASC` 순서로 정렬된다.
 - 페이지 경계에 동점자가 있을 때 같은 점수 사용자를 추가 조회해 순위를 보정한다.
-- 주간 1위는 한정 키캡 보상을 자동 지급받는다.
-- 2~10위는 입상 기록으로 저장된다.
+- 시즌 종료 시 snapshot이 사용자당 1건 생성된다.
+- 과거 회차가 최신순으로 조회된다.
+- 1위 회차는 `rank=1`로 판정된다.
+- 내 행에 `isMe=true`가 한 건만 존재한다.
+- `remainingTapToFirst` 계산이 정확하다.
+- 1위 사용자는 남은 탭 0이다.
+- Redis와 PostgreSQL 최종 순위가 일치한다.
+- 시즌 전환 시 새 점수 0으로 시작한다.
+- `/rankings/participations`는 신규 프론트 계약에서 사용하지 않는다.
+- 랭킹 보상 유지 여부가 확정되면 주간 1위 한정 키캡 자동 지급과 2~10위 입상 기록을 검증한다.
 - 결과 확인 API는 보상 지급을 다시 실행하지 않는다.
+- 순위 등락 비교 기준 테스트는 정책 확정 전 `Decision Required`로 둔다.
+- 주간 12,000 제한 테스트는 정책 결정 전 확정 테스트로 쓰지 않는다.
 
 ## 알림/기록/설정 테스트
 
@@ -184,14 +196,41 @@
 - `/taps/batches` 동일 `tapBatchId` 재요청은 같은 결과를 반환한다.
 - 동일 `tapBatchId`에 다른 body hash가 오면 충돌한다.
 - 포인트 대상 탭은 일 5,000회에서 더 증가하지 않는다.
-- 랭킹 탭은 주 12,000회에서 더 증가하지 않는다.
+- 주간 랭킹 점수 12,000 한도는 최신 UI 목업 점수와 충돌하므로 Decision Required다.
 - 500 유효 탭마다 1P가 적립되고 나머지가 유지된다.
-- 최초 상자는 200탭, 이후 상자는 500 진행도마다 지급된다.
+- 일반 상자 진행도는 기존 정책을 유지한다.
 - 부스터는 포인트와 상자 진행도에만 2배 적용되고 랭킹에는 적용되지 않는다.
 - point account 갱신과 point ledger 기록은 같은 트랜잭션이다.
 - 출금은 최소 10P, 10P 단위, 10P=7 Toss 포인트다.
 - 동일 Idempotency-Key 출금은 한 건만 생성된다.
 - 외부 지급 최종 실패 시 reversal 원장으로 포인트가 복원된다.
+
+## 온보딩 테스트 — PROPOSED
+
+경계 테스트:
+
+- 0~14탭: 포인트 없음.
+- 15탭: 1P 한 번 지급.
+- 16~29탭: 추가 지급 없음.
+- 30탭: 추가 1P 한 번 지급.
+- 31~44탭: 추가 지급 없음.
+- 45탭: 온보딩 완성 키캡 1개 지급.
+- 46탭 이후: 온보딩 키캡 추가 지급 없음.
+
+재시도/동시성:
+
+- 같은 tapBatchId 재전송 시 보상 중복 없음.
+- 15/30/45 경계 동시 요청 시 한 번만 지급.
+- 한 배치가 여러 milestone을 넘으면 모든 해당 milestone을 한 번씩 지급.
+- B 포인트 ledger와 onboarding progress 정합성.
+- A 키캡 지급 referenceId 멱등성.
+- A Port 재시도 시 같은 keycap 결과 반환.
+- 일반 상자 잔액과 온보딩 상자를 혼동하지 않음.
+- 온보딩 키캡은 조각이 아니라 COMPLETED 상태.
+- 프론트 수동 open API 없이 지급 완료.
+- 앱 재실행 시 진행 상태 복원.
+- 로그인 실패 후 보상 유지.
+- 게스트에서 회원으로 승격할 때 2P와 키캡 유지.
 
 ## 광고/부스터/초대 테스트 — PROPOSED
 
@@ -225,7 +264,8 @@
 - `keycap_box_open(ad_view_id) WHERE open_method = 'ADVERTISEMENT'` partial unique.
 - `ranking_score_event(source_type, source_event_id)` unique.
 - `ranking_participation(season_id, user_id)` unique.
-- `ranking_snapshot` 지역/전국 partial unique.
+- `ranking_snapshot(season_id, user_id)` unique.
+- `user_onboarding_progress(user_public_id)` unique.
 - `notification_log.push_device_id`는 `NOT NULL`.
 - `notification_log(dedupe_key, push_device_id)` unique.
 - `user_region_change(user_id, change_month)` unique.
@@ -246,8 +286,7 @@
 
 ## Redis 복구 테스트
 
-- Redis 지역 랭킹 key 삭제 후 DB 기준으로 복원된다.
-- Redis 전국 랭킹 key 삭제 후 DB 기준으로 복원된다.
+- Redis 전체 랭킹 key 삭제 후 DB 기준으로 복원된다.
 - DB 점수와 Redis 점수가 다를 때 정산 전 DB 기준으로 보정된다.
 - 랭킹 점수 반영은 DB commit 이후 Redis를 갱신한다.
 - DB 성공 후 Redis 실패 시 PostgreSQL 기준 이벤트를 재처리해 Redis를 복구한다.
@@ -269,7 +308,10 @@
 - 지역 seed 데이터 적재 방식을 확정했는가.
 - `/app-config`는 A 소유 정책만 반환하고 B/공통 정책은 Query Facade에서 합성한다는 기준을 공유했는가.
 - outbox 전달 방식과 재시도 주기를 확정했는가.
-- 와이어프레임의 지역 랭킹 콜드스타트 `50명` 기준과 전국 fallback 조건을 적용할지 확정했는가.
+- 순위 등락 비교 기준을 확정했는가.
+- 주간 랭킹 점수 12,000 한도 유지/제거/상향 여부를 확정했는가.
+- 자동 랭킹 참가 row eager/lazy 생성 방식을 확정했는가.
+- 최신 결과/보상 모달 유지 여부를 확정했는가.
 - 탭 배치 기준을 현재 `50탭 또는 2초`로 둘지, 와이어프레임의 `30초 또는 100탭`으로 바꿀지 확정했는가.
 - 출금 단위를 현재 `10P` 단위로 둘지, 와이어프레임 예시처럼 `1P` 단위로 바꿀지 확정했는가.
 - Analytics `eventName`, `schemaVersion`, `source`, properties 금지값 검증을 계약 테스트에 포함했는가.

@@ -148,9 +148,9 @@ Refresh Token payload:
 | `A` | `CONFIRMED` | 지역/랭킹 | `POST` | `/regions/detect` | 좌표 기반 지역 판별 |
 | `A` | `CONFIRMED` | 지역/랭킹 | `GET` | `/members/me/region` | 내 지역 |
 | `A` | `CONFIRMED` | 지역/랭킹 | `PUT` | `/members/me/region` | 지역 설정 또는 변경 예약 |
-| `A` | `CONFIRMED` | 지역/랭킹 | `POST` | `/rankings/participations` | 현재 시즌 참가 |
+| `A` | `DEPRECATED` | 랭킹 | `POST` | `/rankings/participations` | 신규 프론트 미사용, 자동 포함으로 대체 |
 | `A` | `CONFIRMED` | 지역/랭킹 | `GET` | `/rankings/current` | 현재 랭킹 |
-| `A` | `CONFIRMED` | 지역/랭킹 | `GET` | `/rankings/me` | 내 랭킹 상태 |
+| `A` | `DEPRECATED` | 랭킹 | `GET` | `/rankings/me` | `/rankings/current.myRank`로 통합 |
 | `A` | `CONFIRMED` | 지역/랭킹 | `GET` | `/rankings/results/latest` | 최신 결과 |
 | `A` | `CONFIRMED` | 지역/랭킹 | `GET` | `/rankings/results` | 과거 결과 |
 | `A` | `CONFIRMED` | 알림 | `PUT` | `/push-devices/current` | Push Token 등록/갱신 |
@@ -254,6 +254,7 @@ Toss 로그인으로 게스트를 회원으로 승격하거나 기존 회원에 
 인증 조건:
 
 - Access Token 없이 호출하는 일반 Toss 로그인은 `deviceKey`, `platform`, `appVersion` 요청 계약이 확정되어야 구현 가능하다.
+- 온보딩 완료 CTA처럼 이미 `POST /guests`로 발급받은 guest Access Token을 가진 사용자의 MEMBER 승격은 별도 흐름이며, Access Token 없는 일반 Toss 로그인의 BLOCKED 상태를 해소하지 않는다.
 - 현재 게스트를 승격하거나 기존 Toss 회원에 병합하려면 guest Access Token이 필요하다.
 - 로그인된 회원의 Toss 재연결은 member Access Token 기반 별도 정책으로 다루며 MVP 범위에서는 이 API가 자동 재연결을 수행하지 않는다.
 
@@ -290,6 +291,7 @@ Response data:
 - source 게스트의 인증 세션은 모두 폐기한다.
 - target 회원 기준 새 Redis 인증 세션을 생성한다.
 - 게스트 랭킹 점수는 기존 회원의 진행 중 랭킹 점수에 합산하지 않는다.
+- 온보딩 중 게스트에게 서버 저장된 포인트와 키캡은 MEMBER 승격 후 유지한다.
 
 ### POST /auth/refresh
 
@@ -679,6 +681,7 @@ Response data:
 - 보유 상자가 없으면 실패한다.
 - `ADVERTISEMENT`는 완료된 `adViewId` 하나로 상자 1개만 개봉한다.
 - 동일 `adViewId`는 재사용할 수 없다.
+- 온보딩 키캡은 이 수동 개봉 API로 열지 않는다. A 내부 기록이 필요하면 `method=ONBOARDING_AUTO`, `reason=ONBOARDING_FIRST_KEYCAP`로 일반 FREE/ADVERTISEMENT 개봉과 분리한다.
 
 ### GET /keycap-boxes/history
 
@@ -815,19 +818,25 @@ Request:
 | 항목 | 내용 |
 |---|---|
 | Owner | `A` |
-| Status | `CONFIRMED` |
+| Status | `DEPRECATED` |
 | 인증 | Access Token |
-| 게스트 허용 | 아니오, MEMBER만 |
-| 성공 | `201 Created` 또는 `200 OK` |
+| 게스트 허용 | 예 |
+| 성공 | 기존 클라이언트 호환 시 `200 OK` 가능 |
 | 멱등성 | season + user |
 | 관련 테이블 | `ranking_participation`, `ranking_score` |
-| Redis/Port/Event | Redis ranking keys |
+| Redis/Port/Event | 없음 |
 
-현재 시즌의 지역 랭킹에 참여한다.
+최신 정책은 가입 또는 게스트 생성 즉시 현재 활성 시즌에 자동 포함되므로 신규 프론트는 이 API를 호출하지 않는다.
 
-오류: `MEMBER_REQUIRED`, `RANKING_REGION_REQUIRED`, `RANKING_ALREADY_JOINED`, `RANKING_SEASON_NOT_ACTIVE`.
+자동 참가 후보 시점:
 
-참여 시점의 지역을 `ranking_participation.region_id`에 고정한다.
+- 신규 게스트 생성 시 현재 활성 시즌 참가 생성.
+- 신규 시즌 시작 시 ACTIVE 사용자 참가/점수 초기화 또는 lazy create.
+- 회원 승격 시 기존 게스트 참가와 점수를 유지.
+
+Decision Required:
+
+- 대량 사용자를 시즌 시작 시 eager INSERT할지, 첫 유효 탭 또는 최초 랭킹 조회 때 lazy create할지 운영 방식 확정 필요.
 
 ### GET /rankings/current
 
@@ -839,77 +848,84 @@ Request:
 | 게스트 허용 | 예 |
 | 성공 | `200 OK` |
 | 멱등성 | 없음 |
-| 관련 테이블 | `ranking_score`, `ranking_participation`, `region` |
-| Redis/Port/Event | Redis ranking keys |
+| 관련 테이블 | `ranking_season`, `ranking_score`, `ranking_participation` |
+| Redis/Port/Event | `rank:overall:{seasonId}`, `rank:reached:{seasonId}` |
 
-Redis로 후보를 조회하고 PostgreSQL 기준으로 동점 보정한다.
+전체 유저 단일 현재 랭킹을 조회한다. 지역/전국 scope, 지역 선택, 지역 필터는 없다. Redis로 상위 순위와 내 주변 후보를 조회하고 PostgreSQL 기준으로 동점 보정한다.
 
 Query:
 
 ```text
-scope=REGION|NATIONAL
-regionId=region-public-uuid
 limit=50
 ```
+
+`limit`은 상위 순위와 내 주변 순위를 한 응답에 담기 위한 조회 크기 힌트다. 응답 `items`는 상위권과 내 주변 행을 함께 포함할 수 있으며, 프론트는 `isMe=true` 행을 강조한다.
 
 Response data:
 
 ```json
 {
   "seasonId": "season-public-uuid",
-  "scope": "REGION",
+  "round": 7,
+  "startsAt": "2026-06-23T00:00:00Z",
+  "endsAt": "2026-06-30T00:00:00Z",
+  "remainingSeconds": 345600,
   "items": [
     {
       "rank": 1,
       "userId": "user-public-uuid",
-      "nickname": "꾹꾹이",
-      "score": 1234,
-      "reachedAt": "2026-07-02T03:00:00Z"
+      "nickname": "꾹마스터",
+      "score": 18420,
+      "previousRank": null,
+      "rankDelta": 0,
+      "isMe": false
+    },
+    {
+      "rank": 3,
+      "userId": "my-user-public-uuid",
+      "nickname": "나",
+      "score": 12840,
+      "previousRank": 4,
+      "rankDelta": 1,
+      "isMe": true
     }
   ],
-  "coldStart": false
+  "myRank": {
+    "rank": 3,
+    "score": 12840,
+    "remainingTapToFirst": 5580
+  }
 }
 ```
+
+응답 규칙:
+
+- 예시 점수는 최신 UI 목업값이며 실제 점수 한도 정책으로 확정하지 않는다.
+- `rankDelta > 0`은 순위 상승, `< 0`은 하락, `0`은 변동 없음이다.
+- `isMe=true`는 로그인 또는 게스트 인증 사용자의 행이다.
+- 인증되지 않은 조회를 허용한다면 `myRank=null`, 모든 `isMe=false`로 정의한다.
+- `remainingTapToFirst`는 `max(firstScore - myScore, 0)`이다.
+- 1위 사용자는 `remainingTapToFirst=0`이다.
+
+Decision Required:
+
+- 순위 등락 비교 기준 시점: 직전 화면 조회 시점, 일일 스냅샷, 직전 점수 반영 직전, 직전 회차 최종 순위 중 확정 필요.
+- 주간 랭킹 점수 12,000 한도: A안 제거, B안 유지 후 UI 목업 숫자 수정, C안 상향 중 확정 필요.
 
 ### GET /rankings/me
 
 | 항목 | 내용 |
 |---|---|
 | Owner | `A` |
-| Status | `CONFIRMED` |
+| Status | `DEPRECATED` |
 | 인증 | Access Token |
 | 게스트 허용 | 예 |
 | 성공 | `200 OK` |
 | 멱등성 | 없음 |
 | 관련 테이블 | `ranking_participation`, `ranking_score` |
-| Redis/Port/Event | Redis ranking keys |
+| Redis/Port/Event | `rank:overall:{seasonId}` |
 
-내 현재 순위, 점수, 1위까지 남은 탭 수를 조회한다. 게스트는 참여 유도 응답으로 처리한다.
-
-Response data:
-
-```json
-{
-  "seasonId": "season-public-uuid",
-  "scope": "REGION",
-  "region": {
-    "regionId": "region-public-uuid",
-    "name": "서울 강남구"
-  },
-  "rank": 7,
-  "previousRank": 9,
-  "rankDelta": 2,
-  "score": 8394,
-  "remainingTapToFirst": 320,
-  "participantCount": 48,
-  "requiredParticipantCount": null,
-  "fallbackScope": null,
-  "inviteCtaVisible": false,
-  "coldStart": false
-}
-```
-
-`participantCount`, `requiredParticipantCount`, `fallbackScope`, `inviteCtaVisible`, `coldStart`는 지역 랭킹 콜드스타트 기준이 확정될 때 함께 재검토한다.
+최신 화면은 `GET /rankings/current` 응답의 `myRank`로 내 순위 요약을 통합한다. 신규 프론트 구현에서는 사용하지 않는다.
 
 ### GET /rankings/results/latest
 
@@ -924,18 +940,14 @@ Response data:
 | 관련 테이블 | `ranking_snapshot`, `ranking_reward` |
 | Redis/Port/Event | 없음 |
 
-최신 주간 랭킹 결과를 조회한다. 결과 화면 버튼은 보상 지급 버튼이 아니라 확인 버튼이다.
+최신 주간 랭킹 결과·보상 모달을 조회한다. 이번 최신 랭킹 목록/이전 기록 화면과 별도 목적일 수 있으므로 바로 삭제하지 않는다. 다만 전체 랭킹 전환에 맞춰 scope, region, 지역명 기반 메시지는 사용하지 않는다.
 
 Response data:
 
 ```json
 {
   "seasonId": "season-public-uuid",
-  "scope": "REGION",
-  "region": {
-    "regionId": "region-public-uuid",
-    "name": "서울 강남구"
-  },
+  "round": 7,
   "resultType": "FIRST_PLACE",
   "rank": 1,
   "previousRank": 3,
@@ -950,14 +962,18 @@ Response data:
   "limitedKeycap": {
     "keycapId": "keycap-public-uuid",
     "code": "WEEKLY_GOLD_01",
-    "name": "강남 1위 키캡"
+    "name": "주간 1위 키캡"
   },
-  "message": "강남구 주간 1위!",
+  "message": "주간 랭킹 1위!",
   "settledAt": "2026-07-06T00:00:00Z"
 }
 ```
 
 `resultType`: `FIRST_PLACE`, `PLACED`, `NOT_PLACED`, `RANK_CHANGED`.
+
+Decision Required:
+
+- 최신 MVP에서 결과·보상 모달을 유지하는지 확정 필요.
 
 ### GET /rankings/results
 
@@ -972,7 +988,7 @@ Response data:
 | 관련 테이블 | `ranking_snapshot`, `ranking_reward` |
 | Redis/Port/Event | 없음 |
 
-과거 랭킹 결과 목록을 조회한다.
+최신 이전 회차 기록 화면의 Source of Truth다. 회차별 내 최종 순위와 점수를 최신 회차부터 내림차순으로 조회한다. 지역 관련 필드는 없다.
 
 Query:
 
@@ -988,31 +1004,33 @@ Response data:
   "items": [
     {
       "seasonId": "season-public-uuid",
-      "scope": "REGION",
-      "region": {
-        "regionId": "region-public-uuid",
-        "name": "서울 강남구"
-      },
-      "resultType": "PLACED",
+      "round": 7,
+      "startsAt": "2026-06-23T00:00:00Z",
+      "endsAt": "2026-06-30T00:00:00Z",
       "rank": 3,
-      "previousRank": 5,
-      "rankDelta": 2,
-      "score": 98400,
-      "reward": {
-        "type": "POINT",
-        "pointAmount": 10,
-        "boxCount": 0
-      },
-      "rewardGranted": true,
-      "limitedKeycap": null,
-      "message": "강남구 주간 3위",
-      "settledAt": "2026-06-29T00:00:00Z"
+      "score": 12840,
+      "firstPlace": false
+    },
+    {
+      "seasonId": "season-public-uuid",
+      "round": 3,
+      "startsAt": "2026-05-26T00:00:00Z",
+      "endsAt": "2026-06-02T00:00:00Z",
+      "rank": 1,
+      "score": 15600,
+      "firstPlace": true
     }
   ],
   "nextCursor": null,
   "hasMore": false
 }
 ```
+
+정렬:
+
+- 최신 회차 우선.
+- 같은 회차 항목은 사용자당 1건.
+- `firstPlace`는 `ranking_snapshot.final_rank == 1`에서 파생한다.
 
 ### 알림
 
@@ -1324,10 +1342,20 @@ Response data:
     "remainingDailyCount": 3
   },
   "ranking": {
-    "participating": true,
-    "regionName": "광명시",
+    "autoIncluded": true,
     "rank": 12,
     "weeklyScore": 8347
+  },
+  "onboarding": {
+    "active": true,
+    "stage": "IN_PROGRESS",
+    "validTapCount": 14,
+    "pointGrantedTotal": 0,
+    "nextMilestoneTapCount": 15,
+    "firstBoxDropped": false,
+    "keycapRevealed": false,
+    "loginRequired": false,
+    "keycap": null
   },
   "equippedKeycap": {
     "keycapId": "keycap-public-uuid",
@@ -1339,6 +1367,13 @@ Response data:
 
 오류: `AUTH_REQUIRED`, `HOME_QUERY_PARTIAL_FAILURE`. A Query Port 일부가 실패하면 임의의 0으로 숨기지 않고 `unavailableSections`를 응답에 포함하는 degraded 응답을 검토한다.
 
+온보딩 규칙:
+
+- `stage`: `IN_PROGRESS`, `LOGIN_REQUIRED`, `COMPLETED`.
+- 프론트는 `validTapCount`, `milestonesGranted`, `nextMilestoneTapCount`, `keycap`, `loginRequired`로 화면을 결정한다.
+- 15/30/45 세부 애니메이션 상태를 모두 DB enum으로 만들지 않는다.
+- `weeklyRankingLimit=12000`은 기존 정책값이며 최신 랭킹 UI 목업 점수와 충돌하므로 Decision Required다.
+
 ### POST /taps/batches
 
 | 항목 | 내용 |
@@ -1349,8 +1384,8 @@ Response data:
 | 게스트 허용 | 예 |
 | 성공 | `200 OK` |
 | 멱등성 | `tapBatchId` + `tapSessionId` + `sequence` |
-| 관련 테이블 | `tap_batch`, `tap_event`, `user_tap_daily`, `abuse_signal`, `point_account`, `point_ledger` |
-| Redis/Port/Event | `ValidatedTapApplyUseCase`, Record Event |
+| 관련 테이블 | `tap_batch`, `tap_event`, `user_tap_daily`, `user_onboarding_progress`, `abuse_signal`, `point_account`, `point_ledger` |
+| Redis/Port/Event | `ValidatedTapApplyUseCase`, `OnboardingKeycapGrantUseCase`, Record Event |
 
 현재 PROPOSED 기준은 프론트가 50탭 또는 2초 중 먼저 도달한 시점에 배치를 전송하는 것이다. 앱이 백그라운드로 전환되면 미전송 배치를 로컬에 보존하고 다음 실행 시 같은 `tapBatchId`로 재시도한다.
 
@@ -1402,6 +1437,16 @@ Response data:
   "risk": {
     "level": "NORMAL",
     "reviewRequired": false
+  },
+  "onboarding": {
+    "active": true,
+    "validTapCount": 15,
+    "milestonesGranted": [
+      "POINT_15"
+    ],
+    "nextMilestoneTapCount": 30,
+    "loginRequired": false,
+    "keycap": null
   }
 }
 ```
@@ -1410,14 +1455,41 @@ Response data:
 
 - 서버가 최종 유효 탭 수를 결정하며 클라이언트 계산값을 신뢰하지 않는다.
 - 포인트 적립 대상 유효 탭은 일 5,000회까지다.
-- 주간 랭킹 반영 한도는 12,000회다.
+- 주간 랭킹 반영 한도 12,000회는 최신 UI 목업 점수와 충돌하므로 Decision Required다. 확정 전까지 예시 점수는 UI 목업값으로만 표시한다.
 - 500 유효 탭마다 1P를 지급하고 나머지는 유지한다.
-- 최초 온보딩 상자는 누적 200탭, 이후 상자는 진행도 500마다 지급한다.
+- 일반 상자 진행도는 기존 정책을 유지한다.
+- 온보딩 전용 milestone은 일반 경제와 분리한다: 15탭 1P, 30탭 추가 1P, 45탭 온보딩 완성 키캡 1개.
+- 한 배치가 14탭에서 46탭처럼 여러 milestone을 넘으면 `POINT_15`, `POINT_30`, `FIRST_KEYCAP_45`를 모두 한 번씩 처리한다.
+- 45탭 milestone은 `OnboardingKeycapGrantUseCase`를 동기 호출해 즉시 표시할 키캡 결과를 응답한다.
+- 온보딩 플로우는 프론트 수동 상자 개봉 API를 호출하지 않는다.
 - 부스터는 포인트/상자 진행도에 2배 적용하고 랭킹 점수에는 적용하지 않는다.
 - 동일 `tapBatchId` 재요청은 기존 결과를 반환한다.
 - 부스터 시작/종료 경계를 넘는 배치는 프론트가 경계에서 flush하고, 서버는 서버 시각으로 최종 검증한다.
 
 오류: `TAP_BATCH_INVALID`, `TAP_BATCH_DUPLICATED_WITH_DIFFERENT_BODY`, `TAP_SEQUENCE_CONFLICT`, `TAP_RATE_SUSPICIOUS`, `DEVICE_BLOCKED`, `RATE_LIMITED`.
+
+45탭 응답 예시:
+
+```json
+{
+  "onboarding": {
+    "active": true,
+    "validTapCount": 45,
+    "milestonesGranted": [
+      "POINT_30",
+      "FIRST_KEYCAP_45"
+    ],
+    "nextMilestoneTapCount": null,
+    "loginRequired": true,
+    "keycap": {
+      "keycapId": "keycap-public-uuid",
+      "code": "ONBOARDING_BLUE_SWITCH",
+      "name": "청축 키캡",
+      "imageUrl": "https://..."
+    }
+  }
+}
+```
 
 ### GET /taps/today
 
@@ -1908,8 +1980,22 @@ Request:
 | `kbox_open` | `KEYCAP_BOX_OPENED` | CLIENT | 키캡 상자 열기 탭 |
 | `box_result_view` | `KEYCAP_BOX_RESULT_VIEWED` | CLIENT | 상자 결과 노출 |
 | `skin_view` | `KEYCAP_SKIN_VIEWED` | CLIENT | 키캡 스킨 화면 노출 |
-| `rank_view` | `RANKING_VIEWED` | CLIENT | 랭킹 화면 노출 |
-| `rank_tap_join` | `RANKING_JOIN_TAPPED` | CLIENT | 랭킹 참가 탭 |
+| `rank_view` | `RANKING_VIEWED` | CLIENT | 랭킹 화면 노출, property `my_rank` |
+| `rank_tap_history` | `RANKING_HISTORY_TAPPED` | CLIENT | 이전 기록 탭 |
+| `history_view` | `RANKING_HISTORY_VIEWED` | CLIENT | 이전 기록 화면 노출, property `rounds` |
+| `history_back` | `RANKING_HISTORY_BACK_TAPPED` | CLIENT | 이전 기록 뒤로가기 |
+| `onb_home_view` | `ONBOARDING_HOME_VIEWED` | CLIENT | 온보딩 홈 노출, property `step` |
+| `onb_tap_first` | `ONBOARDING_FIRST_TAP` | CLIENT | 온보딩 첫 탭 |
+| `onb_coach_dismiss` | `ONBOARDING_COACH_DISMISSED` | CLIENT | 코치마크 닫기 |
+| `onb_earn_p` | `ONBOARDING_POINT_EARNED` | CLIENT | 온보딩 포인트 획득, properties `amount`, `tap_count` |
+| `onb_toast_view` | `ONBOARDING_POINT_TOAST_VIEWED` | CLIENT | 온보딩 포인트 토스트, property `tap_count` |
+| `onb_box_drop` | `ONBOARDING_BOX_DROPPED` | CLIENT | 온보딩 상자 드롭, property `box_type` |
+| `onb_box_open_start` | `ONBOARDING_BOX_OPEN_STARTED` | CLIENT | 온보딩 자동 개봉 시작 |
+| `onb_box_open_end` | `ONBOARDING_BOX_OPEN_COMPLETED` | CLIENT | 온보딩 자동 개봉 완료 |
+| `onb_keycap_reveal` | `ONBOARDING_KEYCAP_REVEALED` | CLIENT | 온보딩 키캡 공개, property `keycap_id` |
+| `onb_complete_view` | `ONBOARDING_COMPLETION_VIEWED` | CLIENT | 온보딩 완료 모달 노출 |
+| `onb_login_tap` | `ONBOARDING_LOGIN_TAPPED` | CLIENT | 온보딩 로그인 CTA 탭 |
+| `onb_login_success` | `ONBOARDING_LOGIN_SUCCEEDED` | CLIENT | 온보딩 로그인 성공 |
 | `record_view` | `RECORD_VIEWED` | CLIENT | 기록 화면 노출 |
 | `noti_perm_view` | `NOTIFICATION_PERMISSION_VIEWED` | CLIENT | 알림 권한 화면 노출 |
 | `invite_view` | `INVITE_VIEWED` | CLIENT | 초대 화면 노출 |
@@ -1926,6 +2012,7 @@ Request:
 |---|---|---|---|---|
 | B -> A | `ValidatedTapApplyUseCase` | `CONFIRMED` | `userId`, `tapBatchId`, `validTapDelta`, `boxProgressDelta`, `rankingTapDelta`, `occurredAt` | `tapBatchId` |
 | B -> A | `KeycapBoxGrantUseCase` | `CONFIRMED` | `userId`, `boxCount`, `reason`, `referenceId` | `referenceId` |
+| B -> A | `OnboardingKeycapGrantUseCase` | `PROPOSED` | `userId`, `referenceId`, `milestone`, `occurredAt` | `referenceId` |
 | B -> A | `RecordEventIngestUseCase` | `CONFIRMED` | `eventId`, `eventType`, `userId`, `payload`, `occurredAt` | `eventId` |
 | A -> B | `AdvertisementVerificationPort` | `CONFIRMED` | `adViewId`, `userId`, `placement` | `adViewId` |
 | A -> B | `UserWithdrawalGuardPort` | `CONFIRMED` | `userId` | 없음 |
@@ -1945,6 +2032,35 @@ Request:
 ```
 
 광고 상자 흐름은 `B 광고 완료 -> A가 완료된 ad_view를 Port로 조회 -> A가 기존 보유 상자 1개 개봉`이다.
+
+`OnboardingKeycapGrantUseCase` 입력 예:
+
+```json
+{
+  "userId": "user-public-uuid",
+  "referenceId": "ONBOARDING_FIRST_KEYCAP:user-public-uuid",
+  "milestone": "FIRST_KEYCAP_45",
+  "occurredAt": "2026-07-04T00:00:00Z"
+}
+```
+
+출력 예:
+
+```json
+{
+  "keycapId": "keycap-public-uuid",
+  "code": "ONBOARDING_BLUE_SWITCH",
+  "name": "청축 키캡",
+  "imageUrl": "https://..."
+}
+```
+
+멱등성:
+
+- `referenceId`와 사용자당 최초 키캡 1회 기준으로 멱등 처리한다.
+- 같은 요청 재시도와 동시 요청은 기존 키캡 결과를 반환한다.
+- 즉시 키캡 결과 화면이 필요하므로 단순 비동기 Event만 사용하지 않는다. Outbox/Event는 후속 기록과 분석 전파에 사용할 수 있다.
+- 분석 이벤트 실패는 보상 지급과 로그인 성공을 rollback하지 않는다.
 
 ## 주요 에러 코드
 
@@ -1968,8 +2084,7 @@ Request:
 | 429 | `KEYCAP_AD_LIMIT_EXCEEDED` | 광고 개봉 일 한도 초과 |
 | 409 | `KEYCAP_AD_NOT_VERIFIED` | 광고 완료 검증 실패 |
 | 409 | `REGION_CHANGE_LIMIT_EXCEEDED` | 지역 변경 월 한도 초과 |
-| 403 | `RANKING_MEMBER_REQUIRED` | 랭킹 참가 회원 필요 |
-| 409 | `RANKING_REGION_REQUIRED` | 랭킹 참가 지역 필요 |
+| 403 | `RANKING_MEMBER_REQUIRED` | 레거시 수동 참가 API 회원 필요 |
 | 409 | `TAP_SEQUENCE_CONFLICT` | 탭 sequence 충돌 |
 | 429 | `TAP_RATE_SUSPICIOUS` | 탭 속도 이상 |
 | 409 | `POINT_INSUFFICIENT` | 포인트 부족 |

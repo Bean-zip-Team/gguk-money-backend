@@ -1,5 +1,23 @@
 # 수정 내역
 
+## 2026-07-04 최신 랭킹·온보딩 와이어프레임 문서 정합화
+
+- 최신 전체 랭킹 와이어프레임을 반영해 지역/전국 랭킹을 전체 유저 단일 랭킹으로 변경했다.
+- 별도 랭킹 참가 API를 `DEPRECATED`로 정리하고 사용자 자동 시즌 포함을 문서화했다.
+- 7일 회차, 남은 시간, 내 행 강조, 상위 순위와 내 주변 순위, 이전 회차 기록 요구사항을 반영했다.
+- ranking API에서 현재 계약의 scope/region 필드를 제거하고 `/rankings/current`의 `myRank`로 `/rankings/me`를 통합했다.
+- `ranking_participation`과 `ranking_snapshot`의 지역 연결을 제거하고 `ranking_snapshot`을 이전 회차 기록의 Source of Truth로 정리했다.
+- Redis 랭킹 key를 `rank:overall:{seasonId}`와 `rank:reached:{seasonId}` 기준으로 변경했다.
+- 주간 12,000 한도와 최신 UI 목업 점수 충돌은 `Decision Required`로 남겼다.
+- 최신 온보딩 15/30/45 milestone을 반영했다.
+- 온보딩 총 2P와 45탭 완성 키캡 1개 보상을 명시했다.
+- 온보딩 자동 개봉과 완료 후 Toss 로그인 gate를 반영했다.
+- 일반 상자/경제 정책과 온보딩 전용 정책을 분리했다.
+- B DRAFT `user_onboarding_progress` 명세를 추가했다.
+- B에서 A 키캡 지급을 동기 호출하는 `OnboardingKeycapGrantUseCase` 계약을 추가했다.
+- 랭킹/온보딩 이벤트 카탈로그를 최신 화면 기준으로 갱신했다.
+- Java, SQL, Gradle, 테스트 코드는 수정하지 않았다.
+
 ## 2026-07-02 빵도감 main HEAD 기반 인증/로그 구현 반영
 
 - 빵도감 기준 원본을 `develop`에서 `main` HEAD `e9a6abb73320e61869f91b14293e5da3d1fbe4f2`로 변경했습니다. 원격 `develop` 브랜치는 확인되지 않았습니다.

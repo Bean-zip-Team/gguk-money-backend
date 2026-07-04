@@ -345,6 +345,7 @@ A 상세 테이블 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `name` | VARCHAR(100) | N | | | | 테이블명 |
 | `priority` | INTEGER | N | 0 | | | 우선순위 |
+| `purpose` | VARCHAR(20) | N | `STANDARD` | | CHECK `STANDARD`, `ONBOARDING` | 드롭 목적 |
 | `active_from` | TIMESTAMPTZ | N | | | | 시작 |
 | `active_until` | TIMESTAMPTZ | Y | | | CHECK null or `> active_from` | 종료 |
 | `active` | BOOLEAN | N | true | | | 활성 |
@@ -352,6 +353,7 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 인덱스: `ix_keycap_drop_table_active(active, active_from, active_until, priority)`
+- 온보딩 키캡 후보군은 `purpose=ONBOARDING`으로 일반 상자 후보군과 분리한다. SQL 구현 전까지 상태는 명세 제안이며, 일반 상자 정책을 온보딩 정책으로 바꾸지 않는다.
 
 ### keycap_drop_item
 
@@ -514,12 +516,13 @@ A 상세 테이블 공통 정책:
 
 ### ranking_season
 
-- 역할: 주간 랭킹 시즌. 지역을 직접 갖지 않는다.
+- 역할: 7일 단위 전체 랭킹 시즌. 지역을 직접 갖지 않는다.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
 | `id` | BIGINT | N | identity | PK | | 내부 id |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `round_number` | INTEGER | N | | | UNIQUE | 화면 노출 회차 번호 |
 | `starts_at` | TIMESTAMPTZ | N | | | | 시작 |
 | `ends_at` | TIMESTAMPTZ | N | | | CHECK `ends_at > starts_at` | 종료 |
 | `status` | VARCHAR(20) | N | `ACTIVE` | | CHECK `ACTIVE`, `SETTLING`, `SETTLED` | 상태 |
@@ -527,10 +530,12 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - UNIQUE: `ux_ranking_season_period(starts_at, ends_at)`
+- 정책: 한 시점의 ACTIVE 시즌은 최대 1개이며, 운영 정책상 정확히 7일 단위다.
+- 시즌 종료 시 자동 정산과 `ranking_snapshot` 생성을 수행한다.
 
 ### ranking_participation
 
-- 역할: 시즌별 사용자 참여 지역.
+- 역할: 시즌별 사용자 자동 포함 상태.
 - 멱등성 기준: `season_id + user_id`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -539,14 +544,13 @@ A 상세 테이블 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `season_id` | BIGINT | N | | FK `ranking_season(id)` | | 시즌 |
 | `user_id` | BIGINT | N | | FK `app_user(id)` | | 사용자 |
-| `region_id` | BIGINT | N | | FK `region(id)` | | 참여 지역 |
 | `joined_at` | TIMESTAMPTZ | N | now() | | | 참여 시각 |
 | `status` | VARCHAR(20) | N | `JOINED` | | CHECK `JOINED`, `CANCELED` | 상태 |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - UNIQUE: `ux_ranking_participation_user(season_id, user_id)`
-- 인덱스: `ix_ranking_participation_region(season_id, region_id)`
+- 프론트 수동 참여 API와 연결하지 않는다. 신규 게스트 생성, 신규 시즌 시작, 첫 유효 탭 또는 최초 랭킹 조회 중 어느 시점에 row를 만들지는 Decision Required다.
 
 ### ranking_score
 
@@ -564,6 +568,7 @@ A 상세 테이블 공통 정책:
 
 - 인덱스: `ix_ranking_score_score(score DESC, reached_at ASC)`
 - Lock/version 정책: 점수 반영 시 participation 기준 row lock
+- `previous_rank`는 순위 등락 비교 기준이 확정되지 않았으므로 추가하지 않는다. 일일 또는 주기 스냅샷 테이블 필요 여부는 Decision Required다.
 
 ### ranking_score_event
 
@@ -588,14 +593,13 @@ A 상세 테이블 공통 정책:
 
 ### ranking_snapshot
 
-- 역할: 정산 완료 결과.
+- 역할: 사용자·시즌별 전체 랭킹 정산 완료 결과. 이전 회차 기록 API의 Source of Truth다.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
 | `id` | BIGINT | N | identity | PK | | 내부 id |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `season_id` | BIGINT | N | | FK `ranking_season(id)` | | 시즌 |
-| `region_id` | BIGINT | Y | | FK `region(id)` | | null이면 전국 |
 | `user_id` | BIGINT | N | | FK `app_user(id)` | | 사용자 |
 | `final_rank` | INTEGER | N | | | CHECK `> 0` | 최종 순위 |
 | `final_score` | BIGINT | N | | | CHECK `>= 0` | 최종 점수 |
@@ -603,9 +607,9 @@ A 상세 테이블 공통 정책:
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
-- Partial Unique Index: `ux_ranking_snapshot_region(season_id, region_id, user_id) WHERE region_id IS NOT NULL`
-- Partial Unique Index: `ux_ranking_snapshot_national(season_id, user_id) WHERE region_id IS NULL`
-- 인덱스: `ix_ranking_snapshot_rank(season_id, region_id, final_rank)`
+- UNIQUE: `ux_ranking_snapshot_user(season_id, user_id)`
+- 인덱스: `ix_ranking_snapshot_rank(season_id, final_rank)`
+- `firstPlace`는 `final_rank = 1`에서 파생하므로 별도 Boolean 컬럼을 만들지 않는다.
 
 ### ranking_reward
 
@@ -626,6 +630,7 @@ A 상세 테이블 공통 정책:
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - UNIQUE: `ux_ranking_reward_once(season_id, user_id, reward_type)`
+- 지역 관련 설명은 갖지 않는다. 최신 MVP에서 보상 모달 노출을 유지할지는 Decision Required이며, 화면 두 개만 보고 `ranking_reward`를 삭제하지 않는다.
 
 ## Notification
 
@@ -811,6 +816,7 @@ A 상세 테이블 공통 정책:
 | `ad_placement` | B | DRAFT | Advertisement |
 | `ad_view` | B | DRAFT | Advertisement |
 | `booster_grant` | B | DRAFT | Booster |
+| `user_onboarding_progress` | B | DRAFT | Onboarding |
 | `invite_code` | B | DRAFT | Invitation |
 | `invite_relation` | B | DRAFT | Invitation |
 | `analytics_event` | B | DRAFT | Analytics |
@@ -903,6 +909,35 @@ B 공통 정책:
 
 - UNIQUE: `ux_user_tap_daily(user_public_id, tap_date)`.
 - Lock/version: 포인트 계산 시 row lock 또는 version update.
+
+### user_onboarding_progress
+
+- 역할: 신규 사용자 온보딩 진행 상태와 15/30/45 milestone 지급 멱등성.
+- 소유자/상태: B / DRAFT.
+- A 소유 `app_user`와 DB FK를 만들지 않고 `user_public_id` scalar만 저장한다.
+- 관련 API: `GET /home`, `POST /taps/batches`.
+
+| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
+|---|---|---:|---|---|---|---|
+| `id` | BIGINT | N | identity | PK | | 내부 id |
+| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
+| `user_public_id` | UUID | N | | | UNIQUE | 사용자 public id |
+| `valid_tap_count` | INTEGER | N | 0 | | CHECK `>= 0` | 온보딩 유효 탭 수 |
+| `point_15_granted_at` | TIMESTAMPTZ | Y | | | | 15탭 1P 지급 시각 |
+| `point_30_granted_at` | TIMESTAMPTZ | Y | | | | 30탭 추가 1P 지급 시각 |
+| `first_keycap_granted_at` | TIMESTAMPTZ | Y | | | | 45탭 온보딩 키캡 지급 시각 |
+| `first_keycap_public_id` | UUID | Y | | | | A가 지급한 완성 키캡 public id |
+| `status` | VARCHAR(20) | N | `IN_PROGRESS` | | CHECK `IN_PROGRESS`, `LOGIN_REQUIRED`, `COMPLETED` | 온보딩 상태 |
+| `version` | BIGINT | N | 0 | | | 낙관적 lock |
+| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
+| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
+
+- 사용자당 1행이다.
+- 온보딩 완료 기준은 45탭 보상 확정이며, Toss 로그인 승격 성공 후 `COMPLETED`로 전환한다.
+- 각 milestone timestamp는 한 번만 설정한다.
+- optimistic lock 또는 row lock으로 포인트와 키캡 중복 지급을 방지한다.
+- `box opening animation started/ended` 같은 UI 상태는 DB에 저장하지 않는다.
+- 실제 SQL 파일은 아직 만들지 않았고, B DRAFT 마이그레이션 계획에 포함한다.
 
 ### abuse_signal
 

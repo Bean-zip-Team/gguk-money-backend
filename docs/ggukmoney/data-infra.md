@@ -45,12 +45,13 @@
 | `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity`, `device`, `user_device`, `user_merge_history` |
 | `V1100__create_config_legal.sql` | `legal_document`, `user_consent`, `app_config` |
 | `V1200__create_keycap_box.sql` | 키캡, 상자, 드롭, 개봉 결과 |
-| `V1300__create_region_ranking.sql` | 지역, 랭킹 시즌, 참여, 점수, snapshot, reward |
+| `V1300__create_region_ranking.sql` | 지역, 전체 랭킹 시즌, 자동 포함, 점수, snapshot, reward |
 | `V1400__create_notification.sql` | push device, preference, notification log |
 | `V1500__create_record_projection.sql` | 기록 projection |
 | `V1600__create_event_reliability.sql` | outbox, inbox |
 | `V1900__seed_initial_master_data.sql` | 지역, 기본 키캡, 기본 설정 seed |
 | `V2000__create_tap_risk.sql` | B DRAFT 탭/어뷰징 |
+| `V2050__create_user_onboarding_progress.sql` | B DRAFT 온보딩 진행 상태 |
 | `V2100__create_point_cashout.sql` | B DRAFT 포인트/출금 |
 | `V2200__create_ad_booster.sql` | B DRAFT 광고/부스터 |
 | `V2300__create_invitation_analytics.sql` | B DRAFT 초대/분석 |
@@ -92,14 +93,22 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 
 | Key | 자료구조 | TTL | 설명 |
 |---|---|---|---|
-| `rank:region:{seasonId}:{regionId}` | Sorted Set | 시즌 종료 후 14일 | 지역 랭킹 후보 점수 |
-| `rank:national:{seasonId}` | Sorted Set | 시즌 종료 후 14일 | 전국 랭킹 후보 점수 |
+| `rank:overall:{seasonId}` | Sorted Set | 시즌 종료 후 14일 또는 정산 확인 후 삭제 | 전체 유저 단일 랭킹 후보 점수 |
 | `rank:reached:{seasonId}` | Hash | 시즌 종료 후 14일 | 동점 보정용 최초 도달 시각 캐시 |
 | `lock:ranking:settlement:{seasonId}` | String | 30분 권장 | 정산 중복 실행 방지 |
 | `notification:daily:{userId}:{date}` | String 또는 Set | 2일 | 일반 푸시 하루 1회 방지 |
 | `app-config:active` | String(JSON) 또는 Hash | 5분 권장 | A 소유 활성 설정 캐시 |
 
-Redis는 랭킹 후보 조회용이며 최종 정렬과 정산 원본은 PostgreSQL이다.
+랭킹 Redis 정책:
+
+- `rank:overall:{seasonId}` member는 `userPublicId`다.
+- score는 현재 시즌 누적 랭킹 점수다.
+- 동점이면 `rank:reached:{seasonId}`의 `reachedAt`이 빠른 사용자를 우선한다.
+- PostgreSQL `ranking_score`가 최종 영속 데이터다.
+- Redis는 현재 순위 조회 가속용이며 최종 정렬과 정산 원본은 PostgreSQL이다.
+- 시즌 종료 시 PostgreSQL 기준으로 최종 정산하고 `ranking_snapshot`을 생성한다.
+- 새 시즌은 점수 0에서 시작한다.
+- 이전 시즌 Redis key는 정산 완료 뒤 14일 TTL로 두거나 운영 확인 후 삭제한다. 보관 기간은 운영 정책으로 조정 가능하다.
 
 ## 인증 감사 로그 처리
 
@@ -200,14 +209,14 @@ Access Token 인증:
 
 ### 랭킹 점수 반영
 
-1. active season과 participation을 찾는다.
+1. active season과 사용자 participation을 찾거나 자동 포함 정책에 따라 생성한다.
 2. `ranking_score_event(source_type, source_event_id)` insert를 먼저 시도한다.
 3. unique conflict면 이미 처리된 것으로 보고 반환한다.
 4. `ranking_score`를 갱신한다.
 5. 최초 도달 또는 더 높은 점수 도달 시 `reached_at`을 설정한다.
 6. `RankingScoreChanged` outbox를 저장한다.
 7. DB 트랜잭션을 commit한다.
-8. commit 이후 Redis `rank:region`, `rank:national`, `rank:reached`를 갱신한다.
+8. commit 이후 Redis `rank:overall:{seasonId}`, `rank:reached:{seasonId}`를 갱신한다.
 
 Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼저 갱신하지 않는다. Redis 실패는 PostgreSQL 기준으로 재처리한다.
 
@@ -218,11 +227,11 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 3. Redis 점수와 PostgreSQL `ranking_score`를 비교한다.
 4. 필요하면 DB 기준으로 Redis를 재생성한다.
 5. PostgreSQL 기준 `score DESC`, `reached_at ASC`, `user_public_id ASC`로 정렬한다.
-6. 지역 snapshot과 전국 snapshot을 저장한다.
-7. 1위 한정 키캡 보상과 기록성 보상을 자동 지급한다.
+6. 사용자·시즌별 전체 랭킹 snapshot을 저장한다.
+7. 보상 정책이 유지되는 경우 1위 한정 키캡 보상과 기록성 보상을 자동 지급한다. 최신 MVP 보상 노출 여부는 Decision Required다.
 8. 2~10위 입상 기록을 저장한다.
 9. `ranking_season.status`를 `SETTLED`로 변경한다.
-10. 예약 지역 변경을 적용하고 다음 시즌을 생성한다.
+10. 다음 7일 시즌을 생성한다. 지역 변경 예약은 Region 기능에서 별도 처리하며 Ranking Aggregate와 연결하지 않는다.
 11. Redis lock을 해제한다.
 
 ### 게스트 병합

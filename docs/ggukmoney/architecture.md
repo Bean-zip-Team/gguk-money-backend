@@ -60,7 +60,6 @@ erDiagram
     REGION ||--o{ USER_REGION : selected
     APP_USER ||--o{ USER_REGION : sets
     RANKING_SEASON ||--o{ RANKING_PARTICIPATION : includes
-    REGION ||--o{ RANKING_PARTICIPATION : region
     RANKING_PARTICIPATION ||--|| RANKING_SCORE : has
     RANKING_SEASON ||--o{ RANKING_SNAPSHOT : settles
     APP_USER ||--o{ RANKING_REWARD : receives
@@ -71,6 +70,7 @@ erDiagram
     APP_USER ||--o{ AUTH_SESSION_LOG : audits
 
     TAP_BATCH ||--o{ TAP_EVENT : produces
+    APP_USER ||--o| USER_ONBOARDING_PROGRESS : tracks
     TAP_BATCH ||--o{ ABUSE_SIGNAL : flags
     POINT_ACCOUNT ||--o{ POINT_LEDGER : records
     CASHOUT_REQUEST ||--|| TOSS_POINT_TRANSFER : transfers
@@ -101,7 +101,7 @@ Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는
 
 | Aggregate | 테이블 | 경계 원칙 |
 |---|---|---|
-| Tap/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `abuse_signal` | A에는 검증 결과 delta만 Port/Event로 전달 |
+| Tap/Onboarding/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `user_onboarding_progress`, `abuse_signal` | A에는 검증 결과 delta와 온보딩 키캡 지급 요청만 Port/Event로 전달 |
 | Point | `point_account`, `point_ledger` | 포인트 원장은 B만 변경 |
 | Cashout | `cashout_request`, `toss_point_transfer` | 외부 Toss 지급과 포인트 복원을 B가 소유 |
 | Advertisement | `ad_placement`, `ad_view` | A는 완료된 adView 상태만 Port로 조회 |
@@ -137,7 +137,11 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 
 ### 랭킹 Redis + PostgreSQL
 
-Redis Sorted Set은 빠른 후보 조회에 사용한다. 최종 정렬과 정산은 PostgreSQL의 `ranking_score`, `ranking_score_event`, `ranking_snapshot`을 기준으로 한다. 동점 기준은 `score DESC`, `reached_at ASC`, `user_public_id ASC`다.
+최신 랭킹은 지역/전국 구분이 없는 전체 유저 단일 랭킹이다. Redis `rank:overall:{seasonId}` Sorted Set은 빠른 후보 조회에 사용한다. 최종 정렬과 정산은 PostgreSQL의 `ranking_score`, `ranking_score_event`, `ranking_snapshot`을 기준으로 한다. 동점 기준은 `score DESC`, `reached_at ASC`, `user_public_id ASC`다. 회차 종료 시 사용자·시즌별 snapshot을 자동 생성하며, 이전 회차 기록 화면은 이 snapshot을 Source of Truth로 사용한다.
+
+### 온보딩 A/B 경계
+
+온보딩 진행 상태, 유효 탭 수, 15/30 포인트 지급, 45탭 milestone 감지는 B가 소유한다. 온보딩 키캡 후보군, 자동 개봉 기록, 완성 키캡 지급, 게스트에서 회원으로 승격된 뒤의 키캡 유지는 A가 소유한다. B는 A Entity/Repository를 직접 참조하지 않고 `OnboardingKeycapGrantUseCase`를 동기 호출해 즉시 표시할 키캡 결과를 받는다. 프론트의 자동 개봉은 서버가 확정한 보상 결과를 표현하는 UI 동작이며, 온보딩에서 별도 수동 상자 개봉 API를 호출하지 않는다.
 
 ### 기록 Projection
 
@@ -172,7 +176,11 @@ Session 처리 분기:
 
 ### 기존 Toss 회원 로그인
 
-현재 게스트를 source, 기존 Toss 회원을 target으로 병합한다. source의 `GUEST_OWNER`는 `active=false`로 비활성화하고 target과 현재 device의 `MEMBER_DEVICE`를 생성 또는 활성화한다. source 인증 세션은 전체 폐기하고 target 기준 새 Redis 인증 세션을 생성한다. 게스트 랭킹 점수는 기존 회원의 진행 중 랭킹 점수에 합산하지 않는다.
+현재 게스트를 source, 기존 Toss 회원을 target으로 병합한다. source의 `GUEST_OWNER`는 `active=false`로 비활성화하고 target과 현재 device의 `MEMBER_DEVICE`를 생성 또는 활성화한다. source 인증 세션은 전체 폐기하고 target 기준 새 Redis 인증 세션을 생성한다. 온보딩에서 게스트에게 서버 저장된 2P와 키캡은 회원 승격 시 유지한다. 기존 Toss 회원 병합 시 진행 중 랭킹 점수 합산 여부는 별도 병합 정책에서 결정한다.
+
+### 온보딩 시작과 로그인 시점
+
+UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 앱 시작 시 `POST /guests`로 게스트 계정과 Redis 세션을 먼저 만든다. 15/30/45 보상은 로그인 전 로컬에만 저장하지 않고 게스트 사용자에게 멱등 저장한다. 완료 CTA의 Toss 로그인은 이미 저장된 게스트 데이터를 MEMBER로 영구 승격/귀속하는 단계다. Access Token 없는 일반 Toss 로그인은 `deviceKey/platform/appVersion` 계약 미확정으로 계속 `BLOCKED`이며, guest Access Token 기반 온보딩 완료 승격과는 별도 흐름이다.
 
 ## A/B Port와 Event
 
@@ -180,6 +188,7 @@ Session 처리 분기:
 |---|---|---|
 | B -> A | `ValidatedTapApplyUseCase` | 검증 완료 탭을 A 상자 진행도와 랭킹 점수에 반영 |
 | B -> A | `KeycapBoxGrantUseCase` | 친구초대 등 B 도메인 사유로 A 상자 보유량 지급 |
+| B -> A | `OnboardingKeycapGrantUseCase` | 45탭 온보딩 milestone에서 완성 키캡 1개를 멱등 지급하고 즉시 표시할 결과 반환 |
 | B -> A | `RecordEventIngestUseCase` | 포인트/출금/광고 등 B 이벤트를 A 기록 조회 모델에 투영 |
 | A -> B | `AdvertisementVerificationPort` | 광고 상자 개봉 전에 B의 완료된 `ad_view` 상태를 로컬 조회 |
 | A -> B | `UserWithdrawalGuardPort` | 회원 탈퇴 전에 B 처리 중 출금 등 차단 사유 조회 |
