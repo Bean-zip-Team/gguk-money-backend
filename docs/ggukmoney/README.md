@@ -1,6 +1,6 @@
 # 꾹머니 백엔드 설계 문서
 
-이 디렉터리는 꾹머니 백엔드 MVP 설계의 Source of Truth다. `CONFIRMED`는 정책/계약 확정 상태이고, Java 구현 완료를 뜻하지 않는다. 구현 상태는 별도 `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`로 관리한다.
+이 디렉터리는 꾹머니 백엔드 MVP 설계의 Source of Truth다. `CONFIRMED`는 정책/계약 확정 상태이고, Java 구현 완료를 뜻하지 않는다. 구현 상태는 별도 `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`로 관리한다.
 
 ## 문서 구조
 
@@ -24,7 +24,7 @@
 - Spring Boot 4.1.0
 - Jackson 3(tools.jackson.*)
 - Gradle Wrapper 9.5.1
-- 실제 저장소: C:\Users\lucy\Documents\ggukmoney / branch main
+- 기준 브랜치: `main`
 - 테스트 환경: 기본 Gradle build/ 디렉터리 사용. 한글 경로 우회용 temp build/test working dir 설정은 제거했다.
 
 문서 상태:
@@ -33,6 +33,15 @@
 - B API: 팀 검토용 PROPOSED, 담당자 은창
 - B 테이블: DRAFT, 담당자 은창 최종 확정 필요
 - PROPOSED는 구현 전에 팀 합의 후 CONFIRMED로 승격한다.
+- 구현 상태는 `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED` 네 가지로 표기한다.
+- `CONFIRMED`는 정책/계약 확정이며 Java 구현 완료를 뜻하지 않는다.
+
+구현 상태 정의:
+
+- `NOT_STARTED`: 구현 코드가 없음.
+- `IN_PROGRESS`: 코드가 있으나 필수 흐름, 운영 보강 또는 일부 검증이 남음.
+- `BLOCKED`: 외부 계약, 팀 결정 또는 환경 문제 때문에 완료할 수 없음.
+- `IMPLEMENTED`: 코드와 필수 단위/통합 테스트가 통과하고 문서와 일치함.
 
 현재 Java 구현 상태:
 
@@ -41,10 +50,13 @@
 - QueryDSL 5.1.0은 현재 직접 사용처가 없지만 향후 동적 조회 계획 때문에 유지한다. 취약점 suppression 없이 Sort allowlist와 명시적 projection 기준을 적용한다.
 - Spring Boot Application 클래스와 기본 테스트: IMPLEMENTED
 - 공통 응답/예외, traceId, Access Log: IMPLEMENTED
-- JWT Provider, Redis Refresh Session Lua CAS, logout-all 서비스: IMPLEMENTED; refresh/logout API와 감사 로그 연동: IN_PROGRESS
-- Auth Audit Log Entity/Repository/Service: IN_PROGRESS
+- JWT Provider, Redis Refresh Session Repository/Lua CAS, logout-all 최소 흐름: IMPLEMENTED
+- refresh/logout API의 전체 장애 흐름과 운영 보강: IN_PROGRESS
+- Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증: IMPLEMENTED
+- 감사 로그 저장 실패 재처리와 운영 보강: IN_PROGRESS
 - 게스트 생성/복구, Toss 승격/병합: NOT_STARTED
-- 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서: NOT_STARTED
+- Toss Access Token 없는 일반 로그인: BLOCKED
+- 키캡/상자, 지역/랭킹, 온보딩, 알림, 기록, 설정/법적 문서 Java 구현: NOT_STARTED
 
 ## 최종 검증 기준
 
@@ -107,6 +119,9 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 온보딩 총 지급 포인트는 2P다.
 - 온보딩 상자는 일반 조각 상자와 다르며 프론트가 수동 개봉 API를 호출하지 않는다.
 - 온보딩 완료 CTA는 Toss 로그인이고, 서버 게스트 계정과 세션은 앱 시작 시 `POST /guests`에서 먼저 생성한다.
+- 온보딩 상태는 0~44 유효 탭 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`로 전이한다.
+- `IN_PROGRESS`와 `LOGIN_REQUIRED`는 `active=true`, `COMPLETED`는 `active=false`다.
+- 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 2P/키캡 보상은 유지한다.
 - 기록은 B 테이블을 직접 조인하지 않고 Event Projection으로 구성한다.
 - A의 `app_config`에는 A 소유 정책만 저장하고 포인트/출금 정책은 B가 소유한다.
 - 상태값은 `CANCELED`로 통일한다.
@@ -118,6 +133,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - B 이벤트 payload 최종 형식
 - 위치 판별 Provider와 행정구역 코드 체계
 - 주간 랭킹 점수 12,000 한도 유지/제거/상향 여부
+- 결정 전 API의 `weeklyRankingLimit`은 `null`로 표현한다.
 - 순위 등락 `rankDelta` 비교 기준 시점
 - 최신 랭킹 결과/보상 모달 유지 여부
 - 자동 랭킹 참가 row eager/lazy 생성 방식
@@ -212,11 +228,12 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 - 빵도감 저장소 변경 없음
 - Git 커밋 없음
 - `./gradlew compileJava compileTestJava` 성공
-- 영문 경로에서 `./gradlew clean test`, `./gradlew check`, `./gradlew bootJar`, 핵심 개별 테스트가 성공했고 `ClassNotFoundException`은 재발하지 않음
+- Windows 환경에서 `./gradlew clean test`, `./gradlew check`, `./gradlew bootJar`, 핵심 개별 테스트가 성공했고 `ClassNotFoundException`은 재발하지 않음
 
 ## 2026-07-03 구현 상태 갱신
 
-- 공통 응답/예외/traceId, Access Log, JWT Provider, Redis Refresh Session Repository, Lua CAS Refresh Rotation, logout/logout-all, Auth Audit Log, Flyway V1000, 인증 API 최소 흐름은 실제 단위/통합 테스트 통과 기준으로 `IMPLEMENTED`로 승격한다.
-- refresh/logout API의 모든 장애 흐름, 감사 로그 실패 재처리, Redis 장애 복구 전체 정책은 `IN_PROGRESS`로 유지한다.
-- Toss device 계약, 게스트 승격/병합, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서는 기존 `BLOCKED` 또는 `NOT_STARTED` 상태를 유지한다.
+- 공통 응답/예외/traceId, Access Log, JWT Provider, Redis Refresh Session Repository, Lua CAS Refresh Rotation, logout/logout-all 최소 흐름, Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증, Flyway V1000은 실제 단위/통합 테스트 통과 기준으로 `IMPLEMENTED`로 승격한다.
+- refresh/logout API의 모든 장애 흐름, 감사 로그 저장 실패 재처리, Redis 장애 복구 전체 정책은 `IN_PROGRESS`로 유지한다.
+- Toss Access Token 없는 일반 로그인은 device 계약 미확정으로 `BLOCKED`다.
+- 게스트 승격/병합, 키캡/상자, 최신 랭킹/온보딩 Java 구현, 알림, 기록, 설정/법적 문서는 `NOT_STARTED` 상태를 유지한다.
 - 통합 테스트 실행에는 Docker가 필요하며 Redis/PostgreSQL은 Testcontainers로만 기동한다.

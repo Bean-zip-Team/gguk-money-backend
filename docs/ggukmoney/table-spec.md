@@ -365,12 +365,18 @@ A 상세 테이블 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `drop_table_id` | BIGINT | N | | FK `keycap_drop_table(id)` | | 드롭 테이블 |
 | `keycap_id` | BIGINT | N | | FK `keycap(id)` | | 키캡 |
-| `shard_count` | INTEGER | N | | | CHECK `> 0` | 지급 조각 |
+| `grant_mode` | VARCHAR(20) | N | `SHARD` | | CHECK `SHARD`, `COMPLETE_KEYCAP` | 지급 방식 |
+| `shard_count` | INTEGER | Y | | | 조건부 CHECK | 지급 조각 |
 | `weight` | INTEGER | N | | | CHECK `> 0` | 가중치 |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 인덱스: `ix_keycap_drop_item_table(drop_table_id)`
+- 지급 방식 조건: `(grant_mode = 'SHARD' AND shard_count IS NOT NULL AND shard_count > 0) OR (grant_mode = 'COMPLETE_KEYCAP' AND shard_count IS NULL)`.
+- `purpose=STANDARD` 드롭 테이블은 기본적으로 `grant_mode=SHARD`를 사용한다.
+- `purpose=ONBOARDING` 드롭 테이블은 `grant_mode=COMPLETE_KEYCAP`을 사용한다.
+- 온보딩 지급은 필요한 조각 수를 채우는 방식으로 위장하지 않고 `user_keycap.status=COMPLETED` 결과를 만든다.
+- 기존 일반 상자 조각 지급 정책은 유지한다.
 
 ### keycap_box_account
 
@@ -926,14 +932,18 @@ B 공통 정책:
 | `point_15_granted_at` | TIMESTAMPTZ | Y | | | | 15탭 1P 지급 시각 |
 | `point_30_granted_at` | TIMESTAMPTZ | Y | | | | 30탭 추가 1P 지급 시각 |
 | `first_keycap_granted_at` | TIMESTAMPTZ | Y | | | | 45탭 온보딩 키캡 지급 시각 |
-| `first_keycap_public_id` | UUID | Y | | | | A가 지급한 완성 키캡 public id |
+| `granted_user_keycap_public_id` | UUID | Y | | | | A가 지급한 `user_keycap.public_id` |
 | `status` | VARCHAR(20) | N | `IN_PROGRESS` | | CHECK `IN_PROGRESS`, `LOGIN_REQUIRED`, `COMPLETED` | 온보딩 상태 |
 | `version` | BIGINT | N | 0 | | | 낙관적 lock |
 | `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
 | `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
 
 - 사용자당 1행이다.
-- 온보딩 완료 기준은 45탭 보상 확정이며, Toss 로그인 승격 성공 후 `COMPLETED`로 전환한다.
+- 상태 전이: 0~44 유효 탭은 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`.
+- `IN_PROGRESS`와 `LOGIN_REQUIRED`는 API에서 `active=true`, `COMPLETED`는 `active=false`로 계산한다.
+- 45탭 보상 지급으로 탭 기반 온보딩 보상 단계는 완료되지만, 회원 로그인/승격 전까지 전체 온보딩 상태는 `LOGIN_REQUIRED`다.
+- 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 포인트/키캡 보상은 유지한다.
+- `granted_user_keycap_public_id`는 `OnboardingKeycapGrantUseCase`가 반환한 `userKeycapId`를 FK 없이 UUID scalar로 저장한다. 카탈로그 정보는 A가 `user_keycap -> keycap` 조회로 제공한다.
 - 각 milestone timestamp는 한 번만 설정한다.
 - optimistic lock 또는 row lock으로 포인트와 키캡 중복 지급을 방지한다.
 - `box opening animation started/ended` 같은 UI 상태는 DB에 저장하지 않는다.

@@ -12,13 +12,20 @@
 | `PROPOSED` | 선작성한 제안 계약이다. 구현 전 A/B/프론트 합의가 필요하다. |
 | `DEPRECATED` | 신규 구현에서 사용하지 않는다. 제거 일정을 별도로 관리한다. |
 
-구현 상태는 별도로 `NOT_STARTED`, `IN_PROGRESS`, `IMPLEMENTED`로 표기한다. `CONFIRMED`는 정책/계약 확정이며 Java 코드 구현 완료를 뜻하지 않는다.
+구현 상태는 별도로 `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `IMPLEMENTED`로 표기한다. `CONFIRMED`는 정책/계약 확정이며 Java 코드 구현 완료를 뜻하지 않는다.
+
+구현 상태 정의:
+
+- `NOT_STARTED`: 구현 코드가 없음.
+- `IN_PROGRESS`: 코드가 있으나 필수 흐름, 운영 보강 또는 일부 검증이 남음.
+- `BLOCKED`: 외부 계약, 팀 결정 또는 환경 문제 때문에 완료할 수 없음.
+- `IMPLEMENTED`: 코드와 필수 단위/통합 테스트가 통과하고 문서와 일치함.
 
 ## 담당자와 구현 상태
 
 | 구분 | 담당자 | API 계약 상태 | Java 구현 상태 |
 |---|---|---|---|
-| A 인증/로그 | 민재 | CONFIRMED | refresh/logout/logout-all, Access Log, Auth Audit Log IN_PROGRESS |
+| A 인증/로그 | 민재 | CONFIRMED | Access Log, JWT, Redis Session/Lua CAS, logout-all 최소 흐름 IMPLEMENTED; 운영 보강 IN_PROGRESS; Toss 일반 로그인 BLOCKED |
 | A 나머지 도메인 | 민재 | CONFIRMED | NOT_STARTED |
 | B 도메인 | 은창 | PROPOSED | NOT_STARTED |
 
@@ -1320,7 +1327,7 @@ Response data:
     "dailyPointEligibleTapCount": 3247,
     "dailyPointEligibleLimit": 5000,
     "weeklyRankingTapCount": 8347,
-    "weeklyRankingLimit": 12000
+    "weeklyRankingLimit": null
   },
   "point": {
     "balance": 14,
@@ -1349,9 +1356,12 @@ Response data:
   "onboarding": {
     "active": true,
     "stage": "IN_PROGRESS",
-    "validTapCount": 14,
-    "pointGrantedTotal": 0,
-    "nextMilestoneTapCount": 15,
+    "validTapCount": 15,
+    "pointGrantedTotal": 1,
+    "milestonesGranted": [
+      "POINT_15"
+    ],
+    "nextMilestoneTapCount": 30,
     "firstBoxDropped": false,
     "keycapRevealed": false,
     "loginRequired": false,
@@ -1370,9 +1380,15 @@ Response data:
 온보딩 규칙:
 
 - `stage`: `IN_PROGRESS`, `LOGIN_REQUIRED`, `COMPLETED`.
+- 상태 전이: 0~44 유효 탭은 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`.
+- `active` 계산: `IN_PROGRESS`와 `LOGIN_REQUIRED`는 `true`, `COMPLETED`는 `false`.
+- 45탭 보상 지급으로 탭 기반 온보딩 보상 단계는 완료되지만, 회원 로그인/승격 전까지 전체 온보딩 상태는 `LOGIN_REQUIRED`다.
+- 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 포인트/키캡 보상은 유지한다. 같은 게스트로 재실행하면 완료 모달/로그인 단계를 복구할 수 있다.
 - 프론트는 `validTapCount`, `milestonesGranted`, `nextMilestoneTapCount`, `keycap`, `loginRequired`로 화면을 결정한다.
+- `GET /home.onboarding.milestonesGranted`는 현재까지 완료된 milestone 목록이다.
+- milestone 목록 순서는 `POINT_15`, `POINT_30`, `FIRST_KEYCAP_45`이며 중복은 없다.
 - 15/30/45 세부 애니메이션 상태를 모두 DB enum으로 만들지 않는다.
-- `weeklyRankingLimit=12000`은 기존 정책값이며 최신 랭킹 UI 목업 점수와 충돌하므로 Decision Required다.
+- `weeklyRankingLimit=null`은 현재 랭킹 상한 정책 미확정 또는 상한 없음을 뜻한다. 숫자가 내려오면 서버가 적용하는 확정 상한이다. UI 목업의 18,420 같은 점수는 서버 상한 확정 근거가 아니다.
 
 ### POST /taps/batches
 
@@ -1462,6 +1478,7 @@ Response data:
 - 한 배치가 14탭에서 46탭처럼 여러 milestone을 넘으면 `POINT_15`, `POINT_30`, `FIRST_KEYCAP_45`를 모두 한 번씩 처리한다.
 - 45탭 milestone은 `OnboardingKeycapGrantUseCase`를 동기 호출해 즉시 표시할 키캡 결과를 응답한다.
 - 온보딩 플로우는 프론트 수동 상자 개봉 API를 호출하지 않는다.
+- `POST /taps/batches.onboarding.milestonesGranted`는 해당 요청에서 새로 지급된 milestone 목록이다. `GET /home`의 누적 목록과 의미가 다르다.
 - 부스터는 포인트/상자 진행도에 2배 적용하고 랭킹 점수에는 적용하지 않는다.
 - 동일 `tapBatchId` 재요청은 기존 결과를 반환한다.
 - 부스터 시작/종료 경계를 넘는 배치는 프론트가 경계에서 flush하고, 서버는 서버 시각으로 최종 검증한다.
@@ -1482,6 +1499,7 @@ Response data:
     "nextMilestoneTapCount": null,
     "loginRequired": true,
     "keycap": {
+      "userKeycapId": "user-keycap-public-uuid",
       "keycapId": "keycap-public-uuid",
       "code": "ONBOARDING_BLUE_SWITCH",
       "name": "청축 키캡",
@@ -1514,10 +1532,12 @@ Response data:
   "pointEligibleLimit": 5000,
   "remainingPointEligibleTapCount": 1706,
   "weeklyRankingTapCount": 8394,
-  "weeklyRankingLimit": 12000,
+  "weeklyRankingLimit": null,
   "lastAcceptedSequence": 12
 }
 ```
+
+`weeklyRankingLimit` 규칙은 `GET /home`과 같다. `null`이면 랭킹 상한 정책 미확정 또는 상한 없음, 숫자면 서버가 적용하는 확정 상한이다.
 
 ### 포인트 및 출금
 
@@ -2048,6 +2068,7 @@ Request:
 
 ```json
 {
+  "userKeycapId": "user-keycap-public-uuid",
   "keycapId": "keycap-public-uuid",
   "code": "ONBOARDING_BLUE_SWITCH",
   "name": "청축 키캡",
@@ -2058,7 +2079,8 @@ Request:
 멱등성:
 
 - `referenceId`와 사용자당 최초 키캡 1회 기준으로 멱등 처리한다.
-- 같은 요청 재시도와 동시 요청은 기존 키캡 결과를 반환한다.
+- 같은 요청 재시도와 동시 요청은 동일한 `userKeycapId`와 동일 keycap 결과를 반환한다.
+- `userKeycapId`는 지급된 `user_keycap.public_id`이며, `keycapId`는 카탈로그 `keycap.public_id`다.
 - 즉시 키캡 결과 화면이 필요하므로 단순 비동기 Event만 사용하지 않는다. Outbox/Event는 후속 기록과 분석 전파에 사용할 수 있다.
 - 분석 이벤트 실패는 보상 지급과 로그인 성공을 rollback하지 않는다.
 

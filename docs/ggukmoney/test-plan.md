@@ -20,7 +20,7 @@
 - `./gradlew check --info --stacktrace`: 성공.
 - `./gradlew bootJar --info --stacktrace`: 성공.
 - 개별 테스트 `AccessLogFilterTest`, `JwtTokenProviderTest`, `RedisAuthSessionRepositoryTest`, `AuthServiceLogoutAllTest`, `TestEnvironmentSmokeTest`: 모두 성공.
-- `flywayValidate`: 현재 Gradle Flyway plugin task가 없어 실행 대상이 아님. 실제 DB migration 검증은 Flyway plugin 또는 Testcontainers 통합 테스트로 보완한다.
+- `flywayValidate`: 현재 Gradle Flyway plugin task가 없어 실행 대상이 아님. 실제 DB migration 적용 검증은 PostgreSQL Testcontainers 기반 `FlywayMigrationIntegrationTest`가 담당하며, `V1000__create_auth_session_log.sql`이 실제 PostgreSQL에 적용되는 것을 검증했다.
 - Redis/PostgreSQL 관련 인증 검증은 Testcontainers 통합 테스트로 확인했다.
 
 ## 빵도감에서 참고한 테스트 구조
@@ -216,6 +216,8 @@
 - 31~44탭: 추가 지급 없음.
 - 45탭: 온보딩 완성 키캡 1개 지급.
 - 46탭 이후: 온보딩 키캡 추가 지급 없음.
+- 0~44탭 상태는 `IN_PROGRESS`, 45탭 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`다.
+- `IN_PROGRESS`와 `LOGIN_REQUIRED`는 `active=true`, `COMPLETED`는 `active=false`다.
 
 재시도/동시성:
 
@@ -224,12 +226,12 @@
 - 한 배치가 여러 milestone을 넘으면 모든 해당 milestone을 한 번씩 지급.
 - B 포인트 ledger와 onboarding progress 정합성.
 - A 키캡 지급 referenceId 멱등성.
-- A Port 재시도 시 같은 keycap 결과 반환.
+- A Port 재시도 시 같은 `userKeycapId`와 같은 keycap 결과 반환.
 - 일반 상자 잔액과 온보딩 상자를 혼동하지 않음.
 - 온보딩 키캡은 조각이 아니라 COMPLETED 상태.
 - 프론트 수동 open API 없이 지급 완료.
 - 앱 재실행 시 진행 상태 복원.
-- 로그인 실패 후 보상 유지.
+- 로그인 실패 후 `LOGIN_REQUIRED`와 보상 유지.
 - 게스트에서 회원으로 승격할 때 2P와 키캡 유지.
 
 ## 광고/부스터/초대 테스트 — PROPOSED

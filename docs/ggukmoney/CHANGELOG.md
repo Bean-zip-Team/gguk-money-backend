@@ -18,6 +18,18 @@
 - 랭킹/온보딩 이벤트 카탈로그를 최신 화면 기준으로 갱신했다.
 - Java, SQL, Gradle, 테스트 코드는 수정하지 않았다.
 
+### 후속 문서 정합성 보정
+
+- 구현 상태 정의에 `BLOCKED`를 추가하고 `CONFIRMED`와 `IMPLEMENTED`를 분리했다.
+- 개인 로컬 저장소 절대경로를 공유 문서에서 제거했다.
+- architecture의 Redis Session/Lua CAS 통합 테스트 상태를 실제 Testcontainers 결과에 맞췄다.
+- Flyway 검증 설명을 `FlywayMigrationIntegrationTest`의 PostgreSQL Testcontainers 실제 검증 기준으로 수정했다.
+- 온보딩 상태 전이를 `IN_PROGRESS` -> `LOGIN_REQUIRED` -> `COMPLETED`로 명확화했다.
+- `GET /home`의 `milestonesGranted` 필드와 누적 milestone 의미를 정리했다.
+- 온보딩 완성 키캡 지급 모델에 `grant_mode=COMPLETE_KEYCAP`과 `userKeycapId` 의미를 보강했다.
+- 12,000 랭킹 상한 미확정 응답을 `weeklyRankingLimit=null` 기준으로 정리했다.
+- Java/SQL/Gradle/테스트 코드는 수정하지 않았다.
+
 ## 2026-07-02 빵도감 main HEAD 기반 인증/로그 구현 반영
 
 - 빵도감 기준 원본을 `develop`에서 `main` HEAD `e9a6abb73320e61869f91b14293e5da3d1fbe4f2`로 변경했습니다. 원격 `develop` 브랜치는 확인되지 않았습니다.

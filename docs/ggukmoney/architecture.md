@@ -143,6 +143,8 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 
 온보딩 진행 상태, 유효 탭 수, 15/30 포인트 지급, 45탭 milestone 감지는 B가 소유한다. 온보딩 키캡 후보군, 자동 개봉 기록, 완성 키캡 지급, 게스트에서 회원으로 승격된 뒤의 키캡 유지는 A가 소유한다. B는 A Entity/Repository를 직접 참조하지 않고 `OnboardingKeycapGrantUseCase`를 동기 호출해 즉시 표시할 키캡 결과를 받는다. 프론트의 자동 개봉은 서버가 확정한 보상 결과를 표현하는 UI 동작이며, 온보딩에서 별도 수동 상자 개봉 API를 호출하지 않는다.
 
+온보딩 상태는 0~44 유효 탭 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`로 전이한다. `IN_PROGRESS`와 `LOGIN_REQUIRED`는 API에서 `active=true`, `COMPLETED`는 `active=false`로 계산한다. 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 포인트/키캡 보상은 유지한다.
+
 ### 기록 Projection
 
 기록 화면은 A/B 운영 테이블을 직접 조인하지 않는다. A 내부 이벤트와 B 이벤트를 `event_inbox`로 수신해 `user_record_daily`, `user_record_summary`, `user_record_reward`에 투영한다.
@@ -176,7 +178,7 @@ Session 처리 분기:
 
 ### 기존 Toss 회원 로그인
 
-현재 게스트를 source, 기존 Toss 회원을 target으로 병합한다. source의 `GUEST_OWNER`는 `active=false`로 비활성화하고 target과 현재 device의 `MEMBER_DEVICE`를 생성 또는 활성화한다. source 인증 세션은 전체 폐기하고 target 기준 새 Redis 인증 세션을 생성한다. 온보딩에서 게스트에게 서버 저장된 2P와 키캡은 회원 승격 시 유지한다. 기존 Toss 회원 병합 시 진행 중 랭킹 점수 합산 여부는 별도 병합 정책에서 결정한다.
+현재 게스트를 source, 기존 Toss 회원을 target으로 병합한다. source의 `GUEST_OWNER`는 `active=false`로 비활성화하고 target과 현재 device의 `MEMBER_DEVICE`를 생성 또는 활성화한다. source 인증 세션은 전체 폐기하고 target 기준 새 Redis 인증 세션을 생성한다. 온보딩에서 게스트에게 서버 저장된 2P와 `user_keycap.public_id` 기준 키캡 결과는 회원 승격 시 유지한다. 기존 Toss 회원 병합 시 진행 중 랭킹 점수 합산 여부는 별도 병합 정책에서 결정한다.
 
 ### 온보딩 시작과 로그인 시점
 
@@ -203,8 +205,9 @@ UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 
 
 - `AccessLogFilter`, `RequestLogContext`, `ApiResponse`, `ApiError`, `ApiErrorResponse`, `GlobalExceptionHandler`: `IMPLEMENTED`
 - `JwtTokenProvider`: `IMPLEMENTED`; `AuthController`, `AuthInterceptor`, 인증 DTO: `IN_PROGRESS`
-- `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp: `IMPLEMENTED` 수준의 단위 테스트 통과. 실제 Redis 통합 테스트는 `IN_PROGRESS`
-- `auth_session_log` Entity/Repository/Service와 최소 Flyway SQL: `IN_PROGRESS`
+- `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp: `RedisAuthSessionRepositoryIntegrationTest`, `RefreshLuaCasIntegrationTest`, `AuthServiceLogoutAllIntegrationTest`, `AuthApiIntegrationTest` 기준 `IMPLEMENTED`
+- `auth_session_log` Entity/Repository, JSONB/UUID/enum 저장, 최소 Flyway SQL 적용: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest` 기준 `IMPLEMENTED`
+- 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구 전체 정책: `IN_PROGRESS`
 - 게스트 생성/복구와 Toss 승격/병합: `NOT_STARTED`
 
 | 빵도감 파일 또는 클래스 | 현재 역할 | 의존 도메인 | 꾹머니 대응 | 재사용 등급 | 변경 사항 | 주의 | 관련 테스트 |
