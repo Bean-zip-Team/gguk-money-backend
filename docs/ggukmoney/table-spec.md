@@ -1,8 +1,6 @@
 # 꾹머니 PostgreSQL 테이블 명세
 
-> 현재 구현 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 이 문서는 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스의 Source of Truth다.
-
-> 구현 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 계약/테이블 명세는 이 기준으로 해석한다.
+> 구현 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`).
 
 이 문서는 전체 PostgreSQL 테이블, 컬럼, 제약, 인덱스의 Source of Truth다. A 담당자 민재의 테이블은 CONFIRMED, B 담당자 은창의 미확정 테이블은 DRAFT로 구분한다.
 

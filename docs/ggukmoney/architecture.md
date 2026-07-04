@@ -70,7 +70,7 @@ erDiagram
     APP_USER ||--o{ AUTH_SESSION_LOG : audits
 
     TAP_BATCH ||--o{ TAP_EVENT : produces
-    APP_USER ||--o| USER_ONBOARDING_PROGRESS : tracks
+    APP_USER ||--o{ ONBOARDING_SETTLEMENT : settles
     TAP_BATCH ||--o{ ABUSE_SIGNAL : flags
     POINT_ACCOUNT ||--o{ POINT_LEDGER : records
     CASHOUT_REQUEST ||--|| TOSS_POINT_TRANSFER : transfers
