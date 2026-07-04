@@ -137,6 +137,13 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 - `expiresAt`과 Redis TTL 갱신
 - `auth:user-sessions:{userPublicId}` ZSet score 갱신
 
+후속 보강:
+
+- 현재 Refresh Rotation Lua CAS는 구현되어 있으나 사용자 revoke marker 연동은 `IN_PROGRESS`다.
+- Rotation 전에 `auth:revoke:user:{userPublicId}`를 확인하고, session의 `issuedAtMillis <= revokedAtMillis`이면 revoked session으로 거절한다.
+- revoked session이면 `auth:refresh:{sessionId}`와 `auth:user-sessions:{userPublicId}`의 해당 member를 정리하고 `AUTH_USER_REVOKED`를 반환한다.
+- 기존 `AUTH_REFRESH_CONFLICT`, `AUTH_REFRESH_REUSED`, `AUTH_REFRESH_NOT_FOUND` 의미는 유지한다.
+
 동시 요청과 재사용 판단:
 
 - 거의 동시에 들어온 동일 Refresh 요청은 `409 AUTH_REFRESH_CONFLICT`로 처리한다.
@@ -170,6 +177,15 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 7. `auth_session_log`에 `LOGOUT_ALL`을 저장한다.
 
 현재 구현은 단일 Redis MVP 기준의 Lua 원자 처리를 사용한다. Redis Cluster 전환 시 `auth:refresh:{sessionId}`, `auth:user-sessions:{userPublicId}`, `auth:revoke:user:{userPublicId}`, access denylist key의 hash slot 설계를 다시 해야 한다.
+
+Session save와 logout-all 사이 race 방지:
+
+- logout-all Lua 내부 처리는 `IMPLEMENTED`다.
+- 현재 `RedisAuthSessionRepository.save(AuthSession)`은 `auth:refresh:{sessionId}` hash 저장, refresh key TTL 설정, `auth:user-sessions:{userPublicId}` ZSet 추가를 분리 실행한다.
+- hash 저장 후 ZSet 추가 전에 logout-all이 실행되면 logout-all이 새 session을 발견하지 못하고, 이후 ZSet member가 추가되어 stale refresh session이 남을 수 있다.
+- 이 race 방지는 `IN_PROGRESS`이며 `POST /api/v1/guests` 구현 전에 완료한다.
+- 후속 구현은 Session save를 단일 Redis Lua Script로 만들고, 사용자 revoke marker를 확인해 `issuedAtMillis <= revokedAtMillis`인 session 생성을 거절하며, hash 저장, TTL 설정, ZSet 추가를 한 번에 처리한다.
+- Redis Cluster 전환 시 Lua에 전달되는 모든 key가 같은 hash slot에 있어야 한다. 후보는 `{userPublicId}` hash tag 기반 key 설계이며, MVP의 기존 Redis key는 이번 문서 작업에서 변경하지 않는다.
 
 Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userPublicId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 

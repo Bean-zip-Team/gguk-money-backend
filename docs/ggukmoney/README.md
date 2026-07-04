@@ -50,8 +50,8 @@
 - QueryDSL은 OpenFeign `io.github.openfeign.querydsl` 7.4.0 좌표를 사용한다. 사용자 sort 문자열을 `PathBuilder.get()`에 직접 전달하지 않고 enum/switch allowlist와 명시적 projection 기준을 적용한다.
 - Spring Boot Application 클래스와 기본 테스트: IMPLEMENTED
 - 공통 응답/예외, traceId, Access Log: IMPLEMENTED
-- JWT Provider, `/api/v1` 인증 API, Redis Refresh Session Repository/Lua CAS, 현재 Session 기준 logout, Lua 원자 logout-all: IMPLEMENTED
-- 감사 로그 저장 실패 재처리와 Redis Cluster hash slot 설계 같은 운영 보강: IN_PROGRESS
+- JWT Provider, `/api/v1` 인증 API, Redis Refresh Session Repository/Lua CAS, 현재 Session 기준 logout, Lua 내부 원자 logout-all: IMPLEMENTED
+- 감사 로그 저장 실패 재처리, Redis Session save와 logout-all 사이 race 방지, Refresh Rotation revoke marker 연동, Redis Cluster hash slot 설계 같은 운영 보강: IN_PROGRESS
 - Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증: IMPLEMENTED
 - 게스트 생성/복구, Toss 승격/병합: NOT_STARTED
 - Toss Access Token 없는 일반 로그인: BLOCKED
@@ -67,6 +67,7 @@
 - PostgreSQL Testcontainers 이미지: postgres:16-alpine
 - Testcontainers BOM 선언: 1.21.3 유지. Spring Boot spring-boot-testcontainers 경유 core runtime은 2.0.5로 resolve됨을 dependencyInsight로 확인했다.
 - 전체 테스트 기준: `./gradlew.bat check bootJar --stacktrace` 성공, 36 tests, failures 0, errors 0, skipped 0.
+- GitHub Actions `CI` workflow의 `build` job은 Gradle 9.5.1 기준 `check bootJar` 성공을 확인했다.
 
 ## 서비스 개요
 
@@ -88,6 +89,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 같은 기기의 ACTIVE 게스트가 있으면 기존 계정을 재사용하고 새 access/refresh token을 발급한다.
 - 기존 Refresh Token 원문을 반환하지 않는다.
 - 게스트 복구 시 `POST /api/v1/guests`는 기존 guest 계정을 재사용할 수 있지만 새 Redis auth session과 token pair를 생성한다. Refresh Token 기반 세션 유지/교체는 `POST /api/v1/auth/refresh`가 담당한다.
+- `POST /api/v1/guests` 구현 전 Redis Session save를 단일 Lua Script로 묶고 사용자 revoke marker를 확인해야 한다. 현재 `RedisAuthSessionRepository.save(AuthSession)`은 refresh hash 저장, TTL 설정, user-sessions ZSet 추가가 분리되어 있어 logout-all과의 race 방지가 후속 과제다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 게스트 복구의 Session 유지/폐기 방식은 서버가 결정하며 클라이언트가 선택하지 않는다.
 - 신규 Toss 사용자는 현재 게스트를 MEMBER로 승격하고 `GUEST_OWNER`를 `MEMBER_DEVICE`로 변경한다.
@@ -118,7 +120,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 온보딩 전용 milestone은 15탭 1P, 30탭 추가 1P, 45탭 완성 키캡 1개다.
 - 온보딩 총 지급 포인트는 2P다.
 - 온보딩 상자는 일반 조각 상자와 다르며 프론트가 수동 개봉 API를 호출하지 않는다.
-- 온보딩 완료 CTA는 Toss 로그인이고, 서버 게스트 계정과 세션은 앱 시작 시 `POST /guests`에서 먼저 생성한다.
+- 온보딩 완료 CTA는 Toss 로그인이고, 서버 게스트 계정과 세션은 앱 시작 시 `POST /api/v1/guests`에서 먼저 생성한다.
 - 온보딩 상태는 0~44 유효 탭 `IN_PROGRESS`, 45탭 milestone과 키캡 지급 성공 후 `LOGIN_REQUIRED`, Toss 회원 승격 성공 후 `COMPLETED`로 전이한다.
 - `IN_PROGRESS`와 `LOGIN_REQUIRED`는 `active=true`, `COMPLETED`는 `active=false`다.
 - 로그인 실패 또는 앱 종료 후에도 `LOGIN_REQUIRED`와 기존 2P/키캡 보상은 유지한다.

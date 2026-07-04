@@ -90,6 +90,12 @@
 - 전체 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`가 삭제된다.
 - 전체 기기 로그아웃 시 `auth:revoke:user:{userPublicId}`가 생성된다.
 - 전체 기기 로그아웃은 Lua Script 한 번으로 처리하며 만료 Session은 `revokedSessionCount`에서 제외한다.
+- 후속 테스트: Session save는 hash 저장, TTL 설정, user-sessions ZSet 추가를 단일 Lua Script로 원자 처리한다.
+- 후속 테스트: logout-all revoke marker 시각과 같거나 이전 `issuedAtMillis`의 신규 session save는 거절된다.
+- 후속 테스트: logout-all 이후 발급된 session은 허용된다.
+- 후속 테스트: revoked session save 거절 시 stale refresh hash와 ZSet member가 남지 않는다.
+- 후속 테스트: Refresh Rotation은 사용자 revoke marker를 확인하고 revoked session이면 `AUTH_USER_REVOKED`로 거절한다.
+- 후속 테스트: Refresh Rotation revoke marker 보강 후에도 기존 CAS 동시 충돌, 재사용 감지, `revokedSessionCount` 의미가 유지된다.
 - 다른 기기의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
 - revoke 전에 발급된 Access Token은 거절된다.
 - 같은 초라도 revoke 이후 발급된 Access Token은 허용된다.
@@ -142,8 +148,8 @@
 - 여러 상자 일괄 개봉은 MVP에서 허용하지 않는다.
 - 키캡 조각이 요구 개수에 도달하면 `COMPLETED`가 된다.
 - 한 사용자에게 장착 키캡은 하나만 존재한다.
-- `GET /keycaps`의 `code`는 `keycap.code`와 일치한다.
-- `GET /keycaps`의 상태값은 DB와 동일한 `IN_PROGRESS`, `COMPLETED`만 사용한다.
+- `GET /api/v1/keycaps`의 `code`는 `keycap.code`와 일치한다.
+- `GET /api/v1/keycaps`의 상태값은 DB와 동일한 `IN_PROGRESS`, `COMPLETED`만 사용한다.
 
 ## 지역/랭킹 테스트
 
@@ -170,7 +176,7 @@
 - 1위 사용자는 남은 탭 0이다.
 - Redis와 PostgreSQL 최종 순위가 일치한다.
 - 시즌 전환 시 새 점수 0으로 시작한다.
-- `/rankings/participations`는 신규 프론트 계약에서 사용하지 않는다.
+- `/api/v1/rankings/participations`는 신규 프론트 계약에서 사용하지 않는다.
 - 랭킹 보상 유지 여부가 확정되면 주간 1위 한정 키캡 자동 지급과 2~10위 입상 기록을 검증한다.
 - 결과 확인 API는 보상 지급을 다시 실행하지 않는다.
 - 순위 등락 비교 기준 테스트는 정책 확정 전 `Decision Required`로 둔다.
@@ -191,14 +197,14 @@
 - 같은 이벤트가 재전송되어도 중복 집계되지 않는다.
 - A 내부 이벤트도 기록 projection에 반영된다.
 - 기록 API는 B 테이블을 직접 조회하지 않는다.
-- `/app-config`는 A 소유 정책만 반환한다.
+- `/api/v1/app-config`는 A 소유 정책만 반환한다.
 - 법적 문서 API는 `content`를 반환한다.
 
 
 ## 홈/탭/포인트/출금 테스트 — PROPOSED
 
-- `/home`은 A/B 조회 결과를 한 응답으로 합성한다.
-- `/taps/batches` 동일 `tapBatchId` 재요청은 같은 결과를 반환한다.
+- `/api/v1/home`은 A/B 조회 결과를 한 응답으로 합성한다.
+- `/api/v1/taps/batches` 동일 `tapBatchId` 재요청은 같은 결과를 반환한다.
 - 동일 `tapBatchId`에 다른 body hash가 오면 충돌한다.
 - 포인트 대상 탭은 일 5,000회에서 더 증가하지 않는다.
 - 주간 랭킹 점수 12,000 한도는 최신 UI 목업 점수와 충돌하므로 Decision Required다.
@@ -313,7 +319,7 @@
 - 랭킹 동점 처리 기준을 구현 테스트로 고정했는가.
 - 1위 한정 키캡 중복 보유 정책을 확정했는가.
 - 지역 seed 데이터 적재 방식을 확정했는가.
-- `/app-config`는 A 소유 정책만 반환하고 B/공통 정책은 Query Facade에서 합성한다는 기준을 공유했는가.
+- `/api/v1/app-config`는 A 소유 정책만 반환하고 B/공통 정책은 Query Facade에서 합성한다는 기준을 공유했는가.
 - outbox 전달 방식과 재시도 주기를 확정했는가.
 - 순위 등락 비교 기준을 확정했는가.
 - 주간 랭킹 점수 12,000 한도 유지/제거/상향 여부를 확정했는가.

@@ -182,7 +182,7 @@ Session 처리 분기:
 
 ### 온보딩 시작과 로그인 시점
 
-UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 앱 시작 시 `POST /guests`로 게스트 계정과 Redis 세션을 먼저 만든다. 15/30/45 보상은 로그인 전 로컬에만 저장하지 않고 게스트 사용자에게 멱등 저장한다. 완료 CTA의 Toss 로그인은 이미 저장된 게스트 데이터를 MEMBER로 영구 승격/귀속하는 단계다. Access Token 없는 일반 Toss 로그인은 `deviceKey/platform/appVersion` 계약 미확정으로 계속 `BLOCKED`이며, guest Access Token 기반 온보딩 완료 승격과는 별도 흐름이다.
+UI는 온보딩 완료 모달에서 Toss 로그인을 요구하지만 서버는 앱 시작 시 `POST /api/v1/guests`로 게스트 계정과 Redis 세션을 먼저 만든다. 15/30/45 보상은 로그인 전 로컬에만 저장하지 않고 게스트 사용자에게 멱등 저장한다. 완료 CTA의 Toss 로그인은 이미 저장된 게스트 데이터를 MEMBER로 영구 승격/귀속하는 단계다. Access Token 없는 일반 Toss 로그인은 `deviceKey/platform/appVersion` 계약 미확정으로 계속 `BLOCKED`이며, guest Access Token 기반 온보딩 완료 승격과는 별도 흐름이다.
 
 ## A/B Port와 Event
 
@@ -275,4 +275,7 @@ Auth Audit Log는 [table-spec.md](table-spec.md)의 `auth_session_log`를 기준
 - `FullStackIntegrationTestSupport`에 `@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)`를 적용했다. 통합 테스트 클래스 종료 후 Spring Context를 폐기해 종료된 Redis/PostgreSQL Testcontainer 포트가 다음 클래스에 재사용되는 문제를 방지한다.
 - Redis Refresh Rotation은 Lua CAS 방식으로 유지한다. 별도 Redis refresh lock key는 사용하지 않는다.
 - 거의 동시 Refresh 충돌은 `AUTH_REFRESH_CONFLICT`로 처리하고 Session을 폐기하지 않는다. Rotation 완료 후 과거 Refresh Token 재사용은 `AUTH_REFRESH_REUSED`로 처리하고 Session을 폐기하며 `REFRESH_REUSE_DETECTED` 감사 로그를 남긴다.
+- logout-all Lua 내부 처리는 만료 Session 정리, 활성 Refresh Session 삭제, user session ZSet 삭제, 사용자 revoke marker 저장, 현재 access denylist 저장까지 `IMPLEMENTED`다. 다만 `RedisAuthSessionRepository.save(AuthSession)`이 refresh hash 저장, TTL 설정, user-sessions ZSet 추가를 분리 실행하므로 Session save와 logout-all 사이 race 방지는 `IN_PROGRESS`다.
+- `POST /api/v1/guests` 구현 전에 Session save를 단일 Redis Lua Script로 만들고, `issuedAtMillis <= revokedAtMillis`인 세션 생성을 거절해야 한다. 같은 보강에서 Refresh Rotation도 사용자 revoke marker를 확인하고 revoked session이면 refresh hash/ZSet을 정리한 뒤 `AUTH_USER_REVOKED`를 반환한다.
+- Redis Cluster 전환 시 관련 Lua key는 같은 hash slot에 있어야 하며, `{userPublicId}` hash tag 기반 key 설계는 후속 결정 사항이다.
 - `AuthAuditService`는 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않도록 인증 상태 변경 경계 밖에서 실패를 삼키고 Error/Infrastructure Log를 남긴다.

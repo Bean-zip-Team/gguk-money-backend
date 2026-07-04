@@ -68,7 +68,7 @@ A 상세 테이블 공통 정책:
 ### app_user
 
 - 역할: 게스트와 회원을 하나의 계정으로 관리한다.
-- 관련 API: `POST /api/v1/guests`, `POST /api/v1/auth/toss/login`, `GET /members/me`, `DELETE /members/me`
+- 관련 API: `POST /api/v1/guests`, `POST /api/v1/auth/toss/login`, `GET /api/v1/members/me`, `DELETE /api/v1/members/me`
 - 관련 Event/Port: `RecordEventIngestUseCase`, `UserWithdrawalGuardPort`
 - 멱등성 기준: `deviceKeyHash + GUEST_OWNER`, Toss provider identity
 
@@ -118,7 +118,7 @@ A 상세 테이블 공통 정책:
 ### device
 
 - 역할: 앱 설치/기기를 식별한다.
-- 관련 API: `POST /guests`, `PUT /push-devices/current`
+- 관련 API: `POST /api/v1/guests`, `PUT /api/v1/push-devices/current`
 - 멱등성 기준: `device_key_hash`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -163,7 +163,7 @@ A 상세 테이블 공통 정책:
 ### user_merge_history
 
 - 역할: 게스트 데이터를 기존 회원으로 병합하는 절차를 기록한다.
-- 관련 API: `POST /api/v1/auth/toss/login`, `GET /members/me/merge-status`, `POST /members/me/merge-retry`
+- 관련 API: `POST /api/v1/auth/toss/login`, `GET /api/v1/members/me/merge-status`, `POST /api/v1/members/me/merge-retry`
 - 멱등성 기준: `source_user_id`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -231,7 +231,7 @@ A 상세 테이블 공통 정책:
 ### legal_document
 
 - 역할: 약관/개인정보/사업자 정보 본문을 버전별 저장한다.
-- 관련 API: `GET /legal-documents/current`
+- 관련 API: `GET /api/v1/legal-documents/current`
 - 멱등성 기준: `document_type + version`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -274,7 +274,7 @@ A 상세 테이블 공통 정책:
 ### app_config
 
 - 역할: A 소유 앱 정책을 append-only로 저장한다.
-- 관련 API: `GET /app-config`
+- 관련 API: `GET /api/v1/app-config`
 - 멱등성 기준: `config_key + effective_at`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -297,7 +297,7 @@ A 상세 테이블 공통 정책:
 ### keycap
 
 - 역할: 키캡 카탈로그.
-- 관련 API: `GET /keycaps`
+- 관련 API: `GET /api/v1/keycaps`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -319,7 +319,7 @@ A 상세 테이블 공통 정책:
 ### user_keycap
 
 - 역할: 사용자 키캡 조각, 완성, 장착 상태.
-- 관련 API: `GET /keycaps/me`, `PUT /keycaps/{keycapId}/equip`
+- 관련 API: `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip`
 - 멱등성 기준: `user_id + keycap_id`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -386,7 +386,7 @@ A 상세 테이블 공통 정책:
 ### keycap_box_account
 
 - 역할: 사용자 상자 보유량과 개봉 조건.
-- 관련 API: `GET /keycap-boxes/status`, `POST /keycap-boxes/open`
+- 관련 API: `GET /api/v1/keycap-boxes/status`, `POST /api/v1/keycap-boxes/open`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -428,7 +428,7 @@ A 상세 테이블 공통 정책:
 ### keycap_box_open
 
 - 역할: 상자 개봉 요청과 멱등성.
-- 관련 API: `POST /keycap-boxes/open`
+- 관련 API: `POST /api/v1/keycap-boxes/open`
 - 멱등성 기준: `user_id + idempotency_key`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -470,7 +470,7 @@ A 상세 테이블 공통 정책:
 ### region
 
 - 역할: 행정구역 마스터.
-- 관련 API: `GET /regions`, `POST /regions/detect`
+- 관련 API: `GET /api/v1/regions`, `POST /api/v1/regions/detect`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -488,7 +488,7 @@ A 상세 테이블 공통 정책:
 ### user_region
 
 - 역할: 사용자 현재 적용 지역.
-- 관련 API: `GET /members/me/region`, `PUT /members/me/region`
+- 관련 API: `GET /api/v1/members/me/region`, `PUT /api/v1/members/me/region`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -648,7 +648,7 @@ A 상세 테이블 공통 정책:
 ### push_device
 
 - 역할: 푸시 발송 대상 기기.
-- 관련 API: `PUT /push-devices/current`, `DELETE /push-devices/current`
+- 관련 API: `PUT /api/v1/push-devices/current`, `DELETE /api/v1/push-devices/current`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -845,7 +845,7 @@ B 공통 정책:
 ### tap_batch
 
 - 역할: 프론트 탭 배치 수신, 검증 결과와 멱등성 저장.
-- 관련 API: `POST /taps/batches`, `GET /taps/today`
+- 관련 API: `POST /api/v1/taps/batches`, `GET /api/v1/taps/today`
 - 멱등성 기준: `public_id(tapBatchId)`, `user_public_id + tap_session_id + sequence`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
@@ -926,7 +926,7 @@ B 공통 정책:
 - 역할: 신규 사용자 온보딩 진행 상태와 15/30/45 milestone 지급 멱등성.
 - 소유자/상태: B / DRAFT.
 - A 소유 `app_user`와 DB FK를 만들지 않고 `user_public_id` scalar만 저장한다.
-- 관련 API: `GET /home`, `POST /taps/batches`.
+- 관련 API: `GET /api/v1/home`, `POST /api/v1/taps/batches`.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -980,7 +980,7 @@ B 공통 정책:
 ### point_account
 
 - 역할: 포인트 현재 잔액과 누적 합계.
-- 관련 API: `GET /points/me`, `POST /cashouts`
+- 관련 API: `GET /api/v1/points/me`, `POST /api/v1/cashouts`
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -1215,3 +1215,5 @@ B 공통 정책:
 - V1000의 DB CHECK는 `result IN ('SUCCESS', 'FAILURE', 'DENIED')`에만 존재한다. `event_type`은 Java Enum 문자열 저장으로 검증하며 DB CHECK는 후속 migration 결정 사항이다.
 - Java `AuthSessionLog` Entity는 PostgreSQL `metadata JSONB` 저장/조회와 UUID/enum 문자열 저장을 통합 테스트로 검증했다.
 - `app_user`, `device` 등 나머지 A 전체 테이블과 B 담당 DRAFT 테이블의 상세 정책은 기존 표 명세를 Source of Truth로 유지한다.
+- `V1010__create_user_auth.sql`은 아직 생성하지 않았고 `PLANNED/NOT_STARTED`다. `app_user`, `device`, `user_device`, `auth_identity`, `user_merge_history` 구현과 `POST /api/v1/guests` API는 `NOT_STARTED`다.
+- 후속 순서는 Redis Session save/revoke race 보강, Refresh Rotation revoke marker 확인, V1010 User/Auth 테이블, Entity/Repository, `POST /api/v1/guests`, Toss 승격/병합 순으로 진행한다.

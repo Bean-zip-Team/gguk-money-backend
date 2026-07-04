@@ -18,7 +18,7 @@
 - 최신 전체 랭킹 와이어프레임을 반영해 지역/전국 랭킹을 전체 유저 단일 랭킹으로 변경했다.
 - 별도 랭킹 참가 API를 `DEPRECATED`로 정리하고 사용자 자동 시즌 포함을 문서화했다.
 - 7일 회차, 남은 시간, 내 행 강조, 상위 순위와 내 주변 순위, 이전 회차 기록 요구사항을 반영했다.
-- ranking API에서 현재 계약의 scope/region 필드를 제거하고 `/rankings/current`의 `myRank`로 `/rankings/me`를 통합했다.
+- ranking API에서 현재 계약의 scope/region 필드를 제거하고 `/api/v1/rankings/current`의 `myRank`로 `/api/v1/rankings/me`를 통합했다.
 - `ranking_participation`과 `ranking_snapshot`의 지역 연결을 제거하고 `ranking_snapshot`을 이전 회차 기록의 Source of Truth로 정리했다.
 - Redis 랭킹 key를 `rank:overall:{seasonId}`와 `rank:reached:{seasonId}` 기준으로 변경했다.
 - 주간 12,000 한도와 최신 UI 목업 점수 충돌은 `Decision Required`로 남겼다.
@@ -38,7 +38,7 @@
 - architecture의 Redis Session/Lua CAS 통합 테스트 상태를 실제 Testcontainers 결과에 맞췄다.
 - Flyway 검증 설명을 `FlywayMigrationIntegrationTest`의 PostgreSQL Testcontainers 실제 검증 기준으로 수정했다.
 - 온보딩 상태 전이를 `IN_PROGRESS` -> `LOGIN_REQUIRED` -> `COMPLETED`로 명확화했다.
-- `GET /home`의 `milestonesGranted` 필드와 누적 milestone 의미를 정리했다.
+- `GET /api/v1/home`의 `milestonesGranted` 필드와 누적 milestone 의미를 정리했다.
 - 온보딩 완성 키캡 지급 모델에 `grant_mode=COMPLETE_KEYCAP`과 `userKeycapId` 의미를 보강했다.
 - 12,000 랭킹 상한 미확정 응답을 `weeklyRankingLimit=null` 기준으로 정리했다.
 - Java/SQL/Gradle/테스트 코드는 수정하지 않았다.
@@ -48,6 +48,16 @@
 - 공유 문서에 남은 개인 절대경로를 제거했다.
 - `auth_session_log`의 현재 구현 완료 범위와 감사 로그 저장 실패 재처리 상태를 분리했다.
 - Java/SQL/Gradle/테스트 코드는 수정하지 않았다.
+
+### API 경로와 인증 세션 후속 과제 정합화
+
+- Production API Origin과 API Prefix를 분리하고 HTTP endpoint 경로를 `/api/v1/...` 전체 경로로 통일했다.
+- 공유 문서의 남은 상대 API 경로를 최신 계약 기준으로 정리했다.
+- GitHub Actions CI의 `build` job `check bootJar` 성공 상태를 문서에 반영했다.
+- logout-all Lua 내부 원자 처리와 Session save/logout-all race 방지 상태를 분리했다.
+- Session save Lua 전환, 사용자 revoke marker 확인, Refresh Rotation revoke marker 연동을 후속 과제로 문서화했다.
+- `V1010__create_user_auth.sql`, `POST /api/v1/guests`, Toss 승격/병합은 후속 phase로 유지했다.
+- Java/Test/SQL/Gradle/CI workflow는 수정하지 않았다.
 
 ## 2026-07-02 빵도감 main HEAD 기반 인증/로그 구현 반영
 
@@ -70,8 +80,8 @@
 
 - 34페이지 와이어프레임 PDF를 다시 확인하고 출금 단위, 탭 배치/어뷰징 기준, 지역 랭킹 콜드스타트 기준을 `Decision Required` 항목으로 분리했습니다.
 - 와이어프레임의 상자 반복/일괄 개봉 UI와 주간 보상 받기 버튼은 MVP 백엔드 정책과 의도적으로 다른 표현임을 명시했습니다.
-- `keycap.code`를 API 노출용 안정 코드로 추가하고 `GET /keycaps` 응답과 테이블 명세를 정합화했습니다.
-- 키캡 수집 상태를 DB/API 모두 `IN_PROGRESS`, `COMPLETED`로 통일하고 `GET /keycaps` 페이지 응답을 공통 마스터 데이터 규칙과 맞췄습니다.
+- `keycap.code`를 API 노출용 안정 코드로 추가하고 `GET /api/v1/keycaps` 응답과 테이블 명세를 정합화했습니다.
+- 키캡 수집 상태를 DB/API 모두 `IN_PROGRESS`, `COMPLETED`로 통일하고 `GET /api/v1/keycaps` 페이지 응답을 공통 마스터 데이터 규칙과 맞췄습니다.
 - 닉네임 중복 방지를 위해 `nickname_normalized`와 ACTIVE 사용자 partial unique 정책을 문서화했습니다.
 - `204 No Content` API는 공통 response body를 사용하지 않고 `X-Trace-Id` 헤더로 추적 id를 제공할 수 있도록 예외를 명시했습니다.
 - 사용자 전체 revoke 비교 기준을 `issuedAtMillis <= revokedAtMillis`로 바꾸고 같은 초 발급 토큰 경계 테스트를 추가했습니다.
