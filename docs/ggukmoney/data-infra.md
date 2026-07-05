@@ -37,12 +37,12 @@
 
 ## Flyway 파일 계획
 
-현재 구현에서는 인증 감사 로그용 최소 SQL `src/main/resources/db/migration/V1000__create_auth_session_log.sql`을 생성했다. 이 파일은 `auth_session_log`만 포함하며, `app_user`, `auth_identity`, `device`, `user_device`는 아직 `NOT_STARTED`다. 최종 구현 시 파일 순서는 아래처럼 확장한다.
+현재 구현에서는 인증 감사 로그용 최소 SQL `src/main/resources/db/migration/V1000__create_auth_session_log.sql`을 생성했다. 이 파일은 `auth_session_log`만 포함하며, `app_user`, `auth_identity`는 아직 `NOT_STARTED`다. 최종 구현 시 파일 순서는 아래처럼 확장한다.
 
 | 파일 | 내용 |
 |---|---|
 | `V1000__create_auth_session_log.sql` | 현재 구현: `auth_session_log` |
-| `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity`, `device`, `user_device` |
+| `V1010__create_user_auth.sql` | 최종 확장: `app_user`, `auth_identity` |
 | `V1100__create_config_legal.sql` | `legal_document`, `user_consent`, `app_config` |
 | `V1200__create_keycap_box.sql` | 키캡, 상자, 드롭, 개봉 결과 |
 | `V1300__create_region_ranking.sql` | 지역, 전체 랭킹 시즌, 자동 포함, 점수, snapshot, reward |

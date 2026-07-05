@@ -40,17 +40,28 @@
 
 ## 회원/인증 테스트
 
-- Toss identity가 없으면 MEMBER `app_user`, `auth_identity`, 필요 시 `device`, `user_device`가 생성된다.
-- Toss identity가 이미 있으면 기존 MEMBER와 `auth_identity`를 재사용한다.
+- `authorizationCode`는 필수이며 blank면 검증 실패한다.
+- `referrer`는 `DEFAULT` 또는 `SANDBOX`만 허용한다.
+- 기기 식별자, 플랫폼, 앱 버전 요청 필드 없이 Toss 로그인이 가능하다.
+- Toss `generate-token` 성공, `invalid_grant`, 5xx 응답을 구분한다.
+- Toss `login-me`에서 `userKey`를 조회한다.
+- 같은 `userKey`는 기존 MEMBER와 `auth_identity`를 재사용한다.
+- Toss identity가 없으면 MEMBER `app_user`, `auth_identity`가 생성된다.
+- 신규 회원 생성 경쟁 시 `(provider, provider_user_id)` unique로 중복 생성이 방지된다.
 - Toss 로그인 성공 시 Access JWT와 Refresh JWT가 발급된다.
 - Toss 로그인 성공 시 Redis `auth:refresh:{sessionId}`가 생성된다.
 - Toss 로그인 성공 시 Redis `auth:user-sessions:{userPublicId}`에 sessionId가 추가된다.
 - Toss 로그인 응답은 `200 OK`다.
+- Toss 로그인 응답은 `userPublicId`, `newUser`를 사용한다.
+- Toss 로그인 응답은 구 신규 회원 플래그와 body 세션 식별자를 노출하지 않는다.
+- `authorizationCode`, Toss Token, `userKey` 원문은 Access/Error/Toss 외부 호출 로그에 남지 않는다.
 - 로그인 전에는 서버 사용자, 인증 Session, 포인트, 키캡, 일반 상자 보상이 생성되지 않는다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 기존 토큰 원문을 반환하지 않는다.
 - `onboardingAttemptId`가 같으면 로그인 응답 유실 후 재시도해도 같은 정산 결과를 반환한다.
 - 신규 회원 정산은 `rewardEligible=true`, 기존 회원 정산은 `rewardEligible=false`다.
+- 신규 사용자만 온보딩 보상을 지급한다.
+- 기존 사용자는 온보딩 보상을 지급하지 않는다.
 - 회원 생성 후 부분 실패 시 같은 `onboardingAttemptId`로 신규/기존 판정과 보상 지급 여부가 보존된다.
 - 탈퇴/정지 사용자는 인증 API 접근이 차단된다.
 
@@ -261,7 +272,6 @@
 ## 제약 테스트
 
 - `auth_identity(provider, provider_user_id)` unique.
-- `user_device(user_id, device_id)` unique.
 - `user_keycap(user_id, keycap_id)` unique.
 - `user_keycap(user_id) WHERE equipped = true` partial unique.
 - `keycap_box_open(user_id, idempotency_key)` unique.

@@ -25,11 +25,11 @@
 
 | 구분 | 담당자 | API 계약 상태 | Java 구현 상태 |
 |---|---|---|---|
-| A 인증/로그 | 민재 | CONFIRMED | Access Log, JWT, Redis Session/Lua CAS, logout-all 최소 흐름 IMPLEMENTED; 운영 보강 IN_PROGRESS; Toss 일반 로그인 BLOCKED |
+| A 인증/로그 | 민재 | CONFIRMED | Access Log, JWT, Redis Session/Lua CAS, logout-all 최소 흐름 IMPLEMENTED; 운영 보강 IN_PROGRESS; Toss 로그인 NOT_STARTED |
 | A 나머지 도메인 | 민재 | CONFIRMED | NOT_STARTED |
 | B 도메인 | 은창 | PROPOSED | NOT_STARTED |
 
-Toss 로그인은 앱인토스 auth 요청/응답, Toss user id 형식, `deviceKey/platform/appVersion` 필요 여부가 확정되기 전까지 `TOSS_DEVICE_CONTRACT_REQUIRED`로 blocking 유지한다. 로그인 전 온보딩은 프론트 로컬 체험이며 서버 사용자와 인증 Session을 만들지 않는다.
+Toss 로그인은 앱인토스 비게임 미니앱의 `appLogin()` 기반 계약으로 확정한다. 프론트는 `authorizationCode`와 `referrer`를 전달하고, 서버는 Toss `generate-token` -> `login-me` mTLS 호출 후 `login-me.userKey`로 `auth_identity`를 조회하거나 생성한다. 로그인 전 온보딩은 프론트 로컬 체험이며 서버 사용자와 인증 Session을 만들지 않는다.
 
 ## 공통 API 규칙
 
@@ -198,11 +198,11 @@ Refresh Token payload:
 |---|---|
 | Owner | `A` |
 | Status | `CONFIRMED` |
-| 구현 상태 | `BLOCKED` - 앱인토스 auth/device 계약 미확정. 온보딩 정산 Java 구현은 `NOT_STARTED` |
+| 구현 상태 | `NOT_STARTED` - 현재 Java `AuthController` 차단 코드는 후속 구현에서 제거 |
 | 인증 | 불필요. public pre-auth API |
 | 성공 | `200 OK` |
 | 멱등성 | Toss provider identity, `onboardingAttemptId` |
-| 관련 테이블 | `app_user`, `auth_identity`, `device`, `user_device`, `onboarding_settlement`, `auth_session_log` |
+| 관련 테이블 | `app_user`, `auth_identity`, `onboarding_settlement`, `auth_session_log` |
 | Redis/Port/Event | Toss Adapter, `PreloginOnboardingSettled`, `OnboardingPointRewardGranted`, `OnboardingKeycapGranted` |
 
 Toss 로그인으로 신규 MEMBER를 생성하거나 기존 MEMBER를 조회하고, 로그인 전 로컬 온보딩 탭을 서버 기준으로 한 번 정산한다.
@@ -210,53 +210,71 @@ Toss 로그인으로 신규 MEMBER를 생성하거나 기존 MEMBER를 조회하
 인증 조건:
 
 - Access Token 없이 호출하는 public pre-auth API다.
-- 실제 Apps-in-Toss auth 요청/응답 필드, Toss user id 형식, `deviceKey`, `platform`, `appVersion` 필요 여부는 Decision Required다.
+- 앱인토스 비게임 미니앱에서 프론트가 `appLogin()`을 실행한 뒤 `authorizationCode`, `referrer`를 서버에 전달한다.
+- 서버는 Toss `generate-token`과 `login-me`를 호출하고 `login-me.userKey`로 신규/기존 사용자를 판정한다.
+- `getAnonymousKey()`와 `getUserKeyForGame()`은 사용하지 않는다.
 - 로그인된 회원의 Toss 재연결은 member Access Token 기반 별도 정책으로 다루며 MVP 범위에서는 이 API가 자동 재연결을 수행하지 않는다.
 
-오류: `TOSS_DEVICE_CONTRACT_REQUIRED`, `TOSS_AUTH_FAILED`, `AUTH_SESSION_EXPIRED`, `ONBOARDING_SETTLEMENT_CONFLICT`.
+오류: `TOSS_INVALID_GRANT`, `TOSS_SERVER_ERROR`, `TOSS_USER_KEY_MISSING`, `ONBOARDING_SETTLEMENT_CONFLICT`, `AUTH_REDIS_UNAVAILABLE`.
 
 Request:
 
 ```json
 {
-  "authorizationCode": "toss-code",
-  "referrer": "ggukmoney://auth/toss",
-  "deviceKey": "client-generated-stable-device-key",
-  "platform": "IOS",
-  "appVersion": "1.0.0",
+  "authorizationCode": "toss-authorization-code",
+  "referrer": "DEFAULT",
   "onboarding": {
     "onboardingAttemptId": "uuid",
-    "onboardingTapCount": 45,
-    "onboardingCompleted": true
+    "onboardingTapCount": 45
   }
 }
 ```
 
-`authorizationCode`, Toss 사용자 식별자, device 관련 필드는 앱인토스 실제 계약 확정 전 예시다.
+요청 필드:
+
+- `authorizationCode`: 필수, blank 불가. Toss `generate-token`에 전달하며 원문을 로그에 남기지 않는다.
+- `referrer`: 필수, `DEFAULT` 또는 `SANDBOX`.
+- `onboarding`: 현재 MVP 로그인 흐름에서는 필수.
+- `onboarding.onboardingAttemptId`: 필수 UUID, 정산 멱등 키.
+- `onboarding.onboardingTapCount`: 0 이상 45 이하. 정상 UX에서는 로그인 버튼이 45탭 완료 후 노출되므로 일반적으로 45가 전달된다.
 
 Response data:
 
 ```json
 {
-  "userId": "member-public-uuid",
-  "newMember": true,
-  "sessionId": "session-uuid",
-  "accessToken": "jwt",
-  "refreshToken": "jwt",
-  "onboardingSettlement": {
-    "onboardingAttemptId": "uuid",
-    "submittedTapCount": 45,
-    "acceptedTapCount": 45,
-    "rewardEligible": true,
-    "pointRewardAmount": 2,
-    "grantedUserKeycapId": "user-keycap-public-uuid",
-    "status": "COMPLETED"
-  }
+  "success": true,
+  "data": {
+    "userPublicId": "member-public-uuid",
+    "accessToken": "jwt",
+    "refreshToken": "jwt",
+    "tokenType": "Bearer",
+    "accessTokenExpiresAt": "2026-07-05T12:00:00Z",
+    "refreshTokenExpiresAt": "2026-08-04T12:00:00Z",
+    "newUser": true,
+    "onboardingSettlement": {
+      "onboardingAttemptId": "uuid",
+      "submittedTapCount": 45,
+      "acceptedTapCount": 45,
+      "rewardEligible": true,
+      "pointRewardAmount": 2,
+      "grantedUserKeycapId": "user-keycap-public-uuid",
+      "status": "COMPLETED"
+    }
+  },
+  "traceId": "trace-id"
 }
 ```
 
 정책:
 
+- Toss API Base URL은 `https://apps-in-toss-api.toss.im`이다.
+- 서버는 `/api-partner/v1/apps-in-toss/user/oauth2/generate-token`으로 Toss Access Token을 받고, `/api-partner/v1/apps-in-toss/user/oauth2/login-me`로 `userKey`를 조회한다.
+- Toss 호출은 PKCS12 KeyStore 기반 mTLS를 지원한다. KeyStore 경로와 비밀번호는 환경변수 또는 Secret으로 주입하고, 인증서·비밀번호·실제 Secret 값은 저장소와 문서에 기록하지 않는다.
+- Toss Access/Refresh Token과 꾹머니 Access/Refresh JWT는 다른 토큰이다. MVP에서는 Toss 토큰을 로그인 처리 후 계속 저장하지 않는다.
+- 향후 연결 해제나 사용자 정보 재조회 때문에 Toss Refresh Token 저장이 필요하면 별도 후속 결정으로 다룬다.
+- Toss 사용자 식별자는 `login-me.userKey`다. 저장 값은 `provider='TOSS'`, `provider_user_id=String.valueOf(userKey)`이며 `(provider, provider_user_id)` unique로 신규 생성 경쟁을 막는다.
+- `userKey`, 이름, 이메일, authorizationCode, Toss Token, 꾹머니 JWT, 전체 요청/응답 Body, 인증서, KeyStore 비밀번호는 로그에 남기지 않는다.
+- 이름, 이메일 등으로 기존 사용자를 우선 병합하지 않는다.
 - 로그인 전에는 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상을 만들지 않는다.
 - `submittedTapCount`는 서버가 0..45로 clamp한다.
 - `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
@@ -266,6 +284,18 @@ Response data:
 - 한 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
 - `onboardingAttemptId` 정산 결과를 저장해 응답 유실, 앱 재실행, 부분 실패 후 재시도에서도 신규/기존 판정과 보상 지급 여부를 유지한다.
 - 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
+- 응답은 `userPublicId`와 `newUser`를 사용한다. `sessionId`는 body에 노출하지 않는다.
+- 기존 사용자는 `newUser=false`, `rewardEligible=false`, `pointRewardAmount=0`, `grantedUserKeycapId=null`, `status=COMPLETED`로 응답한다.
+- `onboardingSettlement`는 Toss 로그인 응답에만 포함하며 Refresh 응답에는 포함하지 않는다.
+- 향후 Java DTO는 공통 토큰 응답 `AuthTokenResponse`와 토큰 응답에 `onboardingSettlement`를 더한 `TossLoginResponse`로 분리할 수 있다.
+- `rewardGranted`, `remainingDailyTapCount`처럼 다른 필드에서 파생하거나 홈 조회로 확인할 수 있는 필드는 추가하지 않는다.
+
+Toss 외부 호출 로그 계획:
+
+- 상태: 일반 Access/Error Log는 `IMPLEMENTED`, Toss 외부 호출 로그는 `NOT_STARTED`.
+- 필드: `action`, `result`, `traceId`, `status`, `errorCode`, `exceptionType`, `durationMs`.
+- `action` 예: `tossExchange`, `tossLoginMe`.
+- 기록 금지: `authorizationCode`, Toss Access Token, Toss Refresh Token, 꾹머니 JWT, `userKey` 원문, 이름, 이메일, 전체 요청/응답 Body, 인증서, KeyStore 비밀번호.
 
 ### POST /api/v1/auth/refresh
 
@@ -451,7 +481,7 @@ Request:
 | 인증 | Access Token |
 | 성공 | `204 No Content` |
 | 멱등성 | Idempotency-Key 권장 |
-| 관련 테이블 | `app_user`, `user_device`, `auth_session_log` |
+| 관련 테이블 | `app_user`, `auth_session_log` |
 | Redis/Port/Event | `UserWithdrawalGuardPort`, `auth:revoke:user` |
 
 회원 탈퇴 요청이다.
@@ -980,17 +1010,16 @@ Response data:
 | Status | `CONFIRMED` |
 | 인증 | Access Token |
 | 성공 | `200 OK` |
-| 멱등성 | device + token hash |
-| 관련 테이블 | `push_device`, `device` |
+| 멱등성 | user + token hash |
+| 관련 테이블 | `push_device` |
 | Redis/Port/Event | Push Adapter |
 
-현재 기기의 push token을 등록 또는 갱신한다.
+현재 사용자 기준 push token을 등록 또는 갱신한다.
 
 Request:
 
 ```json
 {
-  "deviceId": "uuid",
   "provider": "FCM",
   "pushToken": "token"
 }
@@ -998,8 +1027,8 @@ Request:
 
 정책:
 
-- 한 사용자는 여러 기기를 가질 수 있다.
-- 실제 발송 이력은 기기별로 `notification_log`에 저장한다.
+- 한 사용자는 여러 push token을 등록할 수 있다.
+- 실제 발송 이력은 `push_device`별로 `notification_log`에 저장한다.
 
 ### DELETE /api/v1/push-devices/current
 
@@ -1009,7 +1038,7 @@ Request:
 | Status | `CONFIRMED` |
 | 인증 | Access Token |
 | 성공 | `204 No Content` |
-| 멱등성 | 현재 device |
+| 멱등성 | 현재 사용자 + token hash |
 | 관련 테이블 | `push_device` |
 | Redis/Port/Event | Push Adapter |
 
@@ -1947,6 +1976,9 @@ Request:
 | 401 | `AUTH_REFRESH_REUSED` | Rotation 완료된 과거 Refresh 재사용 |
 | 409 | `AUTH_REFRESH_CONFLICT` | 거의 동시에 들어온 Refresh 충돌 |
 | 503 | `AUTH_REDIS_UNAVAILABLE` | 인증 Redis 장애 |
+| 401 | `TOSS_INVALID_GRANT` | 유효하지 않거나 만료·재사용된 Toss 인가 코드 |
+| 502 | `TOSS_SERVER_ERROR` | Toss 서버 오류 또는 mTLS 장애 |
+| 502 | `TOSS_USER_KEY_MISSING` | Toss login-me 응답에 userKey 없음 |
 | 403 | `MEMBER_REQUIRED` | 회원 전용 기능 |
 | 409 | `ONBOARDING_SETTLEMENT_CONFLICT` | 온보딩 정산 멱등성 충돌 |
 | 409 | `KEYCAP_NOT_COMPLETED` | 미완성 키캡 장착 시도 |

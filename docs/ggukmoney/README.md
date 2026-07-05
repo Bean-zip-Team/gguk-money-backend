@@ -52,7 +52,6 @@
 - 감사 로그 저장 실패 재처리, Redis Session save와 logout-all 사이 race 방지, Refresh Rotation revoke marker 연동, Redis Cluster hash slot 설계 같은 운영 보강: IN_PROGRESS
 - Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증: IMPLEMENTED
 - Toss 로그인/회원 생성, 온보딩 로그인 정산: NOT_STARTED
-- Toss Access Token 없는 일반 로그인: BLOCKED
 - 키캡/상자, 지역/랭킹, 온보딩, 알림, 기록, 설정/법적 문서 Java 구현: NOT_STARTED
 
 ## 최종 검증 기준
@@ -84,11 +83,14 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 
 - `app_user`는 Toss 로그인 완료 사용자를 관리한다. MVP 계정 유형은 MEMBER만 둔다.
 - 로그인 전 온보딩은 프론트 로컬 체험이며 서버 사용자, 인증 Session, 포인트, 키캡, 일반 상자 보상을 생성하지 않는다.
+- 꾹머니는 앱인토스 비게임 미니앱이며 로그인은 `appLogin()` 기반 Toss 로그인을 사용한다.
+- `getAnonymousKey()`와 `getUserKeyForGame()`은 사용하지 않는다.
+- 프론트는 `authorizationCode`와 `referrer`를 서버에 전달하고, 서버는 mTLS로 Toss `generate-token`과 `login-me`를 호출한다.
+- Toss 사용자 식별자는 `login-me.userKey`이며 `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`로 저장한다.
 - Toss 로그인 후 실제 인정 탭이 반영된 사용자는 현재 활성 7일 랭킹 회차에 자동 포함된다.
 - 기존 Refresh Token 원문을 반환하지 않는다.
 - Redis Session save를 단일 Lua Script로 묶고 사용자 revoke marker를 확인해야 한다. 현재 `RedisAuthSessionRepository.save(AuthSession)`은 refresh hash 저장, TTL 설정, user-sessions ZSet 추가가 분리되어 있어 logout-all과의 race 방지가 후속 과제다.
 - Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
-- 로그인 후 기기 관계는 member-device 연결로만 관리한다.
 - 신규 Toss 사용자는 새 MEMBER를 생성하고 `auth_identity`를 연결한다.
 - 기존 Toss 회원 로그인은 기존 MEMBER와 `auth_identity`를 재사용한다.
 - Access JWT 원문은 서버에 저장하지 않는다.
@@ -115,7 +117,7 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다.
 - 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다.
 - 서버 사용자와 인증 Session은 Toss 로그인 성공 후 생성한다.
-- 로그인 요청은 `onboardingAttemptId`, `onboardingTapCount`, `onboardingCompleted` 후보 값을 포함할 수 있다.
+- 로그인 요청은 `authorizationCode`, `referrer`, `onboardingAttemptId`, `onboardingTapCount`를 포함한다.
 - 서버는 `submittedTapCount`를 0..45로 clamp하고, `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
 - 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다.
 - 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고, 인정 가능한 탭만 반영한다.
@@ -130,7 +132,6 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 
 ## 미정 정책
 
-- 실제 Apps-in-Toss auth 요청/응답, Toss user id 형식, `deviceKey/platform/appVersion` 필요 여부
 - 기존 회원이 로그인 전 온보딩 보상 미리보기를 본 뒤 로그인할 때의 프론트 문구
 - 같은 사용자/같은 KST 일자 온보딩 정산 재시도 정책
 - 로그인과 A/B 보상 정산 트랜잭션 경계, 회원 생성 후 부분 실패 복구 방식
@@ -196,7 +197,7 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 
 1. 공통 응답, 인증, 예외, 감사 컬럼, outbox/inbox 기반
 2. Redis JWT Session, Refresh Rotation, 로그아웃, 인증 감사 로그
-3. Toss identity 신규/기존 회원 로그인, member-device 연결, 온보딩 로그인 정산
+3. Toss `generate-token`/`login-me` mTLS Adapter, `auth_identity` 신규/기존 회원 로그인, 온보딩 로그인 정산
 4. 키캡, 상자 계정, 상자 원장, 무료/광고 개봉
 5. 지역 목록, 지역 판별 Port, 지역 설정과 변경 예약
 6. 랭킹 시즌, 자동 포함, Redis overall 점수 후보, PostgreSQL 정산 원본
@@ -238,6 +239,5 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 
 - 공통 응답/예외/traceId, Access Log, JWT Provider, Redis Refresh Session Repository, Lua CAS Refresh Rotation, logout/logout-all 최소 흐름, Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증, Flyway V1000은 실제 단위/통합 테스트 통과 기준으로 `IMPLEMENTED`로 승격한다.
 - refresh/logout API의 모든 장애 흐름, 감사 로그 저장 실패 재처리, Redis 장애 복구 전체 정책은 `IN_PROGRESS`로 유지한다.
-- Toss Access Token 없는 일반 로그인은 device 계약 미확정으로 `BLOCKED`다.
 - Toss 로그인/회원 생성, 온보딩 로그인 정산, 키캡/상자, 최신 랭킹/온보딩 Java 구현, 알림, 기록, 설정/법적 문서는 `NOT_STARTED` 상태를 유지한다.
 - 통합 테스트 실행에는 Docker가 필요하며 Redis/PostgreSQL은 Testcontainers로만 기동한다.

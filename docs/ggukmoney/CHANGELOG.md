@@ -1,10 +1,20 @@
 # 수정 내역
 
+## 2026-07-05 Apps-in-Toss 로그인 계약 확정
+
+- 꾹머니를 앱인토스 비게임 미니앱으로 확정하고 Toss 로그인은 프론트의 `appLogin()` 호출 결과를 서버가 정산하는 구조로 정리했다.
+- Toss 로그인 요청 계약은 `authorizationCode`, `referrer(DEFAULT|SANDBOX)`, 온보딩 정산 입력으로 확정하고 기기 식별, 플랫폼, 앱 버전 요청 필드는 제거했다.
+- 서버는 Toss `generate-token` -> `login-me`를 PKCS12 mTLS로 호출하고 `login-me.userKey`를 `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`로 연결한다.
+- Toss 로그인 계약의 Blocking 상태를 해제하고 Java 구현 상태는 `NOT_STARTED`로 분리했다.
+- Toss 로그인 응답은 `userPublicId`, `newUser`, `onboardingSettlement` 기준으로 정리하고 응답 body 세션 식별자와 구 신규 회원 플래그 노출을 제거했다.
+- 공통 응답 wrapper, `traceId`, Access/Error Log 정책은 유지하고 Toss 외부 호출 로그의 민감정보 금지 항목을 보강했다.
+- Java/Test/SQL/Gradle/CI workflow는 수정하지 않았다.
+
 ## 2026-07-05 로그인 전 사용자 미생성 온보딩 정산 모델 정합화
 
 - 앱인토스 온보딩을 로그인 전 프론트 로컬 체험으로 정리하고 서버 사용자/인증 Session 사전 생성을 제거했다.
 - 로그인 전 사용자 생성 API, pre-login 복구, 회원 전환/데이터 결합 API와 테이블 설계를 제거했다.
-- Toss 로그인 API가 `onboardingAttemptId`, `onboardingTapCount`, `onboardingCompleted` 후보 값을 받아 로그인 후 정산하는 구조로 정리했다.
+- Toss 로그인 API가 `onboardingAttemptId`, `onboardingTapCount`를 받아 로그인 후 정산하는 구조로 정리했다.
 - 신규 가입자에게만 총 2P와 고정 온보딩 키캡을 한 번 지급하고, 기존 회원은 인정 가능한 탭만 반영하도록 문서화했다.
 - B DRAFT 온보딩 저장소를 로그인 전 진행 상태 저장소에서 `onboarding_settlement`로 변경했다.
 - `/api/v1/taps/batches`는 로그인 후 일반 탭 API로 유지하고 온보딩 milestone 직접 지급 응답을 제거했다.
@@ -90,7 +100,7 @@
 - Refresh Rotation은 별도 Redis refresh lock key 없이 Lua CAS로 구현했습니다.
 - 거의 동시 Refresh 충돌은 `AUTH_REFRESH_CONFLICT`로 처리하고 Session을 폐기하지 않으며, 실제 과거 Refresh 재사용은 `AUTH_REFRESH_REUSED`와 `REFRESH_REUSE_DETECTED` 감사 로그 후 Session을 폐기하도록 문서화/구현했습니다.
 - `auth_session_log` 최소 Flyway SQL을 `V1000__create_auth_session_log.sql`로 정리했고, `id BIGINT identity`, `public_id/user_public_id/device_public_id UUID`, `metadata JSONB`, `created_at/updated_at` 기준으로 맞췄습니다.
-- Toss Access Token 없는 일반 로그인은 device 요청 계약 미확정으로 `TOSS_DEVICE_CONTRACT_REQUIRED` Blocking Issue로 남겼습니다.
+- Toss 로그인 Blocking Issue는 앱인토스 `appLogin()` 기반 계약 확정에 따라 후속 문서에서 해제했습니다.
 - 한글 경로에서 발생했던 Gradle/JUnit worker 테스트 클래스 로딩 문제는 영문 경로 이전 후 재발하지 않았고, temp build/test working dir 우회 설정은 제거했습니다.
 - Git commit, push, branch 생성은 하지 않았습니다.
 

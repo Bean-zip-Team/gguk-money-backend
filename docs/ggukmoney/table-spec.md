@@ -18,8 +18,6 @@
 |---|---|---|---|
 | `app_user` | A | CONFIRMED | User/Auth |
 | `auth_identity` | A | CONFIRMED | User/Auth |
-| `device` | A | CONFIRMED | User/Auth |
-| `user_device` | A | CONFIRMED | User/Auth |
 | `auth_session_log` | A | CONFIRMED | User/Auth |
 | `legal_document` | A | CONFIRMED | Config/Legal |
 | `user_consent` | A | CONFIRMED | Config/Legal |
@@ -56,7 +54,7 @@ A 상세 테이블 공통 정책:
 - 상태: CONFIRMED
 - FK ON DELETE: 별도 표기가 없으면 `RESTRICT`
 - Lock/version 정책: 금액성/수량성/상태 전환 테이블은 서비스 트랜잭션에서 row lock 또는 version check를 사용한다.
-- 민감정보와 암호화: 원문 토큰, 원문 deviceKey, 원문 Push Token, Toss authorizationCode는 저장하지 않는다.
+- 민감정보와 암호화: 원문 토큰, 원문 Push Token, Toss authorizationCode, Toss Access/Refresh Token, Toss `userKey` 원문은 로그에 저장하지 않는다.
 - 보관/익명화/삭제 정책: 회원 탈퇴 시 법무 기준에 따라 개인정보성 컬럼은 익명화하고, 원장/정산/감사 로그는 회계·보안 목적 기간 동안 보관한다.
 - 관련 API/Event/Port/멱등성 기준은 각 테이블 섹션의 명시값을 우선하고, 명시가 없으면 해당 Aggregate의 API/Event 정책을 따른다.
 
@@ -92,6 +90,7 @@ A 상세 테이블 공통 정책:
 - 역할: Toss 등 외부 로그인 식별자를 사용자와 연결한다.
 - 관련 API: `POST /api/v1/auth/toss/login`
 - 멱등성 기준: `provider + provider_user_id`
+- Toss 로그인에서는 `login-me.userKey`를 `String.valueOf(userKey)`로 변환해 `provider_user_id`에 저장한다. 신규 사용자 생성 경쟁은 `(provider, provider_user_id)` unique와 트랜잭션으로 막는다.
 
 | 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -109,50 +108,6 @@ A 상세 테이블 공통 정책:
 - FK ON DELETE: `RESTRICT`
 - 민감정보와 암호화: provider id는 식별정보로 접근 제한
 
-### device
-
-- 역할: 앱 설치/기기를 식별한다.
-- 관련 API: `POST /api/v1/auth/toss/login`, `PUT /api/v1/push-devices/current`
-- 멱등성 기준: `device_key_hash`
-
-| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
-|---|---|---:|---|---|---|---|
-| `id` | BIGINT | N | identity | PK | | 내부 id |
-| `public_id` | UUID | N | generated | | UNIQUE | 외부 device id |
-| `device_key_hash` | VARCHAR(255) | N | | | UNIQUE | 클라이언트 deviceKey hash |
-| `platform` | VARCHAR(20) | N | | | CHECK `IOS`, `ANDROID` | 플랫폼 |
-| `app_version` | VARCHAR(30) | Y | | | | 마지막 앱 버전 |
-| `first_seen_at` | TIMESTAMPTZ | N | now() | | | 최초 확인 |
-| `last_seen_at` | TIMESTAMPTZ | N | now() | | | 마지막 확인 |
-| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
-| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
-
-- 인덱스: `ix_device_last_seen_at(last_seen_at)`
-- 민감정보와 암호화: 원문 deviceKey 저장 금지
-- 보관/삭제: 탈퇴 후에도 부정 사용 방지 목적 hash 보관 가능
-
-### user_device
-
-- 역할: 로그인 완료 사용자와 기기의 관계를 표현한다.
-- 관련 API: `POST /api/v1/auth/toss/login`
-- 멱등성 기준: `user_id + device_id`
-
-| 컬럼명 | 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
-|---|---|---:|---|---|---|---|
-| `id` | BIGINT | N | identity | PK | | 내부 id |
-| `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
-| `user_id` | BIGINT | N | | FK `app_user(id)` | | 사용자 |
-| `device_id` | BIGINT | N | | FK `device(id)` | | 기기 |
-| `active` | BOOLEAN | N | true | | | 활성 여부 |
-| `last_login_at` | TIMESTAMPTZ | Y | | | | 마지막 로그인 |
-| `created_at` | TIMESTAMPTZ | N | now() | | | 생성 |
-| `updated_at` | TIMESTAMPTZ | N | now() | | | 수정 |
-
-- 인덱스: `ix_user_device_user_active(user_id, active)`, `ix_user_device_device_active(device_id, active)`
-- UNIQUE: `ux_user_device_user_device(user_id, device_id)`
-- FK ON DELETE: `RESTRICT`
-- Lock/version 정책: 로그인 기기 연결 갱신 시 row lock 권장
-
 ### auth_session_log
 
 - 소유자: A(민재)
@@ -166,7 +121,7 @@ A 상세 테이블 공통 정책:
 - `V1000__create_auth_session_log.sql`, AuthSessionLog Entity, Repository, BIGINT identity, `user_public_id`/`device_public_id` UUID scalar 저장, JSONB `metadata`, Java enum 저장과 `result` DB CHECK는 실제 PostgreSQL 통합 테스트를 통과했다.
 - 검증 기준: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest`.
 - 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구는 `IN_PROGRESS`다.
-- 향후 `app_user`/`device` 도입 시 내부 FK 연결 여부는 Decision Required다.
+- 향후 `app_user` 또는 별도 클라이언트 기기 모델 도입 시 내부 FK 연결 여부는 Decision Required다.
 
 | 컬럼명 | PostgreSQL 타입 | NULL | 기본값 | PK/FK | UNIQUE/CHECK | 설명 |
 |---|---|---:|---|---|---|---|
@@ -624,7 +579,6 @@ A 상세 테이블 공통 정책:
 | `id` | BIGINT | N | identity | PK | | 내부 id |
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `user_id` | BIGINT | N | | FK `app_user(id)` | | 사용자 |
-| `device_id` | BIGINT | N | | FK `device(id)` | | 기기 |
 | `push_token_ciphertext` | TEXT | N | | | | 암호화된 발송용 토큰 |
 | `push_token_hash` | VARCHAR(255) | N | | | UNIQUE | 중복 조회 hash |
 | `platform` | VARCHAR(20) | N | | | CHECK `IOS`, `ANDROID` | 플랫폼 |
@@ -804,7 +758,7 @@ A 상세 테이블 공통 정책:
 B 공통 정책:
 
 - 외부 API에는 `public_id`를 노출한다.
-- A 소유 `app_user`, `device`와 DB FK를 만들지 않는다.
+- A 소유 `app_user`와 DB FK를 만들지 않는다.
 - 금액성/수량성 테이블은 `version BIGINT NOT NULL DEFAULT 0` 또는 row lock을 사용한다.
 - 원장 테이블은 수정·삭제보다 반대 분개를 사용한다.
 - 정책 수치는 코드 상수로 고정하지 않고 B 설정 소유 방식을 구현 전 합의한다.
@@ -1191,6 +1145,6 @@ B 공통 정책:
 - V1000은 `public_id`, `occurred_at`, `created_at`, `updated_at`에 DB DEFAULT를 두지 않는다. Java Entity가 값을 생성한다.
 - V1000의 DB CHECK는 `result IN ('SUCCESS', 'FAILURE', 'DENIED')`에만 존재한다. `event_type`은 Java Enum 문자열 저장으로 검증하며 DB CHECK는 후속 migration 결정 사항이다.
 - Java `AuthSessionLog` Entity는 PostgreSQL `metadata JSONB` 저장/조회와 UUID/enum 문자열 저장을 통합 테스트로 검증했다.
-- `app_user`, `device` 등 나머지 A 전체 테이블과 B 담당 DRAFT 테이블의 상세 정책은 기존 표 명세를 Source of Truth로 유지한다.
-- `V1010__create_user_auth.sql`은 아직 생성하지 않았고 `PLANNED/NOT_STARTED`다. `app_user`, `device`, `user_device`, `auth_identity` 구현과 Toss 로그인/회원 생성 API는 `NOT_STARTED`다.
+- `app_user` 등 나머지 A 전체 테이블과 B 담당 DRAFT 테이블의 상세 정책은 기존 표 명세를 Source of Truth로 유지한다.
+- `V1010__create_user_auth.sql`은 아직 생성하지 않았고 `PLANNED/NOT_STARTED`다. `app_user`, `auth_identity` 구현과 Toss 로그인/회원 생성 API는 `NOT_STARTED`다.
 - 후속 순서는 Redis Session save/revoke race 보강, Refresh Rotation revoke marker 확인, V1010 User/Auth 테이블, Entity/Repository, Toss 로그인/회원 생성, 온보딩 로그인 정산 순으로 진행한다.
