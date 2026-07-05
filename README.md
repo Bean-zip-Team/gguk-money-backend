@@ -31,7 +31,7 @@
 - 구현 상태 정의: `NOT_STARTED` 코드 없음, `IN_PROGRESS` 코드가 있으나 필수 흐름/운영 보강/일부 검증 남음, `BLOCKED` 외부 계약·팀 결정·환경 문제로 완료 불가, `IMPLEMENTED` 코드와 필수 단위/통합 테스트가 문서와 일치
 - 구현됨: 공통 응답 `traceId`, `/api/v1` 인증 API, Access Log Filter, JWT Provider, Redis Refresh Session Repository/Lua CAS, 현재 Session 기준 logout, Lua 내부 원자 logout-all, Redis/PostgreSQL Testcontainers 인증/로그 통합 테스트
 - 구분 필요: Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증은 구현됨. 감사 로그 저장 실패 재처리, Redis Session save와 logout-all 사이 race 방지, Refresh Rotation revoke marker 연동은 `IN_PROGRESS`
-- 미구현: Toss 로그인/회원 생성, 온보딩 로그인 정산, 키캡/랭킹/온보딩/알림/기록/설정 도메인 Java 구현
+- 미구현: Toss 로그인/회원 생성, 온보딩 로그인 정산, devicePublicId 없는 AuthSession/Redis 저장 호환, 키캡/랭킹/온보딩/알림/기록/설정 도메인 Java 구현
 - B API는 `PROPOSED`, B 테이블은 `DRAFT`
 - 앱인토스 로그인 계약: 비게임 미니앱, `appLogin()` 기반 Toss 로그인, `authorizationCode/referrer` 입력, 서버의 Toss `generate-token` -> `login-me` mTLS 호출, `login-me.userKey` 기반 회원 식별로 확정. Java 구현 상태는 `NOT_STARTED`
 
@@ -42,7 +42,7 @@
 - 현재 랭킹은 상위 순위와 내 주변 순위, 내 행 강조, 남은 회차 시간, 1위까지 남은 탭 수를 함께 응답한다.
 - 이전 회차 기록은 서버가 회차 종료 시 생성한 `ranking_snapshot`을 기준으로 최신 회차부터 조회한다.
 - 앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 서버 사용자와 인증 Session은 Toss 로그인 성공 후 생성한다.
-- 로그인 요청은 최대 45회의 온보딩 탭 정산 정보를 포함할 수 있으며, 서버는 당일 남은 인정 한도 내에서만 반영한다.
+- 로그인 요청은 0..45 검증을 통과한 온보딩 탭 정산 정보를 포함하며, 서버는 당일 남은 인정 한도 내에서만 반영한다.
 - 신규 가입자에게만 2P와 고정 온보딩 키캡을 한 번 지급하고, 기존 회원에게는 온보딩 보상을 지급하지 않는다.
 - 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - Toss 로그인 요청은 `authorizationCode`, `referrer(DEFAULT|SANDBOX)`, `onboarding.onboardingAttemptId`, `onboarding.onboardingTapCount`로 확정한다.
@@ -56,7 +56,6 @@ Decision Required:
 - 최신 결과/보상 모달과 `ranking_reward` 노출 유지 여부.
 - 자동 랭킹 참가 row를 시즌 시작 시 eager 생성할지, 첫 유효 탭 또는 최초 조회 시 lazy 생성할지 여부.
 - 기존 회원이 로그인 전 온보딩 보상 미리보기를 본 뒤 로그인할 때의 프론트 문구.
-- 같은 사용자/같은 KST 일자 온보딩 정산 재시도 정책과 로그인/보상 정산 트랜잭션 경계.
 
 ## 2026-07-04 Java 26 전환 결과
 

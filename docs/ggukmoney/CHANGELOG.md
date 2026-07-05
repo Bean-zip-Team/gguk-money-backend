@@ -1,5 +1,16 @@
 # 수정 내역
 
+## 2026-07-05 Apps-in-Toss 인증 문서 최종 정합성
+
+- appLogin 기반 Apps-in-Toss 로그인 계약은 유지하고, 현재 Java 구현과 문서 사이의 Refresh 응답, devicePublicId, 온보딩 정산 경계 모순을 정리했다.
+- Refresh 응답은 실제 `AuthTokenResponse` 기준 `userPublicId/accessToken/refreshToken/tokenType/accessTokenExpiresAt/refreshTokenExpiresAt/newUser=false`로 통일하고 body 세션 식별자와 온보딩 정산 정보를 제거했다.
+- `onboardingTapCount`는 0..45 validation으로 확정하고 45 초과 값을 자동 보정하지 않도록 문서화했다.
+- devicePublicId는 Toss 로그인 사용자 식별이나 신규/기존 판정에 쓰지 않는 optional metadata로 확정하고, 현재 AuthSession/Redis 구현의 필수 저장 차이를 남은 Java 구현 작업으로 분리했다.
+- data-infra에 Toss Base URL, PKCS12 mTLS, Secret 주입, fail-fast, timeout, retry, Toss Token 미저장, 외부 호출 로그 정책을 추가했다.
+- `authorizationCode`는 일회성 Toss 인증 코드, `onboardingAttemptId`는 정산 멱등 키로 역할을 분리하고 응답 유실/Redis 실패 재시도는 새 authorizationCode와 같은 attempt로 처리하도록 확정했다.
+- 로컬 판정 예약 트랜잭션, 로컬 정산 트랜잭션, Redis Session 저장 단계를 분리하고 Redis 실패 시 DB 정산 결과를 rollback하지 않는 경계를 명시했다.
+- Java/Test/SQL/Gradle/application/GitHub Actions/인증서/Secret은 수정하지 않았다.
+
 ## 2026-07-05 Apps-in-Toss 로그인 계약 확정
 
 - 꾹머니를 앱인토스 비게임 미니앱으로 확정하고 Toss 로그인은 프론트의 `appLogin()` 호출 결과를 서버가 정산하는 구조로 정리했다.

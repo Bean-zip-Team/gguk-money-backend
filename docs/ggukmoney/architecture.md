@@ -127,7 +127,7 @@ B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 publ
 
 ### Redis JWT 인증
 
-Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti denylist, 전체 로그아웃·정지·탈퇴는 사용자 revoke 시각으로 차단한다. Refresh JWT는 Rotation이 필요하므로 Redis Refresh Session을 활성 세션 원본으로 둔다. PostgreSQL에는 활성 Refresh Session을 저장하지 않고 `auth_session_log`만 남긴다.
+Access JWT는 stateless 검증을 유지하되 현재 Session 로그아웃은 jti denylist, 사용자 전체 Session 로그아웃·정지·탈퇴는 사용자 revoke 시각으로 차단한다. Refresh JWT는 Rotation이 필요하므로 Redis Refresh Session을 활성 세션 원본으로 둔다. PostgreSQL에는 활성 Refresh Session을 저장하지 않고 `auth_session_log`만 남긴다. Toss 로그인 성공에는 devicePublicId가 필요하지 않으며, devicePublicId는 존재할 때만 기록하는 optional metadata다. 값이 없으면 로그에는 `-`, `auth_session_log.device_public_id`에는 null을 사용한다.
 
 ### 상자 보유량과 개봉 조건 분리
 
@@ -141,7 +141,7 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 
 앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다. 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상은 Toss 로그인 전 생성하지 않는다.
 
-`POST /api/v1/auth/toss/login`은 `authorizationCode`, `referrer`, 온보딩 정산 입력(`onboardingAttemptId`, `onboardingTapCount`)을 받는다. 서버는 `submittedTapCount`를 0..45로 검증하고, `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
+`POST /api/v1/auth/toss/login`은 `authorizationCode`, `referrer`, 온보딩 정산 입력(`onboardingAttemptId`, `onboardingTapCount`)을 받는다. 서버는 `onboardingTapCount`를 0..45로 검증하고, 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. 검증 후 `submittedTapCount = onboardingTapCount`로 저장하고, `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
 
 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 포인트 원장으로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 인정 가능한 탭만 반영한다. `onboardingAttemptId` 정산 결과는 재시도 멱등성을 위해 저장하며, 같은 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
 
@@ -162,24 +162,30 @@ Access JWT는 stateless 검증을 유지하되 현재 기기 로그아웃은 jti
 1. 프론트가 `appLogin()`을 실행해 `authorizationCode`, `referrer`를 얻는다.
 2. 서버가 PKCS12 mTLS로 Toss `generate-token`을 호출한다.
 3. Toss Access Token으로 Toss `login-me`를 호출하고 `userKey`를 확인한다.
-4. `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`가 없으면 MEMBER `app_user`와 `auth_identity`를 생성한다.
-5. 온보딩 정산 입력으로 `onboarding_settlement`를 생성 또는 조회한다.
-6. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
-7. 신규 가입 보상으로 총 2P와 고정 온보딩 키캡을 멱등 지급한다.
-8. Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
+4. 로컬 판정 예약 트랜잭션에서 `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`를 조회하고, 없으면 MEMBER `app_user`와 `auth_identity`를 생성한다.
+5. 같은 트랜잭션에서 `onboardingAttemptId` 소유권을 검증하고 `onboarding_settlement`를 `PENDING`으로 생성하거나 기존 row를 조회한 뒤 최초 `newUser` 판정을 저장한다.
+6. 로컬 정산 트랜잭션에서 `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
+7. 신규 가입 보상으로 총 2P와 고정 온보딩 키캡을 멱등 지급하고 `onboarding_settlement`를 `COMPLETED`로 처리한다.
+8. 정산 commit 이후 Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
 9. `auth_session_log`, `PreloginOnboardingSettled`, `OnboardingPointRewardGranted`, `OnboardingKeycapGranted` 이벤트를 남긴다.
 
 ### Toss 기존 회원 로그인
 
 1. Toss `login-me.userKey`로 기존 `auth_identity`와 MEMBER를 찾는다.
-2. 온보딩 정산 입력으로 `onboarding_settlement`를 생성 또는 조회한다.
-3. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
-4. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
-5. Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
+2. 로컬 판정 예약 트랜잭션에서 `onboardingAttemptId` 소유권을 검증하고 `onboarding_settlement`를 `PENDING`으로 생성하거나 기존 row를 조회한 뒤 최초 `newUser=false` 판정을 저장한다.
+3. 로컬 정산 트랜잭션에서 `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
+4. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 `onboarding_settlement`를 `COMPLETED`로 처리한다.
+5. 정산 commit 이후 Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
 
 ### 복구와 재시도
 
-`onboardingAttemptId` 기준으로 정산 결과를 저장해 응답 유실, 앱 재실행, 부분 실패 후 재시도에서도 신규/기존 회원 판정과 보상 지급 여부를 유지한다. 로그인과 A/B 보상 정산의 트랜잭션 경계, 회원 생성 후 부분 실패 복구 방식은 Decision Required다.
+`authorizationCode`는 Toss 사용자 인증용 일회성 코드이며 로그인 재시도에는 새 `appLogin()`으로 새 값을 받아야 한다. `onboardingAttemptId`는 온보딩 정산 멱등 키일 뿐 인증 수단이 아니며, 이 값만으로 JWT나 이전 로그인 응답을 반환하지 않는다.
+
+응답 유실 또는 Redis 실패 후 재시도 흐름은 다음과 같다. 프론트가 `appLogin()`을 다시 호출해 새 `authorizationCode`를 받고 같은 `onboardingAttemptId`와 `onboardingTapCount`를 보낸다. 서버는 새 `authorizationCode`로 Toss 인증을 다시 수행하고 같은 `userKey`인지 확인한다. 같은 사용자와 같은 `onboardingAttemptId`이면 기존 정산 결과를 재사용하고 포인트와 키캡을 중복 지급하지 않는다. 이전 Access/Refresh Token 원문은 서버가 저장하거나 재반환하지 않으며, Redis Session과 꾹머니 Token은 새로 발급할 수 있다.
+
+보안 규칙은 고정한다. 같은 `onboardingAttemptId`가 다른 `userKey`에 연결되면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 같은 사용자와 같은 KST 일자에 다른 `onboardingAttemptId`가 들어와도 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 기존 정산 결과는 인증된 동일 Toss 사용자에게만 반환한다. `newUser`는 최초 해당 `onboardingAttemptId` 정산에서 서버가 새 `app_user/auth_identity`를 생성했는지의 저장된 판정이며, 응답 유실 후 같은 attempt 재시도에서는 최초 판정을 유지한다.
+
+외부 Toss 인증 단계에서는 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다. 순서는 `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증이다. 이후 로컬 판정 예약 트랜잭션에서 `auth_identity` 조회/생성, `app_user` 생성, attempt 소유권 검증, `onboarding_settlement PENDING` 생성 또는 조회, 최초 `newUser` 판정 저장을 commit한다. 로컬 정산 트랜잭션은 `PENDING` 또는 재시도 가능한 `FAILED`를 확인하고 `submittedTapCount` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리를 같은 DataSource/Spring transaction에서 commit한다. 실패 시 탭, 포인트, 키캡, `COMPLETED` 처리는 모두 rollback하며, 실패 원인이 필요하면 별도 recovery transaction으로 `FAILED/failure_code`를 기록한다. Redis Session 저장은 정산 commit 이후 수행하며, Redis 실패 시 DB 회원/정산/보상 결과는 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다.
 
 ## A/B Port와 Event
 
@@ -247,7 +253,7 @@ Access Log 필드:
 - `durationMs`
 - `userPublicId`
 - `sessionIdHash` 또는 일부 마스킹값
-- `devicePublicId`
+- `devicePublicId` optional. 값이 없으면 `-`
 - `clientIpMasked`
 - `userAgent`
 - `errorCode`

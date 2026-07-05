@@ -131,7 +131,7 @@ Refresh Token payload:
 - Access Token 권장 만료는 15분, Refresh Token 권장 만료는 30일이다.
 - Access JWT 원문은 서버에 저장하지 않는다.
 - Refresh JWT 원문은 클라이언트 Secure Storage가 보관하고, 서버 Redis에는 hash와 활성 Session만 저장한다.
-- 전체 기기 로그아웃·정지·탈퇴는 `auth:revoke:user:{userPublicId}`의 millisecond revoke 시각으로 기존 Access Token을 즉시 차단한다.
+- 사용자 전체 Session 로그아웃·정지·탈퇴는 `auth:revoke:user:{userPublicId}`의 millisecond revoke 시각으로 기존 Access Token을 즉시 차단한다.
 - JWT 표준 `iat`는 유지하되, 같은 초 안에서 revoke 전후 발급 토큰을 구분하기 위해 Access JWT에 `issuedAtMillis`를 포함한다.
 
 ## 전체 엔드포인트 인벤토리
@@ -141,7 +141,7 @@ Refresh Token payload:
 | `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/toss/login` | Toss 로그인, 회원 생성/조회, 온보딩 정산 |
 | `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/refresh` | Access/Refresh Rotation |
 | `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/logout` | 현재 Session 로그아웃 |
-| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/logout-all` | 전체 기기 로그아웃 |
+| `A` | `CONFIRMED` | 회원/인증 | `POST` | `/api/v1/auth/logout-all` | 전체 Session 로그아웃 |
 | `A` | `CONFIRMED` | 회원/인증 | `GET` | `/api/v1/members/me` | 내 정보 조회 |
 | `A` | `CONFIRMED` | 회원/인증 | `PATCH` | `/api/v1/members/me` | 내 프로필 수정 |
 | `A` | `CONFIRMED` | 회원/인증 | `DELETE` | `/api/v1/members/me` | 회원 탈퇴 |
@@ -232,13 +232,13 @@ Request:
 
 요청 필드:
 
-- `authorizationCode`: 필수, blank 불가. Toss `generate-token`에 전달하며 원문을 로그에 남기지 않는다.
-- `referrer`: 필수, `DEFAULT` 또는 `SANDBOX`.
+- `authorizationCode`: 필수, blank 불가. Toss `generate-token`에 전달하는 일회성 인가 코드이며 원문을 로그에 남기지 않는다. 서버는 같은 code로 자동 재사용 또는 자동 반복 요청을 하지 않는다.
+- `referrer`: 필수, `DEFAULT` 또는 `SANDBOX`. 딥링크 URL이 아니며 Java 구현 시 enum validation을 적용한다.
 - `onboarding`: 현재 MVP 로그인 흐름에서는 필수.
-- `onboarding.onboardingAttemptId`: 필수 UUID, 정산 멱등 키.
-- `onboarding.onboardingTapCount`: 0 이상 45 이하. 정상 UX에서는 로그인 버튼이 45탭 완료 후 노출되므로 일반적으로 45가 전달된다.
+- `onboarding.onboardingAttemptId`: 필수 UUID, 프론트가 온보딩 시작 시 생성하고 로그인 재시도에도 같은 값을 유지하는 정산 멱등 키다. 사용자 인증 수단이 아니다.
+- `onboarding.onboardingTapCount`: 필수, 0 이상 45 이하. 45 초과 값을 조용히 변경하지 않고 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. 정상 UX에서는 로그인 버튼이 45탭 완료 후 노출되므로 일반적으로 45가 전달된다.
 
-Response data:
+Full response:
 
 ```json
 {
@@ -265,30 +265,78 @@ Response data:
 }
 ```
 
+기존 사용자 Full response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "userPublicId": "member-public-uuid",
+    "accessToken": "jwt",
+    "refreshToken": "jwt",
+    "tokenType": "Bearer",
+    "accessTokenExpiresAt": "2026-07-05T12:00:00Z",
+    "refreshTokenExpiresAt": "2026-08-04T12:00:00Z",
+    "newUser": false,
+    "onboardingSettlement": {
+      "onboardingAttemptId": "uuid",
+      "submittedTapCount": 45,
+      "acceptedTapCount": 12,
+      "rewardEligible": false,
+      "pointRewardAmount": 0,
+      "grantedUserKeycapId": null,
+      "status": "COMPLETED"
+    }
+  },
+  "traceId": "trace-id"
+}
+```
+
 정책:
 
 - Toss API Base URL은 `https://apps-in-toss-api.toss.im`이다.
 - 서버는 `/api-partner/v1/apps-in-toss/user/oauth2/generate-token`으로 Toss Access Token을 받고, `/api-partner/v1/apps-in-toss/user/oauth2/login-me`로 `userKey`를 조회한다.
 - Toss 호출은 PKCS12 KeyStore 기반 mTLS를 지원한다. KeyStore 경로와 비밀번호는 환경변수 또는 Secret으로 주입하고, 인증서·비밀번호·실제 Secret 값은 저장소와 문서에 기록하지 않는다.
-- Toss Access/Refresh Token과 꾹머니 Access/Refresh JWT는 다른 토큰이다. MVP에서는 Toss 토큰을 로그인 처리 후 계속 저장하지 않는다.
-- 향후 연결 해제나 사용자 정보 재조회 때문에 Toss Refresh Token 저장이 필요하면 별도 후속 결정으로 다룬다.
+- Toss Access/Refresh Token과 꾹머니 Access/Refresh JWT는 다른 토큰이다. MVP에서는 Toss 토큰을 `login-me` 완료 후 장기 저장하지 않는다. Toss Token은 PostgreSQL, Redis, 로그에 저장하지 않는다.
 - Toss 사용자 식별자는 `login-me.userKey`다. 저장 값은 `provider='TOSS'`, `provider_user_id=String.valueOf(userKey)`이며 `(provider, provider_user_id)` unique로 신규 생성 경쟁을 막는다.
 - `userKey`, 이름, 이메일, authorizationCode, Toss Token, 꾹머니 JWT, 전체 요청/응답 Body, 인증서, KeyStore 비밀번호는 로그에 남기지 않는다.
 - 이름, 이메일 등으로 기존 사용자를 우선 병합하지 않는다.
 - 로그인 전에는 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상을 만들지 않는다.
-- `submittedTapCount`는 서버가 0..45로 clamp한다.
-- `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
+- 검증이 끝난 `onboardingTapCount`를 `submittedTapCount`로 저장한다.
+- `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
 - 로그인 전 온보딩 탭에는 부스터를 소급 적용하지 않는다.
 - 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다.
 - 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
 - 한 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
-- `onboardingAttemptId` 정산 결과를 저장해 응답 유실, 앱 재실행, 부분 실패 후 재시도에서도 신규/기존 판정과 보상 지급 여부를 유지한다.
+- `authorizationCode`는 Toss 사용자 인증용 일회성 코드다. 응답 유실 또는 Redis 실패 후 로그인 재시도 시 프론트는 `appLogin()`을 다시 호출해 새 `authorizationCode`를 받아야 한다.
+- `onboardingAttemptId`는 온보딩 정산 멱등 키이며 사용자 인증 수단이 아니다. `onboardingAttemptId`만으로 JWT나 기존 로그인 응답을 반환하지 않는다.
+- 재시도 시 서버는 새 `authorizationCode`로 Toss 인증을 다시 수행하고 같은 `userKey`인지 확인한 뒤, 같은 사용자와 같은 `onboardingAttemptId`이면 기존 정산 결과를 재사용한다. 포인트와 키캡을 중복 지급하지 않고 이전 Access/Refresh Token 원문을 저장하거나 재반환하지 않는다.
+- 같은 `onboardingAttemptId`가 다른 `userKey`에 연결되거나, 같은 사용자와 같은 KST 일자에 다른 `onboardingAttemptId`가 들어오면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다.
 - 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - 응답은 `userPublicId`와 `newUser`를 사용한다. `sessionId`는 body에 노출하지 않는다.
-- 기존 사용자는 `newUser=false`, `rewardEligible=false`, `pointRewardAmount=0`, `grantedUserKeycapId=null`, `status=COMPLETED`로 응답한다.
+- 기존 사용자는 `newUser=false`, `rewardEligible=false`, `pointRewardAmount=0`, `grantedUserKeycapId=null`, `status=COMPLETED`로 응답한다. `acceptedTapCount`는 해당 사용자의 당일 남은 인정 가능 탭 수 이하만 반영한다.
 - `onboardingSettlement`는 Toss 로그인 응답에만 포함하며 Refresh 응답에는 포함하지 않는다.
-- 향후 Java DTO는 공통 토큰 응답 `AuthTokenResponse`와 토큰 응답에 `onboardingSettlement`를 더한 `TossLoginResponse`로 분리할 수 있다.
 - `rewardGranted`, `remainingDailyTapCount`처럼 다른 필드에서 파생하거나 홈 조회로 확인할 수 있는 필드는 추가하지 않는다.
+- 현재 Java `AuthTokenResponse`에는 `onboardingSettlement`가 없으므로 Toss 로그인 구현 작업에서 별도 `TossLoginResponse`를 추가해야 한다. 이는 현재 HTTP 계약을 바꾸는 결정 사항이 아니라 남은 Java 구현 작업이다.
+
+로컬 처리 경계:
+
+1. 외부 인증 단계: `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증. 이 단계에서 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다.
+2. 로컬 판정 예약 트랜잭션: `auth_identity` 조회, 없으면 `app_user`와 `auth_identity` 생성, `onboardingAttemptId` 소유권 검증, `onboarding_settlement PENDING` 생성 또는 기존 row 조회, 최초 `newUser` 판정 저장.
+3. 로컬 정산 트랜잭션: `PENDING` 또는 재시도 가능한 `FAILED` 확인, `submittedTapCount` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port 호출, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리.
+4. Redis Session 단계: 정산 commit 후 꾹머니 Access/Refresh JWT 생성, Redis Auth Session 저장, 성공 응답 반환.
+5. Redis 실패: DB 회원/정산/보상 결과를 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다. 클라이언트는 새 `authorizationCode`와 같은 `onboardingAttemptId`로 재시도하며 정산 결과는 재사용된다.
+
+Toss 로그인 오류 매핑:
+
+| HTTP | 코드 | 조건 |
+|---:|---|---|
+| 400 | `VALIDATION_FAILED` | `authorizationCode` blank, `referrer` 허용값 위반, `onboardingAttemptId` 형식 오류, `onboardingTapCount` 범위 오류 |
+| 401 | `TOSS_INVALID_GRANT` | 만료, 재사용, 유효하지 않은 `authorizationCode` |
+| 409 | `ONBOARDING_SETTLEMENT_CONFLICT` | attempt 소유 사용자 불일치, 같은 사용자/KST 일자에 다른 attempt로 중복 정산 |
+| 502 | `TOSS_SERVER_ERROR` | Toss 5xx, timeout, mTLS 초기화 또는 호출 실패, 응답 역직렬화 실패 |
+| 502 | `TOSS_USER_KEY_MISSING` | `login-me` 성공 응답에 `userKey` 없음 |
+| 503 | `AUTH_REDIS_UNAVAILABLE` | 로컬 정산 완료 후 Redis Session 저장 실패 |
 
 Toss 외부 호출 로그 계획:
 
@@ -296,6 +344,12 @@ Toss 외부 호출 로그 계획:
 - 필드: `action`, `result`, `traceId`, `status`, `errorCode`, `exceptionType`, `durationMs`.
 - `action` 예: `tossExchange`, `tossLoginMe`.
 - 기록 금지: `authorizationCode`, Toss Access Token, Toss Refresh Token, 꾹머니 JWT, `userKey` 원문, 이름, 이메일, 전체 요청/응답 Body, 인증서, KeyStore 비밀번호.
+
+Access/Error Log 정책:
+
+- Access Log 필드는 `traceId`, `method`, `pathTemplate`, `status`, `durationMs`, `userPublicId`, `sessionIdHash`, `devicePublicId`, `clientIpMasked`, `userAgent`, `errorCode`다.
+- `devicePublicId`는 optional metadata이며 값이 없으면 `-`로 기록한다.
+- sessionId 원문, authorizationCode, Toss Token, `userKey` 원문, 꾹머니 JWT, 전체 Request Body, 전체 Response Body, mTLS 인증서와 비밀번호는 기록하지 않는다.
 
 ### POST /api/v1/auth/refresh
 
@@ -320,15 +374,30 @@ Request:
 }
 ```
 
-Response data:
+Full response:
 
 ```json
 {
-  "sessionId": "session-uuid",
-  "accessToken": "jwt",
-  "refreshToken": "jwt"
+  "success": true,
+  "data": {
+    "userPublicId": "member-public-uuid",
+    "accessToken": "jwt",
+    "refreshToken": "jwt",
+    "tokenType": "Bearer",
+    "accessTokenExpiresAt": "2026-07-05T12:15:00Z",
+    "refreshTokenExpiresAt": "2026-08-04T12:00:00Z",
+    "newUser": false
+  },
+  "traceId": "trace-id"
 }
 ```
+
+응답 정책:
+
+- 현재 Java `AuthService.refresh()`는 공유 `AuthTokenResponse`를 반환하므로 `newUser=false`다.
+- Refresh Response Body에는 `sessionId`가 없다. Session 식별자는 JWT `sid`와 Redis 내부 Session으로만 사용한다.
+- Refresh Response에는 `onboardingSettlement`가 없다.
+- 구현되지 않은 별도 Refresh DTO를 현재 계약처럼 문서화하지 않는다.
 
 실패 코드:
 
@@ -359,7 +428,7 @@ Refresh 실패 의미:
 | 관련 테이블 | `auth_session_log` |
 | Redis/Port/Event | `auth:deny:access`, `auth:refresh`, `auth:user-sessions` |
 
-현재 기기 로그아웃이다. 로그아웃 대상 Session은 항상 Access Token의 `sid`이며, Request Body의 Refresh Token은 선택적 동일 Session 검증용으로만 사용한다. Access Token jti를 denylist에 저장하고 Redis Refresh Session을 삭제한다.
+현재 Session 로그아웃이다. 로그아웃 대상 Session은 항상 Access Token의 `sid`이며, Request Body의 Refresh Token은 선택적 동일 Session 검증용으로만 사용한다. Access Token jti를 denylist에 저장하고 Redis Refresh Session을 삭제한다.
 
 Request Body 없음 또는:
 
@@ -412,7 +481,7 @@ Response data:
 - 만료된 ZSet Session을 정리한 뒤 실제 `auth:refresh:{sessionId}`가 존재하는 활성 Refresh Session만 삭제 수에 포함한다.
 - `auth:user-sessions:{userPublicId}`와 각 활성 `auth:refresh:{sessionId}`를 같은 Lua 실행에서 삭제한다.
 - `auth:revoke:user:{userPublicId}`에 현재 epoch millis인 `revokedAtMillis`와 사유 `LOGOUT_ALL`을 저장한다.
-- Access Token 인증 시 token `issuedAtMillis <= revokedAtMillis`이면 거절하므로 다른 기기의 기존 Access Token도 즉시 무효화된다.
+- Access Token 인증 시 token `issuedAtMillis <= revokedAtMillis`이면 거절하므로 같은 사용자의 다른 Session에서 발급된 기존 Access Token도 즉시 무효화된다.
 - revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 - Redis 장애 시 부분 성공으로 응답하지 않고 `AUTH_REDIS_UNAVAILABLE`로 실패한다.
 

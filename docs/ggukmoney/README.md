@@ -51,8 +51,15 @@
 - JWT Provider, `/api/v1` 인증 API, Redis Refresh Session Repository/Lua CAS, 현재 Session 기준 logout, Lua 내부 원자 logout-all: IMPLEMENTED
 - 감사 로그 저장 실패 재처리, Redis Session save와 logout-all 사이 race 방지, Refresh Rotation revoke marker 연동, Redis Cluster hash slot 설계 같은 운영 보강: IN_PROGRESS
 - Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증: IMPLEMENTED
-- Toss 로그인/회원 생성, 온보딩 로그인 정산: NOT_STARTED
+- Toss 로그인/회원 생성, 온보딩 로그인 정산, devicePublicId 없는 AuthSession/Redis 저장 호환: NOT_STARTED
 - 키캡/상자, 지역/랭킹, 온보딩, 알림, 기록, 설정/법적 문서 Java 구현: NOT_STARTED
+- Toss 로그인에는 더 이상 외부 계약 미확정으로 막힌 항목이 없다.
+
+구현 상태 상세:
+
+- `IMPLEMENTED`: ApiResponse, ApiErrorResponse, GlobalExceptionHandler, traceId/X-Trace-Id, AccessLogFilter, JWT Provider, Refresh API, Logout API, logout-all 최소 흐름, Redis Refresh Session Repository, Refresh Lua CAS, auth_session_log Migration/Entity/Repository/통합 테스트.
+- `IN_PROGRESS`: Redis Session save와 logout-all race 방지, Refresh Rotation 사용자 revoke marker 연동, 감사 로그 저장 실패 재처리, Redis Cluster hash slot 보강.
+- `NOT_STARTED`: Toss mTLS RestClient, Toss generate-token Client, Toss login-me Client, referrer enum validation, TossLoginRequest onboarding object, TossLoginResponse, app_user, auth_identity, onboarding_settlement, userKey 신규/기존 판정, 신규 가입 포인트 지급, 신규 가입 키캡 지급, devicePublicId 없는 AuthSession/Redis 저장 호환, Toss 외부 호출 로그, Toss 로그인 통합 테스트.
 
 ## 최종 검증 기준
 
@@ -90,7 +97,8 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - Toss 로그인 후 실제 인정 탭이 반영된 사용자는 현재 활성 7일 랭킹 회차에 자동 포함된다.
 - 기존 Refresh Token 원문을 반환하지 않는다.
 - Redis Session save를 단일 Lua Script로 묶고 사용자 revoke marker를 확인해야 한다. 현재 `RedisAuthSessionRepository.save(AuthSession)`은 refresh hash 저장, TTL 설정, user-sessions ZSet 추가가 분리되어 있어 logout-all과의 race 방지가 후속 과제다.
-- Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
+- Toss 로그인 성공에는 devicePublicId가 필요하지 않다. 현재 Java `AuthSession`과 `RedisAuthSessionRepository`는 devicePublicId를 필수처럼 저장/조회하므로 Toss 로그인 구현 전에 optional metadata로 바꾸는 호환 작업이 필요하다.
+- Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 Session이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
 - 신규 Toss 사용자는 새 MEMBER를 생성하고 `auth_identity`를 연결한다.
 - 기존 Toss 회원 로그인은 기존 MEMBER와 `auth_identity`를 재사용한다.
 - Access JWT 원문은 서버에 저장하지 않는다.
@@ -118,13 +126,13 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다.
 - 서버 사용자와 인증 Session은 Toss 로그인 성공 후 생성한다.
 - 로그인 요청은 `authorizationCode`, `referrer`, `onboardingAttemptId`, `onboardingTapCount`를 포함한다.
-- 서버는 `submittedTapCount`를 0..45로 clamp하고, `acceptedTapCount = min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
+- 서버는 `onboardingTapCount`를 0..45 범위로 검증하고, 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
 - 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다.
 - 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고, 인정 가능한 탭만 반영한다.
 - 온보딩 상자는 일반 랜덤 상자 리소스가 아니다. 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - 온보딩 고정 키캡 보상은 일반 상자 잔액, 무료 쿨다운, 광고 상자 횟수, 일반 드롭 테이블, 조각 지급, 상자 개봉 원장을 사용하지 않는다.
 - 한 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 반영한다.
-- `onboardingAttemptId` 정산 결과를 저장해 응답 유실이나 부분 실패 후 재시도에서도 신규/기존 회원 판정과 보상 지급 여부를 유지한다.
+- 응답 유실이나 Redis 실패 후 재시도할 때는 프론트가 `appLogin()`을 다시 호출해 새 `authorizationCode`와 같은 `onboardingAttemptId`를 보낸다. 서버는 동일 Toss 사용자 확인 후 정산 결과를 재사용하고 이전 Access/Refresh Token 원문은 재반환하지 않는다.
 - 기록은 B 테이블을 직접 조인하지 않고 Event Projection으로 구성한다.
 - A의 `app_config`에는 A 소유 정책만 저장하고 포인트/출금 정책은 B가 소유한다.
 - 상태값은 `CANCELED`로 통일한다.
@@ -239,5 +247,5 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 
 - 공통 응답/예외/traceId, Access Log, JWT Provider, Redis Refresh Session Repository, Lua CAS Refresh Rotation, logout/logout-all 최소 흐름, Auth Audit Log Entity/Repository/Migration/JSONB 저장 검증, Flyway V1000은 실제 단위/통합 테스트 통과 기준으로 `IMPLEMENTED`로 승격한다.
 - refresh/logout API의 모든 장애 흐름, 감사 로그 저장 실패 재처리, Redis 장애 복구 전체 정책은 `IN_PROGRESS`로 유지한다.
-- Toss 로그인/회원 생성, 온보딩 로그인 정산, 키캡/상자, 최신 랭킹/온보딩 Java 구현, 알림, 기록, 설정/법적 문서는 `NOT_STARTED` 상태를 유지한다.
+- Toss 로그인/회원 생성, 온보딩 로그인 정산, devicePublicId 없는 AuthSession/Redis 저장 호환, 키캡/상자, 최신 랭킹/온보딩 Java 구현, 알림, 기록, 설정/법적 문서는 `NOT_STARTED` 상태를 유지한다.
 - 통합 테스트 실행에는 Docker가 필요하며 Redis/PostgreSQL은 Testcontainers로만 기동한다.

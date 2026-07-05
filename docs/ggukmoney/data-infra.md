@@ -72,7 +72,6 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 `auth:refresh:{sessionId}` 필수 값:
 
 - `userPublicId`
-- `devicePublicId`
 - `currentRefreshJtiHash`
 - `refreshTokenHash`
 - `tokenFamilyIdHash`
@@ -81,6 +80,12 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 - `issuedAt`
 - `expiresAt`
 - `status`
+
+`auth:refresh:{sessionId}` 선택 값:
+
+- `devicePublicId`
+
+현재 Java `AuthSession` record에는 `devicePublicId`가 있고, `RedisAuthSessionRepository.save()`는 `Map.of`로 `devicePublicId`를 필수 저장하며 `findBySessionId()`도 필수 조회한다. 기존 Refresh/Logout Redis Session 기능은 `IMPLEMENTED`지만, Toss 로그인에서 devicePublicId 없이 Session을 생성하는 호환 작업은 `NOT_STARTED`다. 최종 계약에서는 devicePublicId를 Toss 사용자 식별, 신규/기존 회원 판정, 다중 로그인, logout-all에 사용하지 않는다. 값이 있으면 optional metadata로만 저장하고 없으면 null 또는 로그의 `-`로 처리한다.
 
 `auth:user-sessions:{userPublicId}`:
 
@@ -109,6 +114,54 @@ Refresh Token 저장 테이블 생성 파일은 계획하지 않는다.
 - 시즌 종료 시 PostgreSQL 기준으로 최종 정산하고 `ranking_snapshot`을 생성한다.
 - 새 시즌은 점수 0에서 시작한다.
 - 이전 시즌 Redis key는 정산 완료 뒤 14일 TTL로 두거나 운영 확인 후 삭제한다. 보관 기간은 운영 정책으로 조정 가능하다.
+
+## Toss Apps-in-Toss 인증 연동
+
+Base URL:
+
+- `https://apps-in-toss-api.toss.im`
+
+Endpoint:
+
+- `/api-partner/v1/apps-in-toss/user/oauth2/generate-token`
+- `/api-partner/v1/apps-in-toss/user/oauth2/login-me`
+
+mTLS:
+
+- PKCS12 KeyStore를 사용한다.
+- `app.auth.toss.mtls.key-store-path`와 `app.auth.toss.mtls.key-store-password`를 함께 설정한다.
+- 둘 중 하나만 설정되면 애플리케이션 시작을 실패시킨다.
+- 운영 환경에서는 mTLS 설정이 필수이며, 값이 비어 있는데 일반 TLS Client로 조용히 진행하지 않는다.
+- 인증서와 비밀번호는 저장소에 커밋하지 않는다.
+- 환경변수 또는 Secret Manager로 주입한다.
+- 문서에는 실제 로컬 절대경로, 실제 비밀번호, 인증서 원문을 기록하지 않는다.
+- 빵도감에서 확인한 참고 구성은 `app.auth.toss.base-url`, `app.auth.toss.mtls.key-store-path`, `app.auth.toss.mtls.key-store-password`, PKCS12, JDK HttpClient 또는 Spring Boot 4.1 호환 RestClient 구성이다. 꾹머니도 위 property 이름을 확정 계약으로 사용한다.
+
+Toss Token:
+
+- Toss Access Token과 꾹머니 Access JWT는 다른 값이다.
+- Toss Refresh Token과 꾹머니 Refresh JWT는 다른 값이다.
+- MVP에서는 `login-me` 완료 후 Toss Token을 장기 저장하지 않는다.
+- Toss Token은 로그, PostgreSQL, Redis에 저장하지 않는다.
+
+Timeout:
+
+- connect/read timeout을 무한대로 두지 않는다.
+- 정확한 시간 수치는 Java 구현 시 설정 파일에서 확정한다.
+- 근거 없는 임의 초 값을 문서 계약에 넣지 않는다.
+
+Retry:
+
+- `generate-token`은 `authorizationCode`가 일회성이므로 서버가 자동 재시도하지 않는다.
+- 네트워크 timeout 후 code 소비 여부가 불명확해도 같은 code를 서버가 자동 반복하지 않는다.
+- `login-me`는 Access Token이 유효한 동안 제한적 재시도가 가능하지만 MVP 기본은 명시적 1회 호출이다.
+- 4xx는 인증 실패로 처리한다.
+- 5xx, timeout, mTLS 실패는 `TOSS_SERVER_ERROR`로 처리한다.
+
+외부 호출 로그:
+
+- 필드: `action`, `result`, `traceId`, `status`, `errorCode`, `exceptionType`, `durationMs`.
+- 기록 금지: `authorizationCode`, Toss Access Token, Toss Refresh Token, `userKey` 원문, 전체 Request Body, 전체 Response Body, KeyStore password, 인증서 내용.
 
 ## 인증 감사 로그 처리
 
@@ -155,7 +208,7 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 
 ## 로그아웃 흐름
 
-### 현재 기기 로그아웃
+### 현재 Session 로그아웃
 
 1. Access JWT를 검증한다.
 2. 로그아웃 대상 Session은 항상 Access Token의 `sid`로 결정한다.
@@ -166,7 +219,7 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 7. `auth:user-sessions:{userPublicId}`에서 `sessionId`를 제거한다.
 8. `auth_session_log`에 `LOGOUT`을 저장한다.
 
-### 전체 기기 로그아웃
+### 사용자 전체 Session 로그아웃
 
 1. Lua Script 한 번으로 `auth:user-sessions:{userPublicId}`의 만료 member를 정리한 뒤 활성 sessionId를 조회한다.
 2. 같은 Lua 실행에서 존재하는 각 `auth:refresh:{sessionId}`를 삭제하고 실제 삭제 수를 `revokedSessionCount`로 반환한다.
@@ -187,7 +240,7 @@ Session save와 logout-all 사이 race 방지:
 - 후속 구현은 Session save를 단일 Redis Lua Script로 만들고, 사용자 revoke marker를 확인해 `issuedAtMillis <= revokedAtMillis`인 session 생성을 거절하며, hash 저장, TTL 설정, ZSet 추가를 한 번에 처리한다.
 - Redis Cluster 전환 시 Lua에 전달되는 모든 key가 같은 hash slot에 있어야 한다. 후보는 `{userPublicId}` hash tag 기반 key 설계이며, MVP의 기존 Redis key는 이번 문서 작업에서 변경하지 않는다.
 
-Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userPublicId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 다른 기기의 Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
+Access Token 인증 시 `issuedAtMillis <= auth:revoke:user:{userPublicId}.revokedAtMillis`이면 거절한다. JWT 표준 `iat`는 유지하되 초 단위 비교에는 사용하지 않는다. 따라서 revoke 이전에 발급된 같은 사용자의 다른 Session Access Token은 즉시 무효화되고, 같은 초라도 revoke 이후 발급된 Access Token은 허용할 수 있다. revoke key TTL은 Access Token 최대 수명보다 길게 둔다.
 
 정지/탈퇴는 전체 세션 폐기와 동일한 방식으로 처리하고 사유를 `USER_SUSPENDED`, `USER_WITHDRAWN`으로 남긴다.
 
@@ -261,13 +314,56 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 
 ### 온보딩 로그인 정산
 
-1. `POST /api/v1/auth/toss/login`에서 Toss identity로 신규 MEMBER 생성 또는 기존 MEMBER 조회를 수행한다.
-2. 온보딩 정산 입력이 있으면 `onboardingAttemptId` 기준 기존 정산을 조회하거나 새 `onboarding_settlement`를 생성한다.
-3. `submittedTapCount`를 0..45로 clamp하고 `acceptedTapCount`는 KST 당일 남은 유효 탭 한도까지만 계산한다.
-4. `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다. 로그인 전 탭에는 부스터를 소급 적용하지 않는다.
-5. 신규 가입자에게만 총 2P와 고정 온보딩 키캡을 멱등 지급한다.
-6. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
-7. 응답 유실 또는 부분 실패 후 재시도에서도 같은 `onboardingAttemptId`의 신규/기존 판정과 지급 여부를 유지한다.
+외부 인증 단계:
+
+1. `appLogin()` 결과인 `authorizationCode`를 수신한다.
+2. Toss `generate-token`을 호출한다.
+3. Toss `login-me`를 호출한다.
+4. `userKey`를 검증한다.
+
+이 단계에서는 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다.
+
+로컬 판정 예약 트랜잭션:
+
+1. `provider=TOSS`, `provider_user_id=String.valueOf(userKey)`로 `auth_identity`를 조회한다.
+2. 없으면 `app_user`와 `auth_identity`를 생성한다.
+3. `onboardingAttemptId` 소유권을 검증한다.
+4. `onboarding_settlement`를 `PENDING`으로 생성하거나 기존 row를 조회한다.
+5. 최초 `newUser` 판정을 저장한다.
+6. commit한다.
+
+로컬 정산 트랜잭션:
+
+1. settlement `PENDING` 또는 재시도 가능한 `FAILED`를 확인한다.
+2. `submittedTapCount`가 0..45 검증을 통과한 값인지 확인한다.
+3. `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`를 계산한다.
+4. B 탭/랭킹 반영 Port를 호출한다.
+5. 신규 사용자만 B 포인트 원장 1P + 1P를 지급한다.
+6. 신규 사용자만 A 고정 키캡 지급 Port를 호출한다.
+7. settlement를 `COMPLETED` 처리한다.
+8. 같은 PostgreSQL transaction 안에서 commit한다.
+
+원칙:
+
+- A는 B Repository를 직접 사용하지 않는다.
+- B는 A Repository를 직접 사용하지 않는다.
+- Application Port로 호출하고 같은 DataSource/Spring transaction에 참여한다.
+- 로컬 정산 트랜잭션 실패 시 탭, 포인트, 키캡, `COMPLETED` 처리가 모두 rollback된다.
+- 실패 원인이 기록돼야 한다면 별도 recovery transaction으로 `FAILED/failure_code`를 기록한다.
+- 외부 Toss API를 로컬 보상 트랜잭션 안에서 호출하지 않는다.
+
+Redis Session 단계:
+
+1. settlement `COMPLETED` 후 꾹머니 Access/Refresh JWT를 생성한다.
+2. Redis Auth Session을 저장한다.
+3. 성공 응답을 반환한다.
+
+Redis 실패:
+
+- DB 회원/정산/보상 결과를 rollback하지 않는다.
+- `503 AUTH_REDIS_UNAVAILABLE`로 응답한다.
+- 클라이언트는 새 `appLogin()`으로 받은 새 `authorizationCode`와 같은 `onboardingAttemptId`로 재시도한다.
+- 정산 결과는 동일 사용자 확인 후 재사용하며 보상은 중복 지급하지 않는다.
 
 
 ## B 트랜잭션과 동시성 — PROPOSED

@@ -40,30 +40,83 @@
 
 ## 회원/인증 테스트
 
-- `authorizationCode`는 필수이며 blank면 검증 실패한다.
-- `referrer`는 `DEFAULT` 또는 `SANDBOX`만 허용한다.
-- 기기 식별자, 플랫폼, 앱 버전 요청 필드 없이 Toss 로그인이 가능하다.
-- Toss `generate-token` 성공, `invalid_grant`, 5xx 응답을 구분한다.
-- Toss `login-me`에서 `userKey`를 조회한다.
-- 같은 `userKey`는 기존 MEMBER와 `auth_identity`를 재사용한다.
-- Toss identity가 없으면 MEMBER `app_user`, `auth_identity`가 생성된다.
-- 신규 회원 생성 경쟁 시 `(provider, provider_user_id)` unique로 중복 생성이 방지된다.
-- Toss 로그인 성공 시 Access JWT와 Refresh JWT가 발급된다.
-- Toss 로그인 성공 시 Redis `auth:refresh:{sessionId}`가 생성된다.
-- Toss 로그인 성공 시 Redis `auth:user-sessions:{userPublicId}`에 sessionId가 추가된다.
-- Toss 로그인 응답은 `200 OK`다.
-- Toss 로그인 응답은 `userPublicId`, `newUser`를 사용한다.
-- Toss 로그인 응답은 구 신규 회원 플래그와 body 세션 식별자를 노출하지 않는다.
-- `authorizationCode`, Toss Token, `userKey` 원문은 Access/Error/Toss 외부 호출 로그에 남지 않는다.
-- 로그인 전에는 서버 사용자, 인증 Session, 포인트, 키캡, 일반 상자 보상이 생성되지 않는다.
-- Session 만료, Redis Session 유실, Refresh 재사용 감지, 이상 기기이면 기존 Session을 폐기하고 새 `sessionId`를 생성한다.
-- 기존 토큰 원문을 반환하지 않는다.
-- `onboardingAttemptId`가 같으면 로그인 응답 유실 후 재시도해도 같은 정산 결과를 반환한다.
-- 신규 회원 정산은 `rewardEligible=true`, 기존 회원 정산은 `rewardEligible=false`다.
-- 신규 사용자만 온보딩 보상을 지급한다.
-- 기존 사용자는 온보딩 보상을 지급하지 않는다.
-- 회원 생성 후 부분 실패 시 같은 `onboardingAttemptId`로 신규/기존 판정과 보상 지급 여부가 보존된다.
-- 탈퇴/정지 사용자는 인증 API 접근이 차단된다.
+현재 Toss 로그인 Java 구현은 `NOT_STARTED`다. 아래 항목은 후속 구현 시 작성할 계획 테스트이며 기존 통과 테스트 수에 포함하지 않는다.
+
+Request validation:
+
+- `authorizationCode` null/blank를 거절한다.
+- `referrer=DEFAULT`를 허용한다.
+- `referrer=SANDBOX`를 허용한다.
+- 다른 `referrer`를 거절한다.
+- `onboarding` null을 거절한다.
+- `onboardingAttemptId` UUID 형식을 검증한다.
+- `onboardingTapCount=0`을 허용한다.
+- `onboardingTapCount=45`를 허용한다.
+- `onboardingTapCount=-1`을 거절한다.
+- `onboardingTapCount=46`을 거절한다.
+- 46을 45로 변경하지 않는다.
+
+Toss Client:
+
+- mTLS path/password가 모두 있으면 Client가 생성된다.
+- 둘 중 하나만 있으면 startup failure가 발생한다.
+- 운영 프로필에서 mTLS 미설정 시 fail-fast한다.
+- `generate-token` 성공을 처리한다.
+- `invalid_grant`를 `401 TOSS_INVALID_GRANT`로 변환한다.
+- Toss 5xx를 `502 TOSS_SERVER_ERROR`로 변환한다.
+- timeout을 `502 TOSS_SERVER_ERROR`로 변환한다.
+- `generate-token`은 자동 retry하지 않는다.
+- `login-me`에서 `userKey`를 조회한다.
+- `login-me` 성공 응답에 `userKey`가 없으면 `502 TOSS_USER_KEY_MISSING`로 변환한다.
+
+User identity:
+
+- 동일 `userKey`는 기존 `app_user`를 재사용한다.
+- 새 `userKey`는 신규 `app_user/auth_identity`를 생성한다.
+- 동시 생성 unique 충돌을 처리한다.
+- `userKey` 원문을 로그에 남기지 않는다.
+
+Onboarding idempotency:
+
+- 같은 `userKey`와 같은 attemptId는 기존 settlement를 재사용한다.
+- 다른 `userKey`와 같은 attemptId는 `409 ONBOARDING_SETTLEMENT_CONFLICT`다.
+- 같은 사용자와 같은 KST 일자에 다른 attemptId가 들어오면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다.
+- 같은 attempt 재시도에서 최초 `newUser` 판정을 유지한다.
+- 이전 Token 원문을 재반환하지 않는다.
+- 재시도는 새 `authorizationCode`가 필요하다.
+
+Transaction:
+
+- Toss 외부 호출 중 DB transaction을 유지하지 않는다.
+- 로컬 정산 실패 시 tap/point/keycap 처리를 rollback한다.
+- 실패 상태를 recovery transaction으로 기록한다.
+- Redis 저장 실패 시 DB 정산은 유지한다.
+- Redis 실패 재시도 시 보상을 중복 지급하지 않는다.
+
+Response:
+
+- Toss login 응답은 `userPublicId`를 사용한다.
+- Toss login 응답은 `newUser`를 사용한다.
+- Toss login 응답은 `onboardingSettlement`를 포함한다.
+- Toss login 응답 body에는 Session 식별자를 노출하지 않는다.
+- Refresh 응답은 `userPublicId`를 사용한다.
+- Refresh 응답은 `tokenType`을 포함한다.
+- Refresh 응답은 만료 시각을 포함한다.
+- Refresh 응답은 `newUser=false`다.
+- Refresh 응답 body에는 Session 식별자를 노출하지 않는다.
+- Refresh 응답에는 `onboardingSettlement`가 없다.
+- 성공 응답은 `success/data/traceId`를 포함한다.
+- 실패 응답은 `error/errorCode/traceId`를 포함한다.
+- Body `traceId`와 `X-Trace-Id`가 일치한다.
+
+device optional:
+
+- devicePublicId 없이 AuthSession 저장이 가능하다.
+- devicePublicId 없이 Refresh가 가능하다.
+- devicePublicId 없이 Logout이 가능하다.
+- Access Log에서 devicePublicId는 `-`다.
+- `auth_session_log.device_public_id`는 null을 허용한다.
+- userPublicId/sessionId 기반 logout-all이 정상 동작한다.
 
 ## Redis JWT 인증 테스트
 
@@ -84,22 +137,22 @@
 - Refresh Session TTL 만료 후 Refresh는 실패한다.
 - Redis Session이 없으면 Refresh는 실패한다.
 - Access denylist TTL은 Access Token 남은 만료 시간과 같다.
-- 현재 기기 로그아웃 시 `auth:deny:access:{jti}`가 생성된다.
-- 현재 기기 로그아웃 시 `auth:refresh:{sessionId}`가 삭제된다.
-- 현재 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`에서 sessionId가 제거된다.
-- 현재 기기 로그아웃 대상은 Access Token의 `sid`이며, Request Body의 Refresh Token은 동일 Session 검증용으로만 사용된다.
+- 현재 Session 로그아웃 시 `auth:deny:access:{jti}`가 생성된다.
+- 현재 Session 로그아웃 시 `auth:refresh:{sessionId}`가 삭제된다.
+- 현재 Session 로그아웃 시 `auth:user-sessions:{userPublicId}`에서 sessionId가 제거된다.
+- 현재 Session 로그아웃 대상은 Access Token의 `sid`이며, Request Body의 Refresh Token은 동일 Session 검증용으로만 사용된다.
 - 다른 Session의 Refresh Token을 Body에 넣으면 `AUTH_LOGOUT_SESSION_MISMATCH`로 실패하고 어떤 Session도 삭제하지 않는다.
-- 전체 기기 로그아웃 시 사용자의 모든 `auth:refresh:{sessionId}`가 삭제된다.
-- 전체 기기 로그아웃 시 `auth:user-sessions:{userPublicId}`가 삭제된다.
-- 전체 기기 로그아웃 시 `auth:revoke:user:{userPublicId}`가 생성된다.
-- 전체 기기 로그아웃은 Lua Script 한 번으로 처리하며 만료 Session은 `revokedSessionCount`에서 제외한다.
+- 사용자 전체 Session 로그아웃 시 사용자의 모든 `auth:refresh:{sessionId}`가 삭제된다.
+- 사용자 전체 Session 로그아웃 시 `auth:user-sessions:{userPublicId}`가 삭제된다.
+- 사용자 전체 Session 로그아웃 시 `auth:revoke:user:{userPublicId}`가 생성된다.
+- 사용자 전체 Session 로그아웃은 Lua Script 한 번으로 처리하며 만료 Session은 `revokedSessionCount`에서 제외한다.
 - 후속 테스트: Session save는 hash 저장, TTL 설정, user-sessions ZSet 추가를 단일 Lua Script로 원자 처리한다.
 - 후속 테스트: logout-all revoke marker 시각과 같거나 이전 `issuedAtMillis`의 신규 session save는 거절된다.
 - 후속 테스트: logout-all 이후 발급된 session은 허용된다.
 - 후속 테스트: revoked session save 거절 시 stale refresh hash와 ZSet member가 남지 않는다.
 - 후속 테스트: Refresh Rotation은 사용자 revoke marker를 확인하고 revoked session이면 `AUTH_USER_REVOKED`로 거절한다.
 - 후속 테스트: Refresh Rotation revoke marker 보강 후에도 기존 CAS 동시 충돌, 재사용 감지, `revokedSessionCount` 의미가 유지된다.
-- 다른 기기의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
+- 다른 Session의 Access Token도 `issuedAtMillis <= revokedAtMillis`이면 즉시 거절된다.
 - revoke 전에 발급된 Access Token은 거절된다.
 - 같은 초라도 revoke 이후 발급된 Access Token은 허용된다.
 - `issuedAtMillis == revokedAtMillis`는 거절한다.
@@ -122,12 +175,15 @@
 - Redis 세션 없음 로그가 남는다.
 - 중복 재발급 요청 로그가 남는다.
 - Toss 로그인 신규/기존 회원 판정과 세션 생성 로그가 남는다.
-- 다른 기기 로그인 로그가 남는다.
+- 추가 Session 로그인 로그가 남는다.
 - 강제 로그아웃 또는 회원 정지 세션 폐기 로그가 남는다.
 - Access Log에는 `traceId`, `method`, `pathTemplate`, `status`, `durationMs`, `userPublicId`, `sessionIdHash`, `devicePublicId`, `clientIpMasked`, `userAgent`, `errorCode`가 남는다.
 - Access Log에 `traceId`가 포함된다.
+- devicePublicId가 없는 Toss 로그인에서도 Access Log와 Auth Audit Log가 실패하지 않는다.
+- devicePublicId가 없으면 Access Log의 devicePublicId는 `-`로 남는다.
 - AccessLog는 Authorization header를 남기지 않는다.
 - AccessLog는 Refresh Token, Toss authorizationCode, Push Token, presigned URL query를 남기지 않는다.
+- Toss 외부 호출 로그에는 authorizationCode, Toss Token, userKey 원문, 전체 Request/Response Body, KeyStore password, 인증서 내용이 남지 않는다.
 - Access Log에는 Request Body 전체와 민감한 Query String이 남지 않는다.
 - `auth_session_log`에는 `result`와 `failure_code`가 저장된다.
 - `auth_session_log`에는 토큰 원문이 저장되지 않는다.
@@ -225,7 +281,7 @@
 
 - 0~14탭: 포인트 없음.
 - 15탭: 1P 한 번 지급.
-- `submittedTapCount`는 0..45로 clamp된다.
+- `submittedTapCount`는 0..45 검증을 통과한 값이며 범위 밖 값은 거절된다.
 - `acceptedTapCount`는 `min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`로 계산된다.
 - `acceptedTapCount`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영된다.
 - 로그인 전 온보딩 탭에는 부스터가 소급 적용되지 않는다.
