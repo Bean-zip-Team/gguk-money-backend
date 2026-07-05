@@ -236,7 +236,7 @@ Request:
 - `referrer`: 필수, `DEFAULT` 또는 `SANDBOX`. 딥링크 URL이 아니며 Java 구현 시 enum validation을 적용한다.
 - `onboarding`: 현재 MVP 로그인 흐름에서는 필수.
 - `onboarding.onboardingAttemptId`: 필수 UUID, 프론트가 온보딩 시작 시 생성하고 로그인 재시도에도 같은 값을 유지하는 정산 멱등 키다. 사용자 인증 수단이 아니다.
-- `onboarding.onboardingTapCount`: 필수, 0 이상 45 이하. 45 초과 값을 조용히 변경하지 않고 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. 정상 UX에서는 로그인 버튼이 45탭 완료 후 노출되므로 일반적으로 45가 전달된다.
+- `onboarding.onboardingTapCount`: 필수, 정확히 45. 44 이하 또는 46 이상은 `400 VALIDATION_FAILED`로 거절하며 값을 조용히 변경하지 않는다. 로그인 CTA는 프론트 로컬 온보딩 45탭 완료 뒤 노출된다.
 
 Full response:
 
@@ -302,10 +302,10 @@ Full response:
 - `userKey`, 이름, 이메일, authorizationCode, Toss Token, 꾹머니 JWT, 전체 요청/응답 Body, 인증서, KeyStore 비밀번호는 로그에 남기지 않는다.
 - 이름, 이메일 등으로 기존 사용자를 우선 병합하지 않는다.
 - 로그인 전에는 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상을 만들지 않는다.
-- 검증이 끝난 `onboardingTapCount`를 `submittedTapCount`로 저장한다.
-- `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
+- 검증이 끝난 `onboardingTapCount`는 정확히 45이며 `submittedTapCount=45`로 저장한다.
+- `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
 - 로그인 전 온보딩 탭에는 부스터를 소급 적용하지 않는다.
-- 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다.
+- 신규 가입자이고 정상적인 45탭 제출이면 `acceptedTapCount`와 무관하게 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 두 reason은 서버 지급 시 원장 사유를 구분하기 위한 값이며 milestone 시점의 서버 부분 지급을 뜻하지 않는다.
 - 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않는다.
 - 한 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
 - `authorizationCode`는 Toss 사용자 인증용 일회성 코드다. 응답 유실 또는 Redis 실패 후 로그인 재시도 시 프론트는 `appLogin()`을 다시 호출해 새 `authorizationCode`를 받아야 한다.
@@ -314,7 +314,7 @@ Full response:
 - 같은 `onboardingAttemptId`가 다른 `userKey`에 연결되거나, 같은 사용자와 같은 KST 일자에 다른 `onboardingAttemptId`가 들어오면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다.
 - 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - 응답은 `userPublicId`와 `newUser`를 사용한다. `sessionId`는 body에 노출하지 않는다.
-- 기존 사용자는 `newUser=false`, `rewardEligible=false`, `pointRewardAmount=0`, `grantedUserKeycapId=null`, `status=COMPLETED`로 응답한다. `acceptedTapCount`는 해당 사용자의 당일 남은 인정 가능 탭 수 이하만 반영한다.
+- 기존 사용자는 `newUser=false`, `rewardEligible=false`, `pointRewardAmount=0`, `grantedUserKeycapId=null`, `status=COMPLETED`로 응답한다. `acceptedTapCount`는 해당 사용자의 당일 남은 인정 가능 탭 수 이하만 반영하며 신규 가입 보상 자격과 분리된다.
 - `onboardingSettlement`는 Toss 로그인 응답에만 포함하며 Refresh 응답에는 포함하지 않는다.
 - `rewardGranted`, `remainingDailyTapCount`처럼 다른 필드에서 파생하거나 홈 조회로 확인할 수 있는 필드는 추가하지 않는다.
 - 현재 Java `AuthTokenResponse`에는 `onboardingSettlement`가 없으므로 Toss 로그인 구현 작업에서 별도 `TossLoginResponse`를 추가해야 한다. 이는 현재 HTTP 계약을 바꾸는 결정 사항이 아니라 남은 Java 구현 작업이다.
@@ -323,7 +323,7 @@ Full response:
 
 1. 외부 인증 단계: `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증. 이 단계에서 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다.
 2. 로컬 판정 예약 트랜잭션: `auth_identity` 조회, 없으면 `app_user`와 `auth_identity` 생성, `onboardingAttemptId` 소유권 검증, `onboarding_settlement PENDING` 생성 또는 기존 row 조회, 최초 `newUser` 판정 저장.
-3. 로컬 정산 트랜잭션: `PENDING` 또는 재시도 가능한 `FAILED` 확인, `submittedTapCount` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port 호출, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리.
+3. 로컬 정산 트랜잭션: `PENDING` 또는 재시도 가능한 `FAILED` 확인, `submittedTapCount=45` 확인, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port 호출, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리.
 4. Redis Session 단계: 정산 commit 후 꾹머니 Access/Refresh JWT 생성, Redis Auth Session 저장, 성공 응답 반환.
 5. Redis 실패: DB 회원/정산/보상 결과를 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다. 클라이언트는 새 `authorizationCode`와 같은 `onboardingAttemptId`로 재시도하며 정산 결과는 재사용된다.
 
@@ -331,7 +331,7 @@ Toss 로그인 오류 매핑:
 
 | HTTP | 코드 | 조건 |
 |---:|---|---|
-| 400 | `VALIDATION_FAILED` | `authorizationCode` blank, `referrer` 허용값 위반, `onboardingAttemptId` 형식 오류, `onboardingTapCount` 범위 오류 |
+| 400 | `VALIDATION_FAILED` | `authorizationCode` blank, `referrer` 허용값 위반, `onboardingAttemptId` 형식 오류, `onboardingTapCount`가 45가 아님 |
 | 401 | `TOSS_INVALID_GRANT` | 만료, 재사용, 유효하지 않은 `authorizationCode` |
 | 409 | `ONBOARDING_SETTLEMENT_CONFLICT` | attempt 소유 사용자 불일치, 같은 사용자/KST 일자에 다른 attempt로 중복 정산 |
 | 502 | `TOSS_SERVER_ERROR` | Toss 5xx, timeout, mTLS 초기화 또는 호출 실패, 응답 역직렬화 실패 |
@@ -2035,7 +2035,7 @@ Request:
 | HTTP | 코드 | 설명 |
 |---:|---|---|
 | 400 | `VALIDATION_FAILED` | 요청 필드 검증 실패 |
-| 400 | `IDEMPOTENCY_KEY_REUSED` | 같은 Key에 다른 요청 사용 |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | 같은 Key에 다른 요청 사용 |
 | 401 | `AUTH_REQUIRED` | 인증 필요 |
 | 401 | `AUTH_INVALID_TOKEN` | 토큰 형식/서명/type 오류 |
 | 401 | `AUTH_ACCESS_EXPIRED` | Access Token 만료 |

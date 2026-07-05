@@ -42,10 +42,11 @@
 - 현재 랭킹은 상위 순위와 내 주변 순위, 내 행 강조, 남은 회차 시간, 1위까지 남은 탭 수를 함께 응답한다.
 - 이전 회차 기록은 서버가 회차 종료 시 생성한 `ranking_snapshot`을 기준으로 최신 회차부터 조회한다.
 - 앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 서버 사용자와 인증 Session은 Toss 로그인 성공 후 생성한다.
-- 로그인 요청은 0..45 검증을 통과한 온보딩 탭 정산 정보를 포함하며, 서버는 당일 남은 인정 한도 내에서만 반영한다.
+- 로그인 요청은 45탭 완료 온보딩 정산 정보를 포함하며, 서버는 당일 남은 인정 한도 내에서만 탭·랭킹에 반영한다.
 - 신규 가입자에게만 2P와 고정 온보딩 키캡을 한 번 지급하고, 기존 회원에게는 온보딩 보상을 지급하지 않는다.
 - 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - Toss 로그인 요청은 `authorizationCode`, `referrer(DEFAULT|SANDBOX)`, `onboarding.onboardingAttemptId`, `onboarding.onboardingTapCount`로 확정한다.
+- `onboarding.onboardingTapCount`는 정확히 45만 허용하며 44 이하 또는 46 이상은 `VALIDATION_FAILED`다.
 - 최신 랭킹/온보딩은 문서 계약만 갱신됐고 Java 구현 상태는 `NOT_STARTED`다.
 
 Decision Required:

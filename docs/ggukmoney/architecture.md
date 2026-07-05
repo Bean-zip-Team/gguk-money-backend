@@ -139,11 +139,11 @@ Access JWT는 stateless 검증을 유지하되 현재 Session 로그아웃은 jt
 
 ### 온보딩 A/B 경계
 
-앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다. 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상은 Toss 로그인 전 생성하지 않는다.
+앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 프론트는 45탭 완료 상태와 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다. 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상은 Toss 로그인 전 생성하지 않는다.
 
-`POST /api/v1/auth/toss/login`은 `authorizationCode`, `referrer`, 온보딩 정산 입력(`onboardingAttemptId`, `onboardingTapCount`)을 받는다. 서버는 `onboardingTapCount`를 0..45로 검증하고, 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. 검증 후 `submittedTapCount = onboardingTapCount`로 저장하고, `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
+`POST /api/v1/auth/toss/login`은 `authorizationCode`, `referrer`, 온보딩 정산 입력(`onboardingAttemptId`, `onboardingTapCount`)을 받는다. 서버는 `onboardingTapCount`가 정확히 45인지 검증하고, 44 이하 또는 46 이상이면 `400 VALIDATION_FAILED`로 거절한다. 검증 후 `submittedTapCount=45`로 저장하고, `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
 
-신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 포인트 원장으로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 인정 가능한 탭만 반영한다. `onboardingAttemptId` 정산 결과는 재시도 멱등성을 위해 저장하며, 같은 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
+신규 가입자이고 정상적인 45탭 제출이면 `acceptedTapCount`와 무관하게 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 포인트 원장으로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 두 reason은 서버 지급 원장 사유 구분이며 milestone 시점의 부분 지급을 뜻하지 않는다. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 인정 가능한 탭만 반영한다. `onboardingAttemptId` 정산 결과는 재시도 멱등성을 위해 저장하며, 같은 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
 
 ### 기록 Projection
 
@@ -185,7 +185,7 @@ Access JWT는 stateless 검증을 유지하되 현재 Session 로그아웃은 jt
 
 보안 규칙은 고정한다. 같은 `onboardingAttemptId`가 다른 `userKey`에 연결되면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 같은 사용자와 같은 KST 일자에 다른 `onboardingAttemptId`가 들어와도 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 기존 정산 결과는 인증된 동일 Toss 사용자에게만 반환한다. `newUser`는 최초 해당 `onboardingAttemptId` 정산에서 서버가 새 `app_user/auth_identity`를 생성했는지의 저장된 판정이며, 응답 유실 후 같은 attempt 재시도에서는 최초 판정을 유지한다.
 
-외부 Toss 인증 단계에서는 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다. 순서는 `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증이다. 이후 로컬 판정 예약 트랜잭션에서 `auth_identity` 조회/생성, `app_user` 생성, attempt 소유권 검증, `onboarding_settlement PENDING` 생성 또는 조회, 최초 `newUser` 판정 저장을 commit한다. 로컬 정산 트랜잭션은 `PENDING` 또는 재시도 가능한 `FAILED`를 확인하고 `submittedTapCount` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리를 같은 DataSource/Spring transaction에서 commit한다. 실패 시 탭, 포인트, 키캡, `COMPLETED` 처리는 모두 rollback하며, 실패 원인이 필요하면 별도 recovery transaction으로 `FAILED/failure_code`를 기록한다. Redis Session 저장은 정산 commit 이후 수행하며, Redis 실패 시 DB 회원/정산/보상 결과는 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다.
+외부 Toss 인증 단계에서는 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다. 순서는 `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증이다. 이후 로컬 판정 예약 트랜잭션에서 `auth_identity` 조회/생성, `app_user` 생성, attempt 소유권 검증, `onboarding_settlement PENDING` 생성 또는 조회, 최초 `newUser` 판정 저장을 commit한다. 로컬 정산 트랜잭션은 `PENDING` 또는 재시도 가능한 `FAILED`를 확인하고 `submittedTapCount=45` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리를 같은 DataSource/Spring transaction에서 commit한다. 실패 시 탭, 포인트, 키캡, `COMPLETED` 처리는 모두 rollback하며, 실패 원인이 필요하면 별도 recovery transaction으로 `FAILED/failure_code`를 기록한다. Redis Session 저장은 정산 commit 이후 수행하며, Redis 실패 시 DB 회원/정산/보상 결과는 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다.
 
 ## A/B Port와 Event
 

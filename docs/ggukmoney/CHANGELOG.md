@@ -1,10 +1,21 @@
 # 수정 내역
 
+## 2026-07-05 온보딩 45탭 완료 계약 최종화
+
+- Apps-in-Toss 인증 방식은 유지하고 온보딩 로그인 계약을 45탭 완료 후 로그인으로 최종 정리했다.
+- `onboardingTapCount`는 정확히 45만 허용하고 44 이하 또는 46 이상은 `VALIDATION_FAILED`로 거절하도록 문서화했다.
+- `submittedTapCount=45`, `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`로 계산식을 통일했다.
+- 15/30/45 화면은 로그인 전 미리보기 연출이며 실제 신규 가입 보상 2P와 고정 키캡은 로그인 정산에서 일괄 지급한다고 명시했다.
+- 신규 사용자 보상 자격을 `acceptedTapCount`가 아니라 신규 사용자 여부와 정상적인 45탭 제출로 분리했다.
+- stale refresh not-found 오류명을 실제 코드인 `AUTH_SESSION_NOT_FOUND`로 수정하고, `IDEMPOTENCY_KEY_REUSED`를 409로 통일했다.
+- 문서 Source of Truth의 테이블 수를 A 31개, B 15개로 바로잡고 stale 온보딩 진행 표현을 제거했다.
+- Java/Test/SQL/Gradle/application/GitHub Actions/인증서/Secret은 수정하지 않았다.
+
 ## 2026-07-05 Apps-in-Toss 인증 문서 최종 정합성
 
 - appLogin 기반 Apps-in-Toss 로그인 계약은 유지하고, 현재 Java 구현과 문서 사이의 Refresh 응답, devicePublicId, 온보딩 정산 경계 모순을 정리했다.
 - Refresh 응답은 실제 `AuthTokenResponse` 기준 `userPublicId/accessToken/refreshToken/tokenType/accessTokenExpiresAt/refreshTokenExpiresAt/newUser=false`로 통일하고 body 세션 식별자와 온보딩 정산 정보를 제거했다.
-- `onboardingTapCount`는 0..45 validation으로 확정하고 45 초과 값을 자동 보정하지 않도록 문서화했다.
+- `onboardingTapCount` validation과 자동 보정 금지 정책을 문서화했다.
 - devicePublicId는 Toss 로그인 사용자 식별이나 신규/기존 판정에 쓰지 않는 optional metadata로 확정하고, 현재 AuthSession/Redis 구현의 필수 저장 차이를 남은 Java 구현 작업으로 분리했다.
 - data-infra에 Toss Base URL, PKCS12 mTLS, Secret 주입, fail-fast, timeout, retry, Toss Token 미저장, 외부 호출 로그 정책을 추가했다.
 - `authorizationCode`는 일회성 Toss 인증 코드, `onboardingAttemptId`는 정산 멱등 키로 역할을 분리하고 응답 유실/Redis 실패 재시도는 새 authorizationCode와 같은 attempt로 처리하도록 확정했다.
@@ -131,7 +142,7 @@
 
 - A 전체 API 상세 계약을 보완하고 각 API에 Owner/Status/인증/멱등성/관련 저장소를 명시했습니다.
 - B 전체 API를 `PROPOSED` 상세 계약으로 작성했습니다.
-- B 14개 테이블을 컬럼·타입·제약·인덱스 수준으로 상세화했습니다.
+- B 테이블을 컬럼·타입·제약·인덱스 수준으로 상세화했습니다.
 - 전체 로그아웃 시 사용자 revoke 시각으로 모든 Access Token을 즉시 차단하도록 보완했습니다.
 - `auth:user-sessions` Sorted Set 만료 member 정리 규칙을 추가했습니다.
 - ERD의 `APP_USER -> DEVICE` 직접 관계를 제거하고 B Aggregate를 추가했습니다.

@@ -195,7 +195,7 @@ Lua Script는 다음 작업을 원자적으로 수행한다.
 - 현재 Refresh Rotation Lua CAS는 구현되어 있으나 사용자 revoke marker 연동은 `IN_PROGRESS`다.
 - Rotation 전에 `auth:revoke:user:{userPublicId}`를 확인하고, session의 `issuedAtMillis <= revokedAtMillis`이면 revoked session으로 거절한다.
 - revoked session이면 `auth:refresh:{sessionId}`와 `auth:user-sessions:{userPublicId}`의 해당 member를 정리하고 `AUTH_USER_REVOKED`를 반환한다.
-- 기존 `AUTH_REFRESH_CONFLICT`, `AUTH_REFRESH_REUSED`, `AUTH_REFRESH_NOT_FOUND` 의미는 유지한다.
+- 기존 `AUTH_REFRESH_CONFLICT`, `AUTH_REFRESH_REUSED`, `AUTH_SESSION_NOT_FOUND` 의미는 유지한다.
 
 동시 요청과 재사용 판단:
 
@@ -335,10 +335,10 @@ Redis는 PostgreSQL 트랜잭션 안에 포함하지 않고 DB commit 전에 먼
 로컬 정산 트랜잭션:
 
 1. settlement `PENDING` 또는 재시도 가능한 `FAILED`를 확인한다.
-2. `submittedTapCount`가 0..45 검증을 통과한 값인지 확인한다.
-3. `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`를 계산한다.
+2. `submittedTapCount=45`인지 확인한다.
+3. `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`를 계산한다.
 4. B 탭/랭킹 반영 Port를 호출한다.
-5. 신규 사용자만 B 포인트 원장 1P + 1P를 지급한다.
+5. 신규 사용자이고 정상적인 45탭 제출이면 `acceptedTapCount`와 무관하게 B 포인트 원장 1P + 1P를 지급한다.
 6. 신규 사용자만 A 고정 키캡 지급 Port를 호출한다.
 7. settlement를 `COMPLETED` 처리한다.
 8. 같은 PostgreSQL transaction 안에서 commit한다.

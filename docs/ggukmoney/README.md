@@ -123,12 +123,14 @@ A는 B의 Entity와 Repository를 직접 사용하지 않는다. A/B 연동은 [
 - 동점 기준은 `score DESC`, `reached_at ASC`, `user_public_id ASC`다.
 - 최신 온보딩은 일반 경제 정책과 분리한다.
 - 앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다.
-- 프론트는 최대 45탭과 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다.
+- 프론트는 45탭 완료 상태와 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다.
 - 서버 사용자와 인증 Session은 Toss 로그인 성공 후 생성한다.
 - 로그인 요청은 `authorizationCode`, `referrer`, `onboardingAttemptId`, `onboardingTapCount`를 포함한다.
-- 서버는 `onboardingTapCount`를 0..45 범위로 검증하고, 범위를 벗어나면 `400 VALIDATION_FAILED`로 거절한다. `acceptedTapCount = min(submittedTapCount, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
+- 서버는 `onboardingTapCount`가 정확히 45인지 검증하고, 45가 아니면 `400 VALIDATION_FAILED`로 거절한다. `submittedTapCount=45`이며 `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다.
 - 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT`로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다.
+- 두 포인트 reason은 로그인 정산 시 원장 사유를 구분하기 위한 값이며 milestone 시점의 서버 부분 지급을 뜻하지 않는다.
 - 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고, 인정 가능한 탭만 반영한다.
+- 기존 사용자 보상 없음: 기존 회원은 `acceptedTapCount`와 무관하게 신규 가입 보상을 받지 않는다.
 - 온보딩 상자는 일반 랜덤 상자 리소스가 아니다. 상자 개봉과 키캡 reveal은 신규 가입 보상 미리보기 연출이며 로그인 전 실제 서버 지급을 의미하지 않는다.
 - 온보딩 고정 키캡 보상은 일반 상자 잔액, 무료 쿨다운, 광고 상자 횟수, 일반 드롭 테이블, 조각 지급, 상자 개봉 원장을 사용하지 않는다.
 - 한 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 반영한다.
@@ -209,7 +211,7 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 4. 키캡, 상자 계정, 상자 원장, 무료/광고 개봉
 5. 지역 목록, 지역 판별 Port, 지역 설정과 변경 예약
 6. 랭킹 시즌, 자동 포함, Redis overall 점수 후보, PostgreSQL 정산 원본
-7. 검증 탭 반영 Port, 일반 상자 진행도, 온보딩 진행도, 랭킹 점수 이벤트
+7. 검증 탭 반영 Port, 일반 상자 진행도, 랭킹 점수 이벤트
 8. 주간 정산, snapshot, ranking_reward 유지 여부 결정, 한정 키캡 자동 지급
 9. 알림 preference, push_device, notification_log, fake push
 10. 기록 projection, app_config, legal_document
@@ -219,7 +221,7 @@ Redis 인증 장애 정책과 denylist 장애 정책은 [data-infra.md](data-inf
 ## 현재 명세 완성도
 
 - `api-contract.md`: A 전체 API 상세 `CONFIRMED`, B 전체 API 상세 `PROPOSED`.
-- `table-spec.md`: A 34개 테이블 상세 `CONFIRMED`, B 14개 테이블 상세 `DRAFT`.
+- `table-spec.md`: A 31개 테이블 상세 `CONFIRMED`, B 15개 테이블 상세 `DRAFT`.
 - B 정책 수치·상태·외부 Toss/광고 응답은 팀 회의에서 최종 조정한다.
 
 ## 빵도감 분석 결과 요약

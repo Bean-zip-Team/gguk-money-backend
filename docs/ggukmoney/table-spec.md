@@ -856,7 +856,7 @@ B 공통 정책:
 | `public_id` | UUID | N | generated | | UNIQUE | 외부 id |
 | `user_public_id` | UUID | N | | | INDEX | 사용자 public id |
 | `onboarding_attempt_id` | UUID | N | | | UNIQUE | 프론트 로컬 온보딩 시도 id |
-| `submitted_tap_count` | INTEGER | N | | | CHECK `BETWEEN 0 AND 45` | 0..45 검증을 통과한 제출 탭 수 |
+| `submitted_tap_count` | INTEGER | N | | | CHECK `= 45` | 완료된 온보딩 제출 탭 수. 값은 45로 고정 |
 | `accepted_tap_count` | INTEGER | N | 0 | | CHECK `>= 0` | 실제 반영 탭 수 |
 | `settlement_date` | DATE | N | | | | KST 정산일 |
 | `new_member` | BOOLEAN | N | | | | Toss identity 기준 신규 가입 여부 |
@@ -878,7 +878,7 @@ B 공통 정책:
 - CHECK: `status = 'COMPLETED'`이면 `settled_at IS NOT NULL`.
 - CHECK: `status = 'COMPLETED'`이면 `accepted_tap_count`가 최종 확정되어야 한다.
 - CHECK: `reward_eligible = true AND status = 'COMPLETED'`이면 `point_reward_amount = 2`.
-- CHECK: 신규 보상 키캡 지급이 성공한 `COMPLETED` row는 `granted_user_keycap_public_id IS NOT NULL`.
+- CHECK: `reward_eligible = true AND status = 'COMPLETED'`이면 `granted_user_keycap_public_id IS NOT NULL`.
 - CHECK: `status = 'FAILED'`이면 `failure_code IS NOT NULL`.
 - 상태 의미:
   - `PENDING`: 사용자와 `onboardingAttemptId` 소유권 및 최초 `new_member` 판정이 저장됐고 아직 탭/보상 정산 완료 전.
@@ -888,7 +888,9 @@ B 공통 정책:
 - 상태 전이: `PENDING -> PROCESSING`, `PROCESSING -> COMPLETED`, `PROCESSING -> FAILED`, `FAILED -> PROCESSING`. `COMPLETED`는 terminal이다.
 - 같은 `onboarding_attempt_id`는 한 사용자에게만 귀속된다.
 - 같은 사용자와 KST 일자당 실제 반영은 1회다.
-- 신규 가입자에게만 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 원장으로 총 2P를 지급하고 고정 온보딩 키캡을 1회 지급한다.
+- `accepted_tap_count`는 당일 남은 인정 한도에 따라 0..45가 될 수 있으며 신규 보상 자격과 분리된다.
+- `reward_eligible`은 `new_member=true`인 최초 정산이면 true, 기존 회원이면 false다.
+- 신규 가입자이고 `submitted_tap_count=45`이면 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 원장으로 총 2P를 지급하고 고정 온보딩 키캡을 1회 지급한다. 두 reason은 서버 지급 사유 구분이며 milestone 시점의 부분 지급을 뜻하지 않는다.
 - 기존 회원은 `reward_eligible=false`이며 온보딩 포인트와 키캡 보상을 지급하지 않는다.
 - `accepted_tap_count`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
 - `granted_user_keycap_public_id`는 `OnboardingKeycapGrantUseCase`가 반환한 `userKeycapId`를 FK 없이 UUID scalar로 저장한다. 카탈로그 정보는 A가 `user_keycap -> keycap` 조회로 제공한다.

@@ -50,11 +50,14 @@ Request validation:
 - 다른 `referrer`를 거절한다.
 - `onboarding` null을 거절한다.
 - `onboardingAttemptId` UUID 형식을 검증한다.
-- `onboardingTapCount=0`을 허용한다.
 - `onboardingTapCount=45`를 허용한다.
-- `onboardingTapCount=-1`을 거절한다.
+- `onboardingTapCount=0`을 거절한다.
+- `onboardingTapCount=14`를 거절한다.
+- `onboardingTapCount=15`를 거절한다.
+- `onboardingTapCount=30`을 거절한다.
+- `onboardingTapCount=44`를 거절한다.
 - `onboardingTapCount=46`을 거절한다.
-- 46을 45로 변경하지 않는다.
+- 44 또는 46을 45로 변경하지 않는다.
 
 Toss Client:
 
@@ -106,7 +109,8 @@ Response:
 - Refresh 응답 body에는 Session 식별자를 노출하지 않는다.
 - Refresh 응답에는 `onboardingSettlement`가 없다.
 - 성공 응답은 `success/data/traceId`를 포함한다.
-- 실패 응답은 `error/errorCode/traceId`를 포함한다.
+- 실패 응답은 `success/error/traceId`를 포함한다.
+- 실패 응답의 `error` 객체는 `code/message`를 사용한다.
 - Body `traceId`와 `X-Trace-Id`가 일치한다.
 
 device optional:
@@ -279,19 +283,21 @@ device optional:
 
 경계 테스트:
 
-- 0~14탭: 포인트 없음.
-- 15탭: 1P 한 번 지급.
-- `submittedTapCount`는 0..45 검증을 통과한 값이며 범위 밖 값은 거절된다.
-- `acceptedTapCount`는 `min(submittedTapCount, 45, KST 당일 남은 유효 탭 한도)`로 계산된다.
+- 15/30/45 프론트 reveal은 서버 지급 완료로 해석하지 않는다.
+- `submittedTapCount`는 45다.
+- `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`로 계산된다.
 - `acceptedTapCount`만 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영된다.
 - 로그인 전 온보딩 탭에는 부스터가 소급 적용되지 않는다.
-- 신규 회원에게만 15탭 1P, 30탭 추가 1P에 해당하는 총 2P와 고정 온보딩 키캡 1개가 한 번 지급된다.
-- 기존 회원에게는 온보딩 포인트와 키캡 보상이 지급되지 않는다.
+- `acceptedTapCount=0`이어도 신규 사용자 보상 2P와 키캡이 지급된다.
+- `acceptedTapCount=12`여도 신규 사용자 보상 2P와 키캡이 지급된다.
+- 신규 회원에게만 로그인 정산에서 총 2P와 고정 온보딩 키캡 1개가 한 번 지급된다.
+- 기존 회원에게는 `acceptedTapCount`와 무관하게 온보딩 포인트와 키캡 보상이 지급되지 않는다.
 - 일반 랜덤 상자 개봉과 온보딩 고정 보상 reveal은 분리된다.
 
 재시도/동시성:
 
 - 같은 `onboardingAttemptId` 재전송 시 탭 반영과 보상 중복 없음.
+- 같은 `onboardingAttemptId` 재전송 시 2P와 키캡 중복 지급 없음.
 - 같은 사용자와 KST 일자에 다른 attempt가 와도 로그인 전 온보딩 탭은 중복 반영되지 않음.
 - B 포인트 ledger와 onboarding settlement 정합성.
 - A 키캡 지급 referenceId 멱등성.
