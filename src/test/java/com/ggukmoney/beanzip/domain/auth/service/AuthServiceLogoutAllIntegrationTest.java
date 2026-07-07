@@ -16,31 +16,29 @@ class AuthServiceLogoutAllIntegrationTest extends FullStackIntegrationTestSuppor
     private AuthService authService;
 
     @Test
-    void logoutAllDeletesRealRedisSessionsAndPersistsAuditLog() {
-        String userPublicId = UUID.randomUUID().toString();
-        saveTokenBackedSession(userPublicId, UUID.randomUUID().toString());
-        saveTokenBackedSession(userPublicId, UUID.randomUUID().toString());
-        FullStackIntegrationTestSupport.TestTokens current = saveTokenBackedSession(userPublicId, UUID.randomUUID().toString());
+    void logoutAllDeletesRealRedisSessions() {
+        UUID userId = UUID.randomUUID();
+        saveTokenBackedSession(userId, UUID.randomUUID().toString());
+        saveTokenBackedSession(userId, UUID.randomUUID().toString());
+        FullStackIntegrationTestSupport.TestTokens current = saveTokenBackedSession(userId, UUID.randomUUID().toString());
 
-        LogoutAllResponse response = authService.logoutAll(userPublicId, current.accessJti(), current.accessExpiresAt());
+        LogoutAllResponse response = authService.logoutAll(userId, current.accessJti(), current.accessExpiresAt());
 
         assertThat(response.loggedOutAll()).isTrue();
         assertThat(response.revokedSessionCount()).isEqualTo(3);
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userPublicId)))).isFalse();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userPublicId)).contains("LOGOUT_ALL");
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userId)))).isFalse();
+        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
         assertThat(redisTemplate.opsForValue().get("auth:deny:access:" + current.accessJti())).isEqualTo("1");
-        assertThat(jdbcTemplate.queryForObject("select count(*) from auth_session_log where event_type = 'LOGOUT_ALL' and result = 'SUCCESS'", Long.class))
-                .isEqualTo(1L);
     }
 
     @Test
     void logoutAllSucceedsWhenUserHasNoSessions() {
-        String userPublicId = UUID.randomUUID().toString();
+        UUID userId = UUID.randomUUID();
 
-        LogoutAllResponse response = authService.logoutAll(userPublicId, null, null);
+        LogoutAllResponse response = authService.logoutAll(userId, null, null);
 
         assertThat(response.loggedOutAll()).isTrue();
         assertThat(response.revokedSessionCount()).isZero();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userPublicId)).contains("LOGOUT_ALL");
+        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
     }
 }

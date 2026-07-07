@@ -46,15 +46,21 @@ public class KeycapBoxOpen {
     @Column(name = "open_method", nullable = false, length = 20)
     private OpenMethod openMethod;
 
-    @Column(name = "ad_view_id")
-    private UUID adViewId;
+    @Column(name = "ad_reward_id", length = 255)
+    private String adRewardId;
 
-    @Column(name = "open_count", nullable = false)
-    private Integer openCount = 1;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "keycap_id", nullable = false)
+    private Keycap keycap;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
-    private Status status = Status.COMPLETED;
+    @Column(name = "shard_count", nullable = false)
+    private Integer shardCount;
+
+    @Column(name = "boost_applied", nullable = false)
+    private boolean boostApplied = false;
+
+    @Column(name = "completed", nullable = false)
+    private boolean completed = false;
 
     @Column(name = "idempotency_key", nullable = false, length = 100)
     private String idempotencyKey;
@@ -91,10 +97,5 @@ public class KeycapBoxOpen {
     public enum OpenMethod {
         FREE,
         ADVERTISEMENT
-    }
-
-    public enum Status {
-        COMPLETED,
-        FAILED
     }
 }

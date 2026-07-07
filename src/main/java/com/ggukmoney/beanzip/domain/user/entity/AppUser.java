@@ -24,11 +24,9 @@ import java.util.UUID;
 public class AppUser {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "public_id", nullable = false, unique = true)
-    private UUID publicId;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", nullable = false, updatable = false)
+    private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -40,8 +38,20 @@ public class AppUser {
     @Column(name = "nickname_normalized", length = 50)
     private String nicknameNormalized;
 
+    @Column(name = "profile_image_url", columnDefinition = "text")
+    private String profileImageUrl;
+
+    @Column(name = "onboarding_reward_claimed", nullable = false)
+    private boolean onboardingRewardClaimed = false;
+
+    @Column(name = "onboarding_completed_at")
+    private Instant onboardingCompletedAt;
+
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+
+    @Column(name = "withdrawn_at")
+    private Instant withdrawnAt;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -49,12 +59,43 @@ public class AppUser {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    public static AppUser createActive(String nickname, String profileImageUrl) {
+        AppUser user = new AppUser();
+        user.status = Status.ACTIVE;
+        user.recordLogin(nickname, profileImageUrl);
+        return user;
+    }
+
+    public boolean isWithdrawn() {
+        return status == Status.WITHDRAWN;
+    }
+
+    public void recordLogin(String nickname, String profileImageUrl) {
+        if (isWithdrawn()) {
+            return;
+        }
+        this.nickname = normalizeNullable(nickname);
+        this.nicknameNormalized = normalizeNickname(nickname);
+        this.profileImageUrl = normalizeNullable(profileImageUrl);
+        this.lastLoginAt = Instant.now();
+    }
+
+    public void claimOnboardingReward() {
+        this.onboardingRewardClaimed = true;
+        this.onboardingCompletedAt = Instant.now();
+    }
+
+    public void withdraw() {
+        this.status = Status.WITHDRAWN;
+        this.withdrawnAt = Instant.now();
+        this.nickname = "withdrawn-" + id;
+        this.nicknameNormalized = null;
+        this.profileImageUrl = null;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
-        if (publicId == null) {
-            publicId = UUID.randomUUID();
-        }
         if (createdAt == null) {
             createdAt = now;
         }
@@ -64,6 +105,15 @@ public class AppUser {
     @PreUpdate
     void preUpdate() {
         updatedAt = Instant.now();
+    }
+
+    private static String normalizeNickname(String nickname) {
+        String normalized = normalizeNullable(nickname);
+        return normalized == null ? null : normalized.toLowerCase();
+    }
+
+    private static String normalizeNullable(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     public enum Status {

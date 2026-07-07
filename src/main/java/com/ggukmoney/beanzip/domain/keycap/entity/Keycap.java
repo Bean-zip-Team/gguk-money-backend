@@ -33,7 +33,7 @@ public class Keycap {
     @Column(name = "code", nullable = false, unique = true, length = 60)
     private String code;
 
-    @Column(name = "name", nullable = false, unique = true, length = 80)
+    @Column(name = "name", nullable = false, length = 80)
     private String name;
 
     @Enumerated(EnumType.STRING)
@@ -43,11 +43,17 @@ public class Keycap {
     @Column(name = "required_shard_count", nullable = false)
     private Integer requiredShardCount;
 
+    @Column(name = "season", nullable = false)
+    private Integer season = 1;
+
     @Column(name = "image_url", columnDefinition = "text")
     private String imageUrl;
 
-    @Column(name = "limited", nullable = false)
-    private boolean limited = false;
+    @Column(name = "sound_url", columnDefinition = "text")
+    private String soundUrl;
+
+    @Column(name = "sort_order", nullable = false)
+    private Integer sortOrder = 0;
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
@@ -79,7 +85,6 @@ public class Keycap {
         COMMON,
         RARE,
         EPIC,
-        LEGENDARY,
-        LIMITED
+        LEGENDARY
     }
 }

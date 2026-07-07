@@ -87,7 +87,7 @@ public class RedisAuthSessionRepository {
     public void save(AuthSession session) {
         String refreshKey = refreshKey(session.sessionId());
         redisTemplate.opsForHash().putAll(refreshKey, Map.of(
-                "userPublicId", session.userPublicId(),
+                "userId", session.userId().toString(),
                 "devicePublicId", session.devicePublicId(),
                 "currentRefreshJtiHash", session.currentRefreshJtiHash(),
                 "refreshTokenHash", session.refreshTokenHash(),
@@ -99,7 +99,7 @@ public class RedisAuthSessionRepository {
                 "status", session.status()
         ));
         redisTemplate.expire(refreshKey, Duration.between(Instant.now(), session.expiresAt()));
-        redisTemplate.opsForZSet().add(userSessionsKey(session.userPublicId()), session.sessionId().toString(), session.expiresAt().toEpochMilli());
+        redisTemplate.opsForZSet().add(userSessionsKey(session.userId()), session.sessionId().toString(), session.expiresAt().toEpochMilli());
     }
 
     public Optional<AuthSession> findBySessionId(UUID sessionId) {
@@ -109,7 +109,7 @@ public class RedisAuthSessionRepository {
         }
         return Optional.of(new AuthSession(
                 sessionId,
-                required(entries, "userPublicId"),
+                UUID.fromString(required(entries, "userId")),
                 required(entries, "devicePublicId"),
                 required(entries, "currentRefreshJtiHash"),
                 required(entries, "refreshTokenHash"),
@@ -134,7 +134,7 @@ public class RedisAuthSessionRepository {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>(ROTATE_REFRESH_LUA, Long.class);
         Long result = redisTemplate.execute(
                 script,
-                List.of(refreshKey(session.sessionId()), userSessionsKey(session.userPublicId())),
+                List.of(refreshKey(session.sessionId()), userSessionsKey(session.userId())),
                 expectedCurrentRefreshJtiHash,
                 expectedRefreshTokenHash,
                 newCurrentRefreshJtiHash,
@@ -162,7 +162,7 @@ public class RedisAuthSessionRepository {
     public void deleteSession(UUID sessionId) {
         findBySessionId(sessionId).ifPresent(session -> {
             redisTemplate.delete(refreshKey(sessionId));
-            redisTemplate.opsForZSet().remove(userSessionsKey(session.userPublicId()), sessionId.toString());
+            redisTemplate.opsForZSet().remove(userSessionsKey(session.userId()), sessionId.toString());
         });
     }
 
@@ -175,24 +175,24 @@ public class RedisAuthSessionRepository {
         return Boolean.TRUE.equals(redisTemplate.hasKey("auth:deny:access:" + jti));
     }
 
-    public void revokeUser(String userPublicId, Instant revokedAt) {
-        redisTemplate.opsForValue().set(revokeUserKey(userPublicId), String.valueOf(revokedAt.toEpochMilli()));
+    public void revokeUser(UUID userId, Instant revokedAt) {
+        redisTemplate.opsForValue().set(revokeUserKey(userId), String.valueOf(revokedAt.toEpochMilli()));
     }
 
     public long revokeAllUserSessions(
-            String userPublicId,
+            UUID userId,
             String accessJti,
             Instant accessExpiresAt,
             Instant revokedAt,
             String reason
     ) {
         try {
-            String userSessionsKey = userSessionsKey(userPublicId);
+            String userSessionsKey = userSessionsKey(userId);
             long revokedAtMillis = revokedAt.toEpochMilli();
             DefaultRedisScript<Long> script = new DefaultRedisScript<>(REVOKE_ALL_USER_SESSIONS_LUA, Long.class);
             Long revokedCount = redisTemplate.execute(
                     script,
-                    List.of(userSessionsKey, revokeUserKey(userPublicId)),
+                    List.of(userSessionsKey, revokeUserKey(userId)),
                     String.valueOf(revokedAtMillis),
                     revokeMarker(revokedAtMillis, reason),
                     String.valueOf(ACCESS_REVOKE_TTL.toMillis()),
@@ -204,13 +204,13 @@ public class RedisAuthSessionRepository {
             }
             return revokedCount;
         } catch (RuntimeException exception) {
-            log.error("Failed to revoke all Redis auth sessions for userPublicId={}", userPublicId, exception);
+            log.error("Failed to revoke all Redis auth sessions for userId={}", userId, exception);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AUTH_REDIS_UNAVAILABLE", exception);
         }
     }
 
-    public Optional<Long> findUserRevokedAtMillis(String userPublicId) {
-        String value = redisTemplate.opsForValue().get(revokeUserKey(userPublicId));
+    public Optional<Long> findUserRevokedAtMillis(UUID userId) {
+        String value = redisTemplate.opsForValue().get(revokeUserKey(userId));
         return value == null ? Optional.empty() : Optional.of(parseRevokedAtMillis(value));
     }
 
@@ -218,12 +218,12 @@ public class RedisAuthSessionRepository {
         return "auth:refresh:" + sessionId;
     }
 
-    public static String userSessionsKey(String userPublicId) {
-        return "auth:user-sessions:" + userPublicId;
+    public static String userSessionsKey(UUID userId) {
+        return "auth:user-sessions:" + userId;
     }
 
-    private String revokeUserKey(String userPublicId) {
-        return "auth:revoke:user:" + userPublicId;
+    private String revokeUserKey(UUID userId) {
+        return "auth:revoke:user:" + userId;
     }
 
     private String revokeMarker(long revokedAtMillis, String reason) {

@@ -84,4 +84,13 @@ public class AuthIdentity {
     public enum Provider {
         TOSS
     }
+
+    public static AuthIdentity toss(AppUser user, String providerUserId) {
+        AuthIdentity identity = new AuthIdentity();
+        identity.user = user;
+        identity.provider = Provider.TOSS;
+        identity.providerUserId = providerUserId;
+        identity.linkedAt = Instant.now();
+        return identity;
+    }
 }

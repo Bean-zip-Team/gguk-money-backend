@@ -42,7 +42,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_ACCESS_DENIED");
         }
 
-        authSessionRepository.findUserRevokedAtMillis(claims.userPublicId()).ifPresent(revokedAtMillis -> {
+        authSessionRepository.findUserRevokedAtMillis(claims.userId()).ifPresent(revokedAtMillis -> {
             if (claims.issuedAtMillis() <= revokedAtMillis) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_USER_REVOKED");
             }
@@ -51,11 +51,11 @@ public class AuthInterceptor implements HandlerInterceptor {
         AuthSession session = authSessionRepository.findBySessionId(claims.sessionId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_NOT_FOUND"));
 
-        if (!claims.userPublicId().equals(session.userPublicId())) {
+        if (!claims.userId().equals(session.userId())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_USER_MISMATCH");
         }
 
-        request.setAttribute(AuthRequestAttributes.USER_PUBLIC_ID, claims.userPublicId());
+        request.setAttribute(AuthRequestAttributes.USER_ID, claims.userId());
         request.setAttribute(AuthRequestAttributes.SESSION_ID, claims.sessionId());
         request.setAttribute(AuthRequestAttributes.DEVICE_PUBLIC_ID, session.devicePublicId());
         request.setAttribute(AuthRequestAttributes.ACCESS_TOKEN_JTI, claims.jti());
@@ -80,7 +80,8 @@ public class AuthInterceptor implements HandlerInterceptor {
         return "POST".equalsIgnoreCase(method)
                 && (ApiPaths.GUESTS.equals(path)
                 || (ApiPaths.AUTH + "/refresh").equals(path)
-                || (ApiPaths.AUTH + "/toss/login").equals(path));
+                || (ApiPaths.AUTH + "/toss/login").equals(path)
+                || (ApiPaths.AUTH + "/toss/unlink-webhook").equals(path));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

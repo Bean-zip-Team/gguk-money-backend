@@ -41,9 +41,10 @@ public class RedisAuthSessionRepositoryTest {
         )).thenReturn(1L);
 
         RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
+        UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         AuthSession session = new AuthSession(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "usr_public_1",
+                userId,
                 "device_public_1",
                 "refresh-jti-old-hash",
                 "refresh-token-old-hash",
@@ -68,7 +69,7 @@ public class RedisAuthSessionRepositoryTest {
         assertThat(result).isEqualTo(RefreshRotationResult.ROTATED);
         assertThat(keysCaptor.getValue()).containsExactly(
                 "auth:refresh:00000000-0000-0000-0000-000000000001",
-                "auth:user-sessions:usr_public_1"
+                "auth:user-sessions:10000000-0000-0000-0000-000000000001"
         );
         assertThat(scriptCaptor.getValue().getScriptAsString())
                 .contains("redis.call('HGET', KEYS[1], 'currentRefreshJtiHash')")
@@ -94,8 +95,9 @@ public class RedisAuthSessionRepositoryTest {
         )).thenReturn(2L);
 
         RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
+        UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         long revokedCount = repository.revokeAllUserSessions(
-                "usr_public_1",
+                userId,
                 "access-jti-1",
                 Instant.parse("2026-07-02T00:15:00Z"),
                 Instant.parse("2026-07-02T00:00:00Z"),
@@ -104,8 +106,8 @@ public class RedisAuthSessionRepositoryTest {
 
         assertThat(revokedCount).isEqualTo(2);
         assertThat(keysCaptor.getValue()).containsExactly(
-                "auth:user-sessions:usr_public_1",
-                "auth:revoke:user:usr_public_1"
+                "auth:user-sessions:10000000-0000-0000-0000-000000000001",
+                "auth:revoke:user:10000000-0000-0000-0000-000000000001"
         );
         assertThat(scriptCaptor.getValue().getScriptAsString())
                 .contains("redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])")
@@ -121,11 +123,12 @@ public class RedisAuthSessionRepositoryTest {
         @SuppressWarnings("unchecked")
         ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("auth:revoke:user:usr_public_1"))
+        UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        when(valueOperations.get("auth:revoke:user:10000000-0000-0000-0000-000000000001"))
                 .thenReturn("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}");
 
         RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
 
-        assertThat(repository.findUserRevokedAtMillis("usr_public_1")).contains(1782950400000L);
+        assertThat(repository.findUserRevokedAtMillis(userId)).contains(1782950400000L);
     }
 }
