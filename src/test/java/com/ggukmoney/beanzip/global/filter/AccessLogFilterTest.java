@@ -14,15 +14,16 @@ public class AccessLogFilterTest {
     private final AccessLogFilter filter = new AccessLogFilter();
 
     @Test
-    void usesTraceIdHeaderAndResponseHeader() throws Exception {
+    void usesRequestIdHeaderAndResponseHeader() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/me");
-        request.addHeader(RequestLogContext.TRACE_ID_HEADER, "trace-123");
+        request.addHeader(RequestLogContext.REQUEST_ID_HEADER, "request-123");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
 
-        assertThat(request.getAttribute(RequestLogContext.TRACE_ID_ATTRIBUTE)).isEqualTo("trace-123");
-        assertThat(response.getHeader(RequestLogContext.TRACE_ID_HEADER)).isEqualTo("trace-123");
+        assertThat(request.getAttribute(RequestLogContext.REQUEST_ID_ATTRIBUTE)).isEqualTo("request-123");
+        assertThat(response.getHeader(RequestLogContext.REQUEST_ID_HEADER)).isEqualTo("request-123");
+        assertThat(response.getHeader("X-" + "Trace-Id")).isNull();
     }
 
     @Test

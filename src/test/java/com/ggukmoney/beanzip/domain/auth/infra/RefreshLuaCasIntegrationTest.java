@@ -42,7 +42,7 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
         assertThat(rotated.rotatedAt()).isEqualTo(rotatedAt);
         assertThat(rotated.expiresAt()).isEqualTo(newExpiresAt);
         assertThat(redisTemplate.getExpire(RedisAuthSessionRepository.refreshKey(session.sessionId()))).isBetween(7100L, 7200L);
-        assertThat(redisTemplate.opsForZSet().score(RedisAuthSessionRepository.userSessionsKey(session.userPublicId()), session.sessionId().toString()))
+        assertThat(redisTemplate.opsForZSet().score(RedisAuthSessionRepository.userSessionsKey(session.userId()), session.sessionId().toString()))
                 .isEqualTo((double) newExpiresAt.toEpochMilli());
     }
 
@@ -69,7 +69,7 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
 
     @Test
     void returnsNotFoundWithoutCreatingKeysWhenSessionDoesNotExist() {
-        AuthSession session = activeSession(UUID.randomUUID(), UUID.randomUUID().toString(), UUID.randomUUID().toString(), "jti-A", "token-A", "family-A", Instant.now(), Instant.now().plusSeconds(3600));
+        AuthSession session = activeSession(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID().toString(), "jti-A", "token-A", "family-A", Instant.now(), Instant.now().plusSeconds(3600));
 
         RefreshRotationResult result = repository.rotateRefreshToken(
                 session,
@@ -138,7 +138,7 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
     private AuthSession savedSession() {
         AuthSession session = activeSession(
                 UUID.randomUUID(),
-                UUID.randomUUID().toString(),
+                UUID.randomUUID(),
                 UUID.randomUUID().toString(),
                 "jti-A",
                 "token-A",

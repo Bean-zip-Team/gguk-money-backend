@@ -5,14 +5,13 @@ import com.ggukmoney.beanzip.global.logging.RequestLogContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,13 +29,12 @@ public class GlobalExceptionHandler {
             ResponseStatusException exception,
             HttpServletRequest request
     ) {
-        HttpStatusCode statusCode = exception.getStatusCode();
-        String code = mapStatusCode(statusCode, exception.getReason());
-        String message = resolveMessage(exception.getReason(), defaultMessage(statusCode));
-        request.setAttribute(AuthRequestAttributes.ERROR_CODE, code);
-        logByStatus(statusCode, code, message, request, exception);
+        ErrorCode errorCode = resolveErrorCode(exception);
+        request.setAttribute(AuthRequestAttributes.ERROR_CODE, errorCode.code());
+        logByStatus(errorCode, request, exception);
 
-        return ResponseEntity.status(statusCode).body(ApiErrorResponse.failure(code, message));
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiErrorResponse.failure(errorCode.code(), errorCode.message()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -74,14 +72,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MissingRequestHeaderException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidRequestException(Exception exception, HttpServletRequest request) {
-        request.setAttribute(AuthRequestAttributes.ERROR_CODE, "INVALID_REQUEST");
-        log.warn("Invalid request: code={} method={} path={} traceId={} errorType={}",
-                "INVALID_REQUEST",
+        ErrorCode errorCode = ErrorCode.COMMON_INVALID_REQUEST;
+        request.setAttribute(AuthRequestAttributes.ERROR_CODE, errorCode.code());
+        log.warn("Invalid request: code={} method={} path={} requestId={} errorType={}",
+                errorCode.code(),
                 request.getMethod(),
                 request.getRequestURI(),
-                RequestLogContext.currentTraceIdOrDefault(),
+                RequestLogContext.currentRequestIdOrDefault(),
                 exception.getClass().getSimpleName());
-        return ResponseEntity.badRequest().body(ApiErrorResponse.failure("INVALID_REQUEST", "요청 형식이 올바르지 않습니다."));
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiErrorResponse.failure(errorCode.code(), errorCode.message()));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
@@ -89,34 +89,55 @@ public class GlobalExceptionHandler {
             HttpMediaTypeNotSupportedException exception,
             HttpServletRequest request
     ) {
-        request.setAttribute(AuthRequestAttributes.ERROR_CODE, "INVALID_REQUEST");
-        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
-                .body(ApiErrorResponse.failure("INVALID_REQUEST", "요청 형식이 올바르지 않습니다."));
+        return simpleFailure(ErrorCode.COMMON_UNSUPPORTED_MEDIA_TYPE, request, exception);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpRequestMethodNotSupportedException(
+            HttpRequestMethodNotSupportedException exception,
+            HttpServletRequest request
+    ) {
+        return simpleFailure(ErrorCode.COMMON_METHOD_NOT_ALLOWED, request, exception);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleException(Exception exception, HttpServletRequest request) {
-        request.setAttribute(AuthRequestAttributes.ERROR_CODE, "INTERNAL_ERROR");
-        log.error("Unexpected server error: code={} method={} path={} traceId={} exceptionType={}",
-                "INTERNAL_ERROR",
+        ErrorCode errorCode = ErrorCode.COMMON_INTERNAL_SERVER_ERROR;
+        request.setAttribute(AuthRequestAttributes.ERROR_CODE, errorCode.code());
+        log.error("Unexpected server error: code={} method={} path={} requestId={} exceptionType={}",
+                errorCode.code(),
                 request.getMethod(),
                 request.getRequestURI(),
-                RequestLogContext.currentTraceIdOrDefault(),
+                RequestLogContext.currentRequestIdOrDefault(),
                 exception.getClass().getSimpleName(),
                 exception);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiErrorResponse.failure("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiErrorResponse.failure(errorCode.code(), errorCode.message()));
     }
 
     private ResponseEntity<ApiErrorResponse> validationFailure(String message, HttpServletRequest request, Exception exception) {
-        request.setAttribute(AuthRequestAttributes.ERROR_CODE, "VALIDATION_FAILED");
-        log.warn("Validation failed: code={} method={} path={} traceId={} errorType={}",
-                "VALIDATION_FAILED",
+        ErrorCode errorCode = ErrorCode.COMMON_VALIDATION_ERROR;
+        request.setAttribute(AuthRequestAttributes.ERROR_CODE, errorCode.code());
+        log.warn("Validation failed: code={} method={} path={} requestId={} errorType={}",
+                errorCode.code(),
                 request.getMethod(),
                 request.getRequestURI(),
-                RequestLogContext.currentTraceIdOrDefault(),
+                RequestLogContext.currentRequestIdOrDefault(),
                 exception.getClass().getSimpleName());
-        return ResponseEntity.badRequest().body(ApiErrorResponse.failure("VALIDATION_FAILED", message));
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiErrorResponse.failure(errorCode.code(), resolveMessage(message, errorCode.message())));
+    }
+
+    private ResponseEntity<ApiErrorResponse> simpleFailure(ErrorCode errorCode, HttpServletRequest request, Exception exception) {
+        request.setAttribute(AuthRequestAttributes.ERROR_CODE, errorCode.code());
+        log.warn("Request failed: code={} method={} path={} requestId={} exceptionType={}",
+                errorCode.code(),
+                request.getMethod(),
+                request.getRequestURI(),
+                RequestLogContext.currentRequestIdOrDefault(),
+                exception.getClass().getSimpleName());
+        return ResponseEntity.status(errorCode.status())
+                .body(ApiErrorResponse.failure(errorCode.code(), errorCode.message()));
     }
 
     private String resolveFieldErrorMessage(BindException exception) {
@@ -127,61 +148,31 @@ public class GlobalExceptionHandler {
         return resolveMessage(fieldError.getDefaultMessage(), DEFAULT_VALIDATION_MESSAGE);
     }
 
-    private String mapStatusCode(HttpStatusCode statusCode, String reason) {
-        if (StringUtils.hasText(reason) && reason.matches("[A-Z0-9_]+")) {
-            return reason;
+    private ErrorCode resolveErrorCode(ResponseStatusException exception) {
+        ErrorCode errorCode = ErrorCode.fromCode(exception.getReason());
+        if (errorCode != null) {
+            return errorCode;
         }
-        int status = statusCode.value();
-        if (status == HttpStatus.BAD_REQUEST.value()) {
-            return "INVALID_REQUEST";
-        }
-        if (status == HttpStatus.UNAUTHORIZED.value()) {
-            return "AUTH_REQUIRED";
-        }
-        if (status == HttpStatus.FORBIDDEN.value()) {
-            return "FORBIDDEN";
-        }
-        if (status == HttpStatus.CONFLICT.value()) {
-            return "CONFLICT";
-        }
-        if (status == HttpStatus.NOT_FOUND.value()) {
-            return "NOT_FOUND";
-        }
-        return statusCode.is5xxServerError() ? "INTERNAL_ERROR" : "INVALID_REQUEST";
-    }
-
-    private String defaultMessage(HttpStatusCode statusCode) {
-        if (statusCode.value() == HttpStatus.UNAUTHORIZED.value()) {
-            return "인증이 필요합니다.";
-        }
-        if (statusCode.value() == HttpStatus.FORBIDDEN.value()) {
-            return "권한이 없습니다.";
-        }
-        if (statusCode.is5xxServerError()) {
-            return "서버 내부 오류가 발생했습니다.";
-        }
-        return DEFAULT_VALIDATION_MESSAGE;
+        return ErrorCode.fromStatus(exception.getStatusCode().value());
     }
 
     private String resolveMessage(String message, String defaultMessage) {
-        return StringUtils.hasText(message) && !message.matches("[A-Z0-9_]+") ? message : defaultMessage;
+        return StringUtils.hasText(message) ? message : defaultMessage;
     }
 
     private void logByStatus(
-            HttpStatusCode statusCode,
-            String code,
-            String message,
+            ErrorCode errorCode,
             HttpServletRequest request,
             ResponseStatusException exception
     ) {
-        if (statusCode.is5xxServerError()) {
-            log.error("Request failed: code={} method={} path={} traceId={} message={} exceptionType={}",
-                    code, request.getMethod(), request.getRequestURI(), RequestLogContext.currentTraceIdOrDefault(),
-                    message, exception.getClass().getSimpleName());
+        if (errorCode.status().is5xxServerError()) {
+            log.error("Request failed: code={} method={} path={} requestId={} message={} exceptionType={}",
+                    errorCode.code(), request.getMethod(), request.getRequestURI(), RequestLogContext.currentRequestIdOrDefault(),
+                    errorCode.message(), exception.getClass().getSimpleName());
             return;
         }
-        log.warn("Request failed: code={} method={} path={} traceId={} message={} exceptionType={}",
-                code, request.getMethod(), request.getRequestURI(), RequestLogContext.currentTraceIdOrDefault(),
-                message, exception.getClass().getSimpleName());
+        log.warn("Request failed: code={} method={} path={} requestId={} message={} exceptionType={}",
+                errorCode.code(), request.getMethod(), request.getRequestURI(), RequestLogContext.currentRequestIdOrDefault(),
+                errorCode.message(), exception.getClass().getSimpleName());
     }
 }

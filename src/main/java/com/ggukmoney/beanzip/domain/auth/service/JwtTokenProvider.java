@@ -52,14 +52,14 @@ public class JwtTokenProvider {
         this.clock = clock;
     }
 
-    public String createAccessToken(String userPublicId, UUID sessionId, String jti) {
+    public String createAccessToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userPublicId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
     }
 
-    public String createRefreshToken(String userPublicId, UUID sessionId, String jti) {
+    public String createRefreshToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userPublicId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plusSeconds(REFRESH_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plusSeconds(REFRESH_TOKEN_TTL_SECONDS));
     }
 
     public JwtTokenClaims parseToken(String token) {
@@ -78,8 +78,8 @@ public class JwtTokenProvider {
         validateIssuer(claims.get("iss"));
 
         return new JwtTokenClaims(
-                requiredStringClaim(claims, "sub"),
-                UUID.fromString(requiredStringClaim(claims, "sid")),
+                requiredUuidClaim(claims, "sub"),
+                requiredUuidClaim(claims, "sid"),
                 requiredStringClaim(claims, "jti"),
                 requiredStringClaim(claims, "type"),
                 requiredLongClaim(claims, "iat"),
@@ -89,7 +89,7 @@ public class JwtTokenProvider {
     }
 
     private String createToken(
-            String userPublicId,
+            UUID userId,
             UUID sessionId,
             String type,
             String jti,
@@ -100,7 +100,7 @@ public class JwtTokenProvider {
             String encodedHeader = encodeJson(Map.of("alg", "HS256", "typ", "JWT"));
             Map<String, Object> claims = new LinkedHashMap<>();
             claims.put("iss", issuer);
-            claims.put("sub", requireText(userPublicId, "사용자 public id가 필요합니다."));
+            claims.put("sub", requireUuid(userId, "사용자 id가 필요합니다.").toString());
             claims.put("sid", sessionId.toString());
             claims.put("jti", requireText(jti, "토큰 jti가 필요합니다."));
             claims.put("type", type);
@@ -173,11 +173,26 @@ public class JwtTokenProvider {
         return number.longValue();
     }
 
+    private UUID requiredUuidClaim(Map<String, Object> claims, String key) {
+        try {
+            return UUID.fromString(requiredStringClaim(claims, key));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_CLAIM", exception);
+        }
+    }
+
     private String requireText(String value, String message) {
         if (!StringUtils.hasText(value)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         return value.trim();
+    }
+
+    private UUID requireUuid(UUID value, String message) {
+        if (value == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+        return value;
     }
 
     private static String validateSecret(String secret) {
@@ -195,7 +210,7 @@ public class JwtTokenProvider {
     }
 
     public record JwtTokenClaims(
-            String userPublicId,
+            UUID userId,
             UUID sessionId,
             String jti,
             String type,

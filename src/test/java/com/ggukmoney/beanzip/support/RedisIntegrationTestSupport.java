@@ -54,7 +54,7 @@ public abstract class RedisIntegrationTestSupport {
 
     protected AuthSession activeSession(
             UUID sessionId,
-            String userPublicId,
+            UUID userId,
             String devicePublicId,
             String currentRefreshJtiHash,
             String refreshTokenHash,
@@ -64,7 +64,7 @@ public abstract class RedisIntegrationTestSupport {
     ) {
         return new AuthSession(
                 sessionId,
-                userPublicId,
+                userId,
                 devicePublicId,
                 currentRefreshJtiHash,
                 refreshTokenHash,

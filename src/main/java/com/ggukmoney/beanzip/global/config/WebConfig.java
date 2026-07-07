@@ -39,7 +39,7 @@ public class WebConfig implements WebMvcConfigurer {
                         HttpMethod.OPTIONS.name()
                 )
                 .allowedHeaders("*")
-                .exposedHeaders("Location", RequestLogContext.TRACE_ID_HEADER)
+                .exposedHeaders("Location", RequestLogContext.REQUEST_ID_HEADER)
                 .maxAge(3600);
     }
 }

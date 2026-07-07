@@ -72,20 +72,19 @@ public abstract class FullStackIntegrationTestSupport {
     @BeforeEach
     void cleanState() {
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushDb();
-        jdbcTemplate.update("delete from auth_session_log");
     }
 
-    protected TestTokens saveTokenBackedSession(String userPublicId, String devicePublicId) {
+    protected TestTokens saveTokenBackedSession(UUID userId, String devicePublicId) {
         UUID sessionId = UUID.randomUUID();
         String refreshJti = UUID.randomUUID().toString();
         String accessJti = UUID.randomUUID().toString();
-        String refreshToken = jwtTokenProvider.createRefreshToken(userPublicId, sessionId, refreshJti);
-        String accessToken = jwtTokenProvider.createAccessToken(userPublicId, sessionId, accessJti);
+        String refreshToken = jwtTokenProvider.createRefreshToken(userId, sessionId, refreshJti);
+        String accessToken = jwtTokenProvider.createAccessToken(userId, sessionId, accessJti);
         JwtTokenProvider.JwtTokenClaims refreshClaims = jwtTokenProvider.parseToken(refreshToken);
         JwtTokenProvider.JwtTokenClaims accessClaims = jwtTokenProvider.parseToken(accessToken);
         AuthSession session = new AuthSession(
                 sessionId,
-                userPublicId,
+                userId,
                 devicePublicId,
                 TokenHash.sha256Base64Url(refreshJti),
                 TokenHash.sha256Base64Url(refreshToken),

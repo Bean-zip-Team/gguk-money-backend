@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public record AuthSession(
         UUID sessionId,
-        String userPublicId,
+        UUID userId,
         String devicePublicId,
         String currentRefreshJtiHash,
         String refreshTokenHash,

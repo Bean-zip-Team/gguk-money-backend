@@ -1,284 +1,164 @@
-# 꾹머니 아키텍처
+# 꾹머니 13개 테이블 MVP 아키텍처
 
-## 전체 구조
+## 구조 원칙
 
-기술 기준: Java 26, Spring Boot 4.1.0, Jackson 3(`tools.jackson.*`). 저장소 루트 기준, 기준 브랜치 `main`, Windows 환경에서 기본 Gradle `build/` 디렉터리를 사용해 검증한다. 과거 한글 경로용 임시 build/test 우회 설정은 제거했다.
+꾹머니는 하나의 Spring Boot 애플리케이션과 하나의 PostgreSQL을 사용하는 모듈형 모놀리스로 시작한다.
 
+- PostgreSQL은 사용자, 포인트, 상자, 키캡, 탭, 출금 상태의 Source of Truth다.
+- Redis는 꾹머니 Refresh Session, 사용자별 Session 목록, Access denylist, 사용자 revoke 시각에 사용한다.
+- `app_user.id`는 UUID PK이며 API, JWT, Redis, FK에서 같은 값을 사용한다.
+- 핵심 잔액 변경은 동일 PostgreSQL 트랜잭션 안에서 처리한다.
+- 이번 13개 테이블 범위에서는 Event Inbox와 Event Outbox를 사용하지 않는다.
+- 외부 Toss 포인트 지급 결과는 `cashout_request`에 함께 저장한다.
+- 개별 탭은 저장하지 않고 `tap_batch`와 `user_tap_daily`에 집계한다.
+- Toss OAuth Token은 로그인과 탈퇴 요청 처리 중에만 사용하고 PostgreSQL과 Redis에 장기 저장하지 않는다.
 
-꾹머니는 모듈형 모놀리스로 시작한다. A/B 담당 도메인을 패키지와 Application Port로 분리하고, 서로의 Entity와 Repository를 직접 참조하지 않는다.
+## 식별자 전략
+
+### 사용자
+
+```text
+app_user.id: UUID PK
+JWT sub: app_user.id 문자열
+Redis auth:user-sessions:{userId}: 같은 UUID 문자열
+모든 user_id FK: UUID
+```
+
+사용자에는 별도 `public_id`를 두지 않는다. `id` 자체가 추측하기 어려운 UUID이며 빵도감의 사용자 식별자 전략과 일치한다.
+
+### 나머지 리소스
+
+- 업무 테이블은 기본적으로 `BIGINT` 내부 PK를 유지한다.
+- API에서 직접 노출되는 리소스는 `public_id UUID` 또는 `code`를 사용한다.
+- API에 BIGINT PK를 노출하지 않는다.
+
+## 도메인 구성
 
 ```mermaid
 flowchart LR
-    Client["Mobile App"]
-    API["Spring Boot API"]
-    A["A Domain\nuser, keycap, region, ranking, notification, record, config"]
-    B["B Domain\ntap, point, cashout, ad, booster, invite"]
-    PG["PostgreSQL\nsource of truth"]
-    Redis["Redis\nrank, auth session, dedupe, cache"]
-    External["Fake/External Ad, Toss, Push"]
+    Client[Apps-in-Toss Client]
+    API[Spring Boot API]
+    User[User/Auth]
+    Tap[Tap Validation]
+    Point[Point/Cashout]
+    Keycap[Keycap/Box]
+    Booster[Booster]
+    PG[(PostgreSQL)]
+    Redis[(Redis Auth Session)]
+    Toss[Toss OAuth and Point API]
 
     Client --> API
-    API --> A
-    API --> B
-    A --> PG
-    B --> PG
-    A --> Redis
-    B --> Redis
-    A -. Port/Event .- B
-    A --> External
-    B --> External
+    API --> User
+    API --> Tap
+    API --> Point
+    API --> Keycap
+    API --> Booster
+
+    User --> PG
+    Tap --> PG
+    Point --> PG
+    Keycap --> PG
+    Booster --> PG
+
+    User --> Redis
+    User --> Toss
+    Point --> Toss
 ```
 
-## A/B 경계
-
-| 구분 | 도메인 |
-|---|---|
-| A | 회원/인증, 키캡/상자, 지역/랭킹, 알림, 기록, 설정/법적 문서 |
-| B | 탭 검증, 포인트, 출금, 광고/부스터, 친구 초대 |
-
-경계 원칙:
-
-- A는 B 테이블을 직접 조인하지 않는다.
-- B는 A Entity/Repository를 직접 사용하지 않는다.
-- 사용자 식별자는 `app_user.public_id`를 외부 계약에 사용하고 DB 내부 id는 노출하지 않는다.
-- B 이벤트는 A 기록 projection으로 수신한다.
-- 광고 완료 자체가 상자를 지급하지 않는다. A는 완료된 `ad_view`를 확인하고 사용자의 기존 상자 1개를 개봉한다.
-
-## 전체 서비스 개념 ERD
+## 13개 테이블 ERD
 
 ```mermaid
 erDiagram
     APP_USER ||--o{ AUTH_IDENTITY : has
     APP_USER ||--o{ USER_KEYCAP : owns
-    KEYCAP ||--o{ USER_KEYCAP : catalog
-    APP_USER ||--|| KEYCAP_BOX_ACCOUNT : has
-    APP_USER ||--o{ KEYCAP_BOX_LEDGER : records
-    APP_USER ||--o{ KEYCAP_BOX_OPEN : opens
-    KEYCAP_BOX_OPEN ||--o{ KEYCAP_BOX_OPEN_RESULT : yields
-    REGION ||--o{ USER_REGION : selected
-    APP_USER ||--o{ USER_REGION : sets
-    RANKING_SEASON ||--o{ RANKING_PARTICIPATION : includes
-    RANKING_PARTICIPATION ||--|| RANKING_SCORE : has
-    RANKING_SEASON ||--o{ RANKING_SNAPSHOT : settles
-    APP_USER ||--o{ RANKING_REWARD : receives
-    APP_USER ||--o{ PUSH_DEVICE : registers
-    APP_USER ||--o{ NOTIFICATION_LOG : receives
-    APP_USER ||--o{ USER_RECORD_DAILY : projects
-    APP_USER ||--|| USER_RECORD_SUMMARY : summarizes
-    APP_USER ||--o{ AUTH_SESSION_LOG : audits
+    KEYCAP ||--o{ USER_KEYCAP : progresses
 
-    TAP_BATCH ||--o{ TAP_EVENT : produces
-    APP_USER ||--o{ ONBOARDING_SETTLEMENT : settles
-    TAP_BATCH ||--o{ ABUSE_SIGNAL : flags
+    APP_USER ||--|| KEYCAP_BOX_ACCOUNT : has
+    APP_USER ||--o{ KEYCAP_BOX_OPEN : opens
+    KEYCAP ||--o{ KEYCAP_BOX_OPEN : rewards
+
+    APP_USER ||--o{ TAP_BATCH : submits
+    APP_USER ||--o{ USER_TAP_DAILY : aggregates
+
+    APP_USER ||--|| POINT_ACCOUNT : has
     POINT_ACCOUNT ||--o{ POINT_LEDGER : records
-    CASHOUT_REQUEST ||--|| TOSS_POINT_TRANSFER : transfers
-    AD_PLACEMENT ||--o{ AD_VIEW : serves
-    AD_VIEW ||--o| BOOSTER_GRANT : grants
-    INVITE_CODE ||--o{ INVITE_RELATION : accepted_by
+    APP_USER ||--o{ POINT_LEDGER : owns
+    APP_USER ||--o{ CASHOUT_REQUEST : requests
+
+    APP_USER ||--o{ BOOSTER_GRANT : activates
 ```
 
-Outbox/Inbox는 `app_user`와 실제 FK를 갖지 않는다. 사용자 정보는 `aggregate_id` 또는 `payload`로 전달한다.
+`app_config`는 FK를 연결하지 않는 운영 정책 저장소다.
 
-## A 도메인 상세 Aggregate
+## Toss 로그인과 온보딩
 
-| Aggregate | 테이블 |
-|---|---|
-| User/Auth | `app_user`, `auth_identity`, `auth_session_log` |
-| Keycap/Box | `keycap`, `user_keycap`, `keycap_drop_table`, `keycap_drop_item`, `keycap_box_account`, `keycap_box_ledger`, `keycap_box_open`, `keycap_box_open_result` |
-| Region | `region`, `user_region`, `user_region_change` |
-| Ranking | `ranking_season`, `ranking_participation`, `ranking_score`, `ranking_score_event`, `ranking_snapshot`, `ranking_reward` |
-| Notification | `push_device`, `notification_preference`, `notification_log` |
-| Record | `user_record_daily`, `user_record_summary`, `user_record_reward` |
-| Config/Legal | `app_config`, `legal_document`, `user_consent` |
-| Reliability | `event_outbox`, `event_inbox` |
+1. 프론트가 Toss `appLogin()`으로 `authorizationCode`, `referrer`를 얻는다.
+2. 서버가 mTLS로 Toss `generate-token`을 호출한다.
+3. 발급된 Toss Access Token으로 `login-me`를 호출한다.
+4. `login-me.userKey`를 문자열로 변환해 `auth_identity(provider=TOSS, provider_user_id)`를 조회한다.
+5. 기존 Identity가 연결된 `app_user.status=WITHDRAWN`이면 자동 재가입하지 않고 `ACCOUNT_WITHDRAWN`을 반환한다.
+6. 신규 사용자면 UUID `app_user`, `auth_identity`, `point_account`, `keycap_box_account`를 생성한다.
+7. 유효한 온보딩 45탭 입력이면 포인트 원장과 고정 키캡을 같은 PostgreSQL 트랜잭션에서 지급한다.
+8. DB 커밋 뒤 Redis Session을 생성하고 꾹머니 Access/Refresh JWT를 발급한다.
+9. Toss Access/Refresh Token은 저장하지 않는다.
 
-`keycap.code`는 API와 seed/master data가 공유하는 안정 코드다. `keycap.public_id`는 리소스 식별자, `code`는 이름 변경과 무관한 카탈로그 코드로 사용한다.
+Redis Session 저장에 실패하면 로그인 성공으로 응답하지 않는다. 이미 생성된 DB 사용자와 보상은 멱등 키로 보호되므로 재시도 시 중복 생성하거나 중복 지급하지 않는다.
 
+## Refresh와 로그아웃
 
-## B 도메인 상세 Aggregate — PROPOSED
+- Refresh는 Redis Session의 현재 Refresh JTI와 hash를 검증하고 Lua CAS로 Rotation한다.
+- 현재 Session 로그아웃은 `sid` Session 삭제 또는 revoke, 현재 Access `jti` denylist를 수행한다.
+- 로그아웃 요청에 Refresh Token이 전달되면 동일 Session Token인지 추가 검증한다.
+- logout-all은 사용자 UUID 기준 활성 Session을 전부 폐기하고 사용자 revoke 시각을 갱신한다.
+- 로그아웃은 Toss 연결과 `auth_identity`를 변경하지 않는다.
 
-| Aggregate | 테이블 | 경계 원칙 |
-|---|---|---|
-| Tap/Onboarding/Risk | `tap_batch`, `tap_event`, `user_tap_daily`, `onboarding_settlement`, `abuse_signal` | A에는 검증 결과 delta와 온보딩 정산/보상 지급 요청만 Port/Event로 전달 |
-| Point | `point_account`, `point_ledger` | 포인트 원장은 B만 변경 |
-| Cashout | `cashout_request`, `toss_point_transfer` | 외부 Toss 지급과 포인트 복원을 B가 소유 |
-| Advertisement | `ad_placement`, `ad_view` | A는 완료된 adView 상태만 Port로 조회 |
-| Booster | `booster_grant` | 포인트/상자에만 2배, 랭킹 미적용 |
-| Invitation | `invite_code`, `invite_relation` | 자격 확정 후 A 상자 지급 Port 호출 |
-| Analytics | `analytics_event` | 핵심 트랜잭션과 분리 |
+## 회원 탈퇴
 
-B 테이블은 A Entity/Repository를 참조하지 않고 사용자·기기 public UUID를 scalar로 저장한다. 상세 컬럼은 [table-spec.md](table-spec.md)의 `DRAFT` 명세를 따른다.
+1. 인증된 사용자가 `POST /api/v1/members/me/withdrawal`을 호출한다.
+2. Request Body의 새 Toss `authorizationCode`, `referrer`를 `generate-token`과 `login-me`로 검증한다.
+3. 응답 `userKey`가 현재 사용자의 `auth_identity.provider_user_id`와 같아야 한다.
+4. 같은 Toss Access Token으로 `remove-by-user-key`를 호출한다.
+5. 외부 연결 해제가 성공하면 로컬 트랜잭션에서 `app_user.status=WITHDRAWN`, `withdrawn_at` 설정, 닉네임과 프로필 이미지 익명화를 수행한다.
+6. 포인트 원장, 출금 이력, 상자 개봉 이력은 삭제하지 않는다.
+7. Redis의 모든 Session과 Access Token을 즉시 폐기한다.
 
-## 계약 확정 상태
+외부 Toss 연결 해제 성공 뒤 로컬 처리에 실패할 수 있으므로 Toss unlink Webhook은 같은 탈퇴 처리를 멱등하게 재실행한다.
 
-- A HTTP API와 A 테이블은 `CONFIRMED`다.
-- B HTTP API는 구현 가능한 수준으로 선작성한 `PROPOSED`이고, B 테이블은 은창 최종 확정 전까지 `DRAFT`다.
-- `PROPOSED` API와 `DRAFT` 테이블은 팀 회의에서 필드·상태·정책 수치를 수정할 수 있으며, 구현 전에 문서 상태를 `CONFIRMED`로 승격한다.
+## 탭 배치
 
-## 설계 이유
+한 번의 탭 배치 반영은 아래 데이터를 하나의 트랜잭션으로 처리한다.
 
-### app_user 단일 모델
+```text
+tap_batch
++ user_tap_daily
++ point_account
++ point_ledger
++ keycap_box_account
+```
 
-`app_user`는 Toss 로그인 완료 사용자를 관리한다. MVP에서는 MEMBER만 생성하며, 로그인 전 온보딩 로컬 체험을 위한 임시 서버 사용자나 서버 Session을 만들지 않는다.
+- `(user_id, tap_session_id, sequence)`로 중복을 차단한다.
+- `request_hash`가 다르면 동일 순번 재사용으로 판단한다.
+- 유효 탭만 포인트와 상자 진행도에 반영한다.
+- 개별 탭 간격 원문은 기본 저장하지 않고 `interval_stats` JSONB에 통계만 저장한다.
 
-### Apps-in-Toss 로그인 식별
+## 상자 개봉과 키캡 조각
 
-꾹머니는 앱인토스 비게임 미니앱이며 로그인은 `appLogin()` 기반 Toss 로그인을 사용한다. `getAnonymousKey()`와 `getUserKeyForGame()`은 사용하지 않는다. 프론트 입력은 `authorizationCode`, `referrer`이고, 서버가 Toss `generate-token`과 `login-me`를 mTLS로 호출한 뒤 `login-me.userKey`로 신규/기존 사용자를 판정한다. 사용자 식별은 `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`의 unique 제약과 트랜잭션으로 보호한다.
+1. `keycap_box_account`를 잠근다.
+2. 무료 개봉 또는 검증된 광고 보상 여부를 확인한다.
+3. 서버가 대상 키캡과 조각 수를 결정한다.
+4. `user_keycap.shard_count`를 증가시킨다.
+5. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
+6. `keycap_box_open`에 개봉 방식과 결과를 한 행으로 저장한다.
 
-### Redis JWT 인증
+## 포인트 출금
 
-Access JWT는 stateless 검증을 유지하되 현재 Session 로그아웃은 jti denylist, 사용자 전체 Session 로그아웃·정지·탈퇴는 사용자 revoke 시각으로 차단한다. Refresh JWT는 Rotation이 필요하므로 Redis Refresh Session을 활성 세션 원본으로 둔다. PostgreSQL에는 활성 Refresh Session을 저장하지 않고 `auth_session_log`만 남긴다. Toss 로그인 성공에는 devicePublicId가 필요하지 않으며, devicePublicId는 존재할 때만 기록하는 optional metadata다. 값이 없으면 로그에는 `-`, `auth_session_log.device_public_id`에는 null을 사용한다.
+1. `point_account`를 잠근다.
+2. 출금 가능한 잔액과 최소 단위를 확인한다.
+3. `point_ledger`에 차감 원장을 추가한다.
+4. `cashout_request`를 `PENDING` 또는 `PROCESSING`으로 생성한다.
+5. 외부 Toss 지급 성공 시 `SUCCEEDED`, 실패 시 `FAILED`로 전환한다.
+6. 복구 가능한 실패면 `CASHOUT_REFUND` 원장으로 포인트를 되돌린다.
 
-### 상자 보유량과 개봉 조건 분리
+## 후속 확장 원칙
 
-상자를 가지고 있는 것과 지금 열 수 있는 조건은 다르다. 보유량은 `keycap_box_account`, 증감은 `keycap_box_ledger`, 개봉 조건은 무료 쿨다운과 광고 완료 검증으로 분리한다.
-
-### 랭킹 Redis + PostgreSQL
-
-최신 랭킹은 지역/전국 구분이 없는 전체 유저 단일 랭킹이다. Redis `rank:overall:{seasonId}` Sorted Set은 빠른 후보 조회에 사용한다. 최종 정렬과 정산은 PostgreSQL의 `ranking_score`, `ranking_score_event`, `ranking_snapshot`을 기준으로 한다. 동점 기준은 `score DESC`, `reached_at ASC`, `user_public_id ASC`다. 회차 종료 시 사용자·시즌별 snapshot을 자동 생성하며, 이전 회차 기록 화면은 이 snapshot을 Source of Truth로 사용한다.
-
-### 온보딩 A/B 경계
-
-앱인토스 온보딩은 로그인 전 프론트 로컬 체험으로 진행한다. 프론트는 45탭 완료 상태와 안정적인 `onboardingAttemptId`를 로컬에 저장하고, 15/30/45 화면은 보상 미리보기와 reveal 연출만 표시한다. 서버 사용자, 인증 Session, 실제 포인트, 키캡, 일반 상자 보상은 Toss 로그인 전 생성하지 않는다.
-
-`POST /api/v1/auth/toss/login`은 `authorizationCode`, `referrer`, 온보딩 정산 입력(`onboardingAttemptId`, `onboardingTapCount`)을 받는다. 서버는 `onboardingTapCount`가 정확히 45인지 검증하고, 44 이하 또는 46 이상이면 `400 VALIDATION_FAILED`로 거절한다. 검증 후 `submittedTapCount=45`로 저장하고, `acceptedTapCount=min(45, KST 당일 남은 유효 탭 인정 가능 횟수)`만 B의 `user_tap_daily`, 랭킹, 일반 탭 수학에 반영한다. 부스터는 로그인 전 탭에 소급 적용하지 않는다.
-
-신규 가입자이고 정상적인 45탭 제출이면 `acceptedTapCount`와 무관하게 `ONBOARDING_15_TAP_POINT`, `ONBOARDING_30_TAP_POINT` 포인트 원장으로 총 2P와 고정 온보딩 키캡 1개를 한 번 지급한다. 두 reason은 서버 지급 원장 사유 구분이며 milestone 시점의 부분 지급을 뜻하지 않는다. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 인정 가능한 탭만 반영한다. `onboardingAttemptId` 정산 결과는 재시도 멱등성을 위해 저장하며, 같은 사용자와 KST 일자 기준 로그인 전 온보딩 정산은 한 번만 실제 탭에 반영한다.
-
-### 기록 Projection
-
-기록 화면은 A/B 운영 테이블을 직접 조인하지 않는다. A 내부 이벤트와 B 이벤트를 `event_inbox`로 수신해 `user_record_daily`, `user_record_summary`, `user_record_reward`에 투영한다.
-
-## Toss 로그인과 온보딩 정산
-
-### 로그인 전 로컬 온보딩
-
-1. 앱 시작 시 서버 API를 호출해 임시 서버 사용자나 인증 Session을 만들지 않는다.
-2. 프론트는 `onboardingAttemptId`와 탭 수를 로컬에 저장한다.
-3. 15/30/45 보상 화면은 서버 지급 완료가 아니라 신규 가입 보상 미리보기와 애니메이션으로 처리한다.
-
-### Toss 신규 회원 로그인
-
-1. 프론트가 `appLogin()`을 실행해 `authorizationCode`, `referrer`를 얻는다.
-2. 서버가 PKCS12 mTLS로 Toss `generate-token`을 호출한다.
-3. Toss Access Token으로 Toss `login-me`를 호출하고 `userKey`를 확인한다.
-4. 로컬 판정 예약 트랜잭션에서 `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))`를 조회하고, 없으면 MEMBER `app_user`와 `auth_identity`를 생성한다.
-5. 같은 트랜잭션에서 `onboardingAttemptId` 소유권을 검증하고 `onboarding_settlement`를 `PENDING`으로 생성하거나 기존 row를 조회한 뒤 최초 `newUser` 판정을 저장한다.
-6. 로컬 정산 트랜잭션에서 `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
-7. 신규 가입 보상으로 총 2P와 고정 온보딩 키캡을 멱등 지급하고 `onboarding_settlement`를 `COMPLETED`로 처리한다.
-8. 정산 commit 이후 Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
-9. `auth_session_log`, `PreloginOnboardingSettled`, `OnboardingPointRewardGranted`, `OnboardingKeycapGranted` 이벤트를 남긴다.
-
-### Toss 기존 회원 로그인
-
-1. Toss `login-me.userKey`로 기존 `auth_identity`와 MEMBER를 찾는다.
-2. 로컬 판정 예약 트랜잭션에서 `onboardingAttemptId` 소유권을 검증하고 `onboarding_settlement`를 `PENDING`으로 생성하거나 기존 row를 조회한 뒤 최초 `newUser=false` 판정을 저장한다.
-3. 로컬 정산 트랜잭션에서 `acceptedTapCount`만 B 탭/랭킹 반영 Port로 전달한다.
-4. 기존 회원에게는 온보딩 포인트와 키캡 보상을 지급하지 않고 `onboarding_settlement`를 `COMPLETED`로 처리한다.
-5. 정산 commit 이후 Redis auth Session과 꾹머니 Access/Refresh JWT를 발급한다.
-
-### 복구와 재시도
-
-`authorizationCode`는 Toss 사용자 인증용 일회성 코드이며 로그인 재시도에는 새 `appLogin()`으로 새 값을 받아야 한다. `onboardingAttemptId`는 온보딩 정산 멱등 키일 뿐 인증 수단이 아니며, 이 값만으로 JWT나 이전 로그인 응답을 반환하지 않는다.
-
-응답 유실 또는 Redis 실패 후 재시도 흐름은 다음과 같다. 프론트가 `appLogin()`을 다시 호출해 새 `authorizationCode`를 받고 같은 `onboardingAttemptId`와 `onboardingTapCount`를 보낸다. 서버는 새 `authorizationCode`로 Toss 인증을 다시 수행하고 같은 `userKey`인지 확인한다. 같은 사용자와 같은 `onboardingAttemptId`이면 기존 정산 결과를 재사용하고 포인트와 키캡을 중복 지급하지 않는다. 이전 Access/Refresh Token 원문은 서버가 저장하거나 재반환하지 않으며, Redis Session과 꾹머니 Token은 새로 발급할 수 있다.
-
-보안 규칙은 고정한다. 같은 `onboardingAttemptId`가 다른 `userKey`에 연결되면 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 같은 사용자와 같은 KST 일자에 다른 `onboardingAttemptId`가 들어와도 `409 ONBOARDING_SETTLEMENT_CONFLICT`다. 기존 정산 결과는 인증된 동일 Toss 사용자에게만 반환한다. `newUser`는 최초 해당 `onboardingAttemptId` 정산에서 서버가 새 `app_user/auth_identity`를 생성했는지의 저장된 판정이며, 응답 유실 후 같은 attempt 재시도에서는 최초 판정을 유지한다.
-
-외부 Toss 인증 단계에서는 로컬 DB row lock이나 DB 트랜잭션을 오래 유지하지 않는다. 순서는 `authorizationCode` 수신, Toss `generate-token`, Toss `login-me`, `userKey` 검증이다. 이후 로컬 판정 예약 트랜잭션에서 `auth_identity` 조회/생성, `app_user` 생성, attempt 소유권 검증, `onboarding_settlement PENDING` 생성 또는 조회, 최초 `newUser` 판정 저장을 commit한다. 로컬 정산 트랜잭션은 `PENDING` 또는 재시도 가능한 `FAILED`를 확인하고 `submittedTapCount=45` 검증, `acceptedTapCount` 계산, B 탭/랭킹 반영 Port, 신규 사용자 1P + 1P 지급, 신규 사용자 고정 키캡 지급, `COMPLETED` 처리를 같은 DataSource/Spring transaction에서 commit한다. 실패 시 탭, 포인트, 키캡, `COMPLETED` 처리는 모두 rollback하며, 실패 원인이 필요하면 별도 recovery transaction으로 `FAILED/failure_code`를 기록한다. Redis Session 저장은 정산 commit 이후 수행하며, Redis 실패 시 DB 회원/정산/보상 결과는 rollback하지 않고 `503 AUTH_REDIS_UNAVAILABLE`을 반환한다.
-
-## A/B Port와 Event
-
-| 방향 | 계약 | 설명 |
-|---|---|---|
-| B -> A | `ValidatedTapApplyUseCase` | 검증 완료 탭을 A 상자 진행도와 랭킹 점수에 반영 |
-| B -> A | `KeycapBoxGrantUseCase` | 친구초대 등 B 도메인 사유로 A 상자 보유량 지급 |
-| B -> A | `OnboardingKeycapGrantUseCase` | 로그인 정산 중 신규 가입자에게 고정 온보딩 키캡 1개를 멱등 지급하고 결과 반환 |
-| B -> A | `RecordEventIngestUseCase` | 포인트/출금/광고 등 B 이벤트를 A 기록 조회 모델에 투영 |
-| A -> B | `AdvertisementVerificationPort` | 광고 상자 개봉 전에 B의 완료된 `ad_view` 상태를 로컬 조회 |
-| A -> B | `UserWithdrawalGuardPort` | 회원 탈퇴 전에 B 처리 중 출금 등 차단 사유 조회 |
-
-공통 이벤트 필드는 `eventId`, `eventType`, `userId`, `referenceId`, `occurredAt`, `payload`다.
-
-## 빵도감 인증 재사용 전략
-
-분석 대상은 `Bean-zip-Team/bread-diary-backend` `main` 브랜치 HEAD `e9a6abb73320e61869f91b14293e5da3d1fbe4f2`다. 원격에서 `develop` 브랜치는 확인되지 않았다. 로컬 빵도감 저장소 경로와 운영 로그 경로는 제공되지 않아 확인하지 못했다.
-
-현재 꾹머니 구현 상태:
-
-- `AccessLogFilter`, `RequestLogContext`, `ApiResponse`, `ApiError`, `ApiErrorResponse`, `GlobalExceptionHandler`: `IMPLEMENTED`
-- `JwtTokenProvider`: 기본 secret 없음, blank/짧은 secret/과거 로컬 기본 문자열 거절 기준 `IMPLEMENTED`
-- `AuthController`, `AuthInterceptor`, 인증 DTO: `/api/v1` 실제 경로 기준 `IMPLEMENTED`
-- `AuthSession` Redis 모델, `RedisAuthSessionRepository`, Redis Lua CAS, Access Token denylist, 사용자 revoke timestamp, Lua 원자 logout-all: `RedisAuthSessionRepositoryIntegrationTest`, `RefreshLuaCasIntegrationTest`, `AuthServiceLogoutAllIntegrationTest`, `AuthApiIntegrationTest` 기준 `IMPLEMENTED`
-- `auth_session_log` Entity/Repository, JSONB/UUID/enum 저장, 최소 Flyway SQL 적용: `FlywayMigrationIntegrationTest`, `AuthAuditServiceIntegrationTest` 기준 `IMPLEMENTED`
-- 감사 로그 저장 실패 Outbox/재처리와 운영 장애 복구 전체 정책: `IN_PROGRESS`
-- Toss 로그인/회원 생성과 온보딩 로그인 정산: `NOT_STARTED`
-
-| 빵도감 파일 또는 클래스 | 현재 역할 | 의존 도메인 | 꾹머니 대응 | 재사용 등급 | 변경 사항 | 주의 | 관련 테스트 |
-|---|---|---|---|---|---|---|---|
-| `JwtTokenProvider` | HS256 JWT 생성/파싱/검증, `sub`, `sid`, `type`, `jti`, `iat`, `exp` 처리 | UserSession UUID | JWT Provider | 2 | issuer, token type 값 `ACCESS/REFRESH`, user public id, `issuedAtMillis` 사용 | secret 하드코딩 금지, exp 검증 유지 | `JwtTokenProviderTest` |
-| `AuthService.refresh` | Refresh JWT 검증, hash 비교, jti 비교, token rotation | JPA UserSession | Redis Refresh Rotation Service | 2 | `findSessionForUpdate`를 Lua CAS + `auth:refresh:{sessionId}`로 변경 | 동시 충돌과 실제 재사용을 구분 | `AuthServiceTest`, `AuthServiceConcurrencyTest` |
-| `UserSessionService` | 세션 생성/조회/회전/폐기 | JPA Repository | Redis Session Adapter | 2 | JPA 저장소 제거, Redis TTL/Sorted Set 관리로 변경 | Redis가 Source of Truth | `UserSessionServiceTest` |
-| `UserSession` | refresh hash, current jti, expires, revoked 관리 | JPA Entity | Redis Session JSON/Hash DTO | 2 | Entity로 복사하지 않고 값 객체로 축소 | PostgreSQL 활성 세션 테이블 금지 | `AuthRefreshMysqlIntegrationTest`는 Redis 통합 테스트로 대체 |
-| `UserSessionRepository` | Pessimistic row lock | MySQL/JPA | Redis Lua CAS | 3 | 직접 재사용하지 않음 | 일반 Redis 명령 조합 대안을 쓰는 경우에만 lock 필요 | `AuthRefreshMysqlIntegrationTest` 참고 |
-| `AuthController` | Toss login, refresh, logout API | Bread auth path | 꾹머니 인증 API | 2 | `/api/v1/auth/toss/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/auth/logout-all`로 변경 | Toss 로그인 계약은 확정됐고 Java 구현은 후속 `NOT_STARTED` | `AuthApiIntegrationTest` |
-| `AuthInterceptor` | Access JWT 검증, 세션 조회, request attribute 설정 | JPA UserSession | Authentication Filter/Interceptor | 2 | Redis denylist와 Redis session 조회 정책 추가 | 고위험 API는 Redis 장애 fail-closed | `AuthInterceptorTest` |
-| `AccessLogFilter` | request trace, access log, IP, userId/sessionId 기록 | Global web | 공통 Access Log Filter | 1 | `traceId` 명칭으로 통일 | query/header/token 미기록 유지 | `AccessLogFilterTest` |
-| `RequestLogContext` | 요청 추적 id 조회 | Global logging | 공통 trace context | 1 | `traceId` 명칭으로 통일 | 응답 wrapper의 `traceId`와 동일 값 사용 | `AccessLogFilterTest` |
-| `RateLimitInterceptor` | `/api/v1/auth/refresh` rate limit 로그 | Global rate limit | 인증 rate limit 후보 | 2 | Redis 기반 rate limit로 변경 가능 | refresh brute-force 방어 | `RateLimitInterceptorTest` |
-| Toss 회원 생성/동기화 로직 | 빵도감 User 생성/복구 | Bread User | Toss Adapter/Fake Adapter | 3 | `authorizationCode/referrer` -> `generate-token` -> `login-me.userKey` 흐름만 반영 | Toss Token과 꾹머니 JWT 구분, userKey 원문 로그 금지 | `AuthServiceTest` 일부 참고 |
-| Redis Session Repository | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:refresh`, `auth:user-sessions`, denylist 설계 필요 | Redis 장애 정책 필수 | 꾹머니 신규 테스트 |
-| Access denylist | 빵도감 main HEAD에서 미발견 | 없음 | 새로 추가 | 4 | `auth:deny:access:{jti}` | logout/정지/탈퇴 즉시 차단 | 꾹머니 신규 테스트 |
-| 인증 감사 테이블 | 빵도감 main HEAD에서 미발견 | 없음 | `auth_session_log` | 4 | 영구 감사 로그 설계 | 토큰 원문 저장 금지 | 꾹머니 신규 테스트 |
-
-재사용 등급: 1 그대로 재사용 가능, 2 패키지명·도메인 타입 변경 후 재사용 가능, 3 빵도감 전용이라 재사용 불가, 4 꾹머니에서 새로 추가해야 함.
-
-## 로그 전략
-
-로그는 네 종류로 구분한다.
-
-| 분류 | 저장 위치 | 목적 |
-|---|---|---|
-| Access Log | 애플리케이션 로그 | 모든 HTTP 요청 추적 |
-| Auth Audit Log | `auth_session_log` | 로그인, refresh, 로그아웃, 거부 이력 감사 |
-| Domain Ledger | 포인트/상자/보상 원장 | 금액성/보상성 상태 변화 재처리와 감사 |
-| Error/Infrastructure Log | 애플리케이션 로그와 운영 알림 | Redis, DB, Toss, 광고, Outbox 장애 진단 |
-
-Access Log 필드:
-
-- `traceId`
-- `method`
-- `pathTemplate`
-- `status`
-- `durationMs`
-- `userPublicId`
-- `sessionIdHash` 또는 일부 마스킹값
-- `devicePublicId` optional. 값이 없으면 `-`
-- `clientIpMasked`
-- `userAgent`
-- `errorCode`
-
-요청 추적 id 명칭은 `traceId`로 통일한다. 응답 wrapper의 `traceId`와 Access Log의 `traceId`는 같은 값이다.
-
-Auth Audit Log는 [table-spec.md](table-spec.md)의 `auth_session_log`를 기준으로 한다. Redis 인증 상태 변경이 성공한 뒤 `auth_session_log` 저장이 실패해도 성공한 인증 상태를 원복하지 않는다. 감사 로그 저장 실패는 Error/Infrastructure Log에 남기고 재처리 대상으로 둔다.
-
-로그 금지 대상:
-
-- Authorization header
-- Access Token
-- Refresh Token
-- Toss authorizationCode
-- Push Token
-- presigned URL query
-- Request Body 전체
-- 민감한 Query String
-
-## 2026-07-03 인증/로그 구현 검증 반영
-
-- `FullStackIntegrationTestSupport`에 `@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)`를 적용했다. 통합 테스트 클래스 종료 후 Spring Context를 폐기해 종료된 Redis/PostgreSQL Testcontainer 포트가 다음 클래스에 재사용되는 문제를 방지한다.
-- Redis Refresh Rotation은 Lua CAS 방식으로 유지한다. 별도 Redis refresh lock key는 사용하지 않는다.
-- 거의 동시 Refresh 충돌은 `AUTH_REFRESH_CONFLICT`로 처리하고 Session을 폐기하지 않는다. Rotation 완료 후 과거 Refresh Token 재사용은 `AUTH_REFRESH_REUSED`로 처리하고 Session을 폐기하며 `REFRESH_REUSE_DETECTED` 감사 로그를 남긴다.
-- logout-all Lua 내부 처리는 만료 Session 정리, 활성 Refresh Session 삭제, user session ZSet 삭제, 사용자 revoke marker 저장, 현재 access denylist 저장까지 `IMPLEMENTED`다. 다만 `RedisAuthSessionRepository.save(AuthSession)`이 refresh hash 저장, TTL 설정, user-sessions ZSet 추가를 분리 실행하므로 Session save와 logout-all 사이 race 방지는 `IN_PROGRESS`다.
-- Toss 로그인/회원 인증 Session 운영 전 Session save를 단일 Redis Lua Script로 만들고, `issuedAtMillis <= revokedAtMillis`인 세션 생성을 거절해야 한다. 같은 보강에서 Refresh Rotation도 사용자 revoke marker를 확인하고 revoked session이면 refresh hash/ZSet을 정리한 뒤 `AUTH_USER_REVOKED`를 반환한다.
-- Redis Cluster 전환 시 관련 Lua key는 같은 hash slot에 있어야 하며, `{userPublicId}` hash tag 기반 key 설계는 후속 결정 사항이다.
-- `AuthAuditService`는 감사 로그 저장 실패가 Redis 인증 상태 변경을 rollback하지 않도록 인증 상태 변경 경계 밖에서 실패를 삼키고 Error/Infrastructure Log를 남긴다.
+랭킹, 알림, 기록, 원장 세분화, Outbox는 실제 요구가 확정될 때 별도 Migration으로 추가한다. 이전 확장 설계의 테이블을 한 번에 복구하지 않는다.

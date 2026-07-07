@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public final class AuthRequestAttributes {
 
-    public static final String USER_PUBLIC_ID = "authenticatedUserPublicId";
+    public static final String USER_ID = "authenticatedUserId";
     public static final String SESSION_ID = "authenticatedSessionId";
     public static final String DEVICE_PUBLIC_ID = "authenticatedDevicePublicId";
     public static final String ACCESS_TOKEN_JTI = "authenticatedAccessTokenJti";
@@ -19,18 +19,29 @@ public final class AuthRequestAttributes {
     private AuthRequestAttributes() {
     }
 
-    public static String getRequiredUserPublicId(HttpServletRequest request) {
-        String value = getOptionalString(request, USER_PUBLIC_ID);
+    public static UUID getRequiredUserId(HttpServletRequest request) {
+        UUID value = getOptionalUserId(request);
         if (value == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED");
         }
         return value;
+    }
+
+    public static UUID getOptionalUserId(HttpServletRequest request) {
+        Object value = request.getAttribute(USER_ID);
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        if (value instanceof String text) {
+            return UUID.fromString(text);
+        }
+        return null;
     }
 
     public static UUID getRequiredSessionId(HttpServletRequest request) {
         UUID value = getOptionalSessionId(request);
         if (value == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED");
         }
         return value;
     }

@@ -31,10 +31,10 @@ public class AccessLogFilter extends OncePerRequestFilter {
     private static final String ACCESS_LOG_PREFIX = "ACCESS";
     private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
     private static final String DEFAULT_VALUE = "-";
-    private static final int MAX_TRACE_ID_LENGTH = 80;
+    private static final int MAX_REQUEST_ID_LENGTH = 80;
     private static final int INTERNAL_SERVER_ERROR_STATUS = 500;
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
-    private static final Pattern UNSAFE_TRACE_ID_CHARACTERS = Pattern.compile("[^A-Za-z0-9._:-]");
+    private static final Pattern UNSAFE_REQUEST_ID_CHARACTERS = Pattern.compile("[^A-Za-z0-9._:-]");
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\r\\n\\t]");
     private static final Pattern STATIC_RESOURCE_PATTERN = Pattern.compile(
             ".+\\.(css|js|map|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf)$",
@@ -62,9 +62,9 @@ public class AccessLogFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        String traceId = resolveTraceId(request);
-        request.setAttribute(RequestLogContext.TRACE_ID_ATTRIBUTE, traceId);
-        response.setHeader(RequestLogContext.TRACE_ID_HEADER, traceId);
+        String requestId = resolveRequestId(request);
+        request.setAttribute(RequestLogContext.REQUEST_ID_ATTRIBUTE, requestId);
+        response.setHeader(RequestLogContext.REQUEST_ID_HEADER, requestId);
 
         long startNanos = System.nanoTime();
         boolean failed = false;
@@ -98,14 +98,14 @@ public class AccessLogFilter extends OncePerRequestFilter {
         int status = resolveStatus(response, failed);
 
         log.info(
-                "{} traceId={} method={} pathTemplate={} status={} durationMs={} userPublicId={} sessionIdHash={} devicePublicId={} clientIpMasked={} userAgent={} errorCode={}",
+                "{} requestId={} method={} pathTemplate={} status={} durationMs={} userId={} sessionIdHash={} devicePublicId={} clientIpMasked={} userAgent={} errorCode={}",
                 ACCESS_LOG_PREFIX,
-                resolveAttribute(request, RequestLogContext.TRACE_ID_ATTRIBUTE, MAX_TRACE_ID_LENGTH),
+                resolveAttribute(request, RequestLogContext.REQUEST_ID_ATTRIBUTE, MAX_REQUEST_ID_LENGTH),
                 request.getMethod(),
                 resolvePathTemplate(request),
                 status,
                 durationMs,
-                resolveAttribute(request, AuthRequestAttributes.USER_PUBLIC_ID, 128),
+                resolveAttribute(request, AuthRequestAttributes.USER_ID, 128),
                 resolveSessionIdForLog(request),
                 resolveDevicePublicIdForLog(request),
                 maskClientIp(resolveClientIp(request)),
@@ -124,13 +124,13 @@ public class AccessLogFilter extends OncePerRequestFilter {
         return pattern == null ? request.getRequestURI() : sanitize(pattern.toString(), 256);
     }
 
-    private String resolveTraceId(HttpServletRequest request) {
-        String traceId = request.getHeader(RequestLogContext.TRACE_ID_HEADER);
-        if (!StringUtils.hasText(traceId)) {
+    private String resolveRequestId(HttpServletRequest request) {
+        String requestId = request.getHeader(RequestLogContext.REQUEST_ID_HEADER);
+        if (!StringUtils.hasText(requestId)) {
             return UUID.randomUUID().toString();
         }
-        String sanitized = UNSAFE_TRACE_ID_CHARACTERS.matcher(traceId.trim()).replaceAll("");
-        return StringUtils.hasText(sanitized) ? truncate(sanitized, MAX_TRACE_ID_LENGTH) : UUID.randomUUID().toString();
+        String sanitized = UNSAFE_REQUEST_ID_CHARACTERS.matcher(requestId.trim()).replaceAll("");
+        return StringUtils.hasText(sanitized) ? truncate(sanitized, MAX_REQUEST_ID_LENGTH) : UUID.randomUUID().toString();
     }
 
     private String resolveAttribute(HttpServletRequest request, String attributeName, int maxLength) {
