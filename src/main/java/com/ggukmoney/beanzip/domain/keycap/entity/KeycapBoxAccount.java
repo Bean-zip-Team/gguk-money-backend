@@ -18,7 +18,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.UUID;
 
 @Getter
@@ -43,21 +42,6 @@ public class KeycapBoxAccount {
 
     @Column(name = "free_open_ticket_count", nullable = false)
     private Integer freeOpenTicketCount = 0;
-
-    @Column(name = "next_free_ticket_at")
-    private Instant nextFreeTicketAt;
-
-    @Column(name = "ad_open_date")
-    private LocalDate adOpenDate;
-
-    @Column(name = "ad_open_count", nullable = false)
-    private Integer adOpenCount = 0;
-
-    @Column(name = "box_progress_tap_count", nullable = false)
-    private Integer boxProgressTapCount = 0;
-
-    @Column(name = "next_box_required_tap_count")
-    private Integer nextBoxRequiredTapCount;
 
     @Version
     @Column(name = "version", nullable = false)

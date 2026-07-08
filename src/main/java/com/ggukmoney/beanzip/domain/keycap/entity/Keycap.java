@@ -30,33 +30,18 @@ public class Keycap {
     @Column(name = "public_id", nullable = false, unique = true)
     private UUID publicId;
 
-    @Column(name = "code", nullable = false, unique = true, length = 60)
+    @Column(name = "code", nullable = false, unique = true, length = 50)
     private String code;
 
-    @Column(name = "name", nullable = false, length = 80)
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "grade", nullable = false, length = 20)
+    @Column(name = "grade", nullable = false, length = 30)
     private Grade grade;
 
     @Column(name = "required_shard_count", nullable = false)
     private Integer requiredShardCount;
-
-    @Column(name = "season", nullable = false)
-    private Integer season = 1;
-
-    @Column(name = "image_url", columnDefinition = "text")
-    private String imageUrl;
-
-    @Column(name = "sound_url", columnDefinition = "text")
-    private String soundUrl;
-
-    @Column(name = "sort_order", nullable = false)
-    private Integer sortOrder = 0;
-
-    @Column(name = "active", nullable = false)
-    private boolean active = true;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

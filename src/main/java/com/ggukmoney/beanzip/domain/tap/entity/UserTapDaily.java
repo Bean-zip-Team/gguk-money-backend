@@ -26,7 +26,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "user_tap_daily",
-        uniqueConstraints = @UniqueConstraint(name = "ux_user_tap_daily", columnNames = {"user_id", "tap_date"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_user_tap_daily_user_date", columnNames = {"user_id", "tap_date"})
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserTapDaily {
@@ -50,24 +50,6 @@ public class UserTapDaily {
 
     @Column(name = "point_earned_amount", nullable = false)
     private Integer pointEarnedAmount = 0;
-
-    @Column(name = "box_dropped_count", nullable = false)
-    private Integer boxDroppedCount = 0;
-
-    @Column(name = "ad_box_open_count", nullable = false)
-    private Integer adBoxOpenCount = 0;
-
-    @Column(name = "booster_used_count", nullable = false)
-    private Integer boosterUsedCount = 0;
-
-    @Column(name = "point_progress_remainder", nullable = false)
-    private Integer pointProgressRemainder = 0;
-
-    @Column(name = "daily_point_limit_reached", nullable = false)
-    private boolean dailyPointLimitReached = false;
-
-    @Column(name = "last_batch_sequence")
-    private Long lastBatchSequence;
 
     @Version
     @Column(name = "version", nullable = false)

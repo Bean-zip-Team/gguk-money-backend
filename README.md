@@ -2,18 +2,9 @@
 
 꾹머니 서버 저장소다.
 
-## 현재 설계 문서
+## 현재 구현 기준
 
-현재 Source of Truth는 **사용자 UUID PK를 사용하는 13개 테이블 Persistence MVP**다.
-
-- [MVP 문서 안내](docs/ggukmoney/README.md)
-- [MVP 아키텍처](docs/ggukmoney/architecture.md)
-- [MVP 테이블 명세](docs/ggukmoney/table-spec.md)
-- [MVP API 계약](docs/ggukmoney/api-contract.md)
-- [인증 생명주기](docs/ggukmoney/auth-lifecycle.md)
-- [데이터와 인프라 원칙](docs/ggukmoney/data-infra.md)
-- [테스트 계획](docs/ggukmoney/test-plan.md)
-- [변경 이력](docs/ggukmoney/CHANGELOG.md)
+현재 Source of Truth는 소스 코드와 테스트다.
 
 ## MVP Persistence 범위
 

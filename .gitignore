@@ -37,3 +37,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local agent tooling ###
+.codex/
+.agents/
+AGENTS.md

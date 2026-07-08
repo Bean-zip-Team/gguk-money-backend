@@ -22,7 +22,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "app_config",
-        uniqueConstraints = @UniqueConstraint(name = "ux_app_config_key_effective", columnNames = {"config_key", "effective_at"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_app_config_key_effective", columnNames = {"config_key", "effective_at"})
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AppConfig {
@@ -34,7 +34,7 @@ public class AppConfig {
     @Column(name = "public_id", nullable = false, unique = true)
     private UUID publicId;
 
-    @Column(name = "config_key", nullable = false, length = 80)
+    @Column(name = "config_key", nullable = false, length = 100)
     private String configKey;
 
     @JdbcTypeCode(SqlTypes.JSON)
@@ -43,9 +43,6 @@ public class AppConfig {
 
     @Column(name = "effective_at", nullable = false)
     private Instant effectiveAt;
-
-    @Column(name = "created_by", length = 80)
-    private String createdBy;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

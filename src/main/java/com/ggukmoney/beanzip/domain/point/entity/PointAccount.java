@@ -12,6 +12,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,7 +23,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "point_account")
+@Table(
+        name = "point_account",
+        uniqueConstraints = @UniqueConstraint(name = "uq_point_account_id_user", columnNames = {"id", "user_id"})
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PointAccount {
 

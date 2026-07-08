@@ -28,7 +28,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "booster_grant",
-        uniqueConstraints = @UniqueConstraint(name = "ux_booster_grant_daily_sequence", columnNames = {"user_id", "grant_date", "daily_sequence"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_booster_grant_user_date_sequence", columnNames = {"user_id", "grant_date", "daily_sequence"})
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class BoosterGrant {
@@ -50,21 +50,12 @@ public class BoosterGrant {
     @Column(name = "daily_sequence", nullable = false)
     private Integer dailySequence;
 
-    @Column(name = "multiplier", nullable = false, precision = 3, scale = 1)
+    @Column(name = "multiplier", nullable = false, precision = 5, scale = 2)
     private BigDecimal multiplier = new BigDecimal("2.0");
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     private Status status = Status.ACTIVE;
-
-    @Column(name = "ad_reward_id", length = 255)
-    private String adRewardId;
-
-    @Column(name = "starts_at", nullable = false)
-    private Instant startsAt;
-
-    @Column(name = "ends_at", nullable = false)
-    private Instant endsAt;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

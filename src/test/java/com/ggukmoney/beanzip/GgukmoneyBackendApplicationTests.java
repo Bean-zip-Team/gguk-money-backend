@@ -5,7 +5,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(properties = {
 		"app.auth.jwt.secret=integration-test-secret-at-least-32-bytes-long",
-		"spring.flyway.enabled=false",
 		"spring.jpa.hibernate.ddl-auto=none",
 		"spring.data.redis.repositories.enabled=false"
 })

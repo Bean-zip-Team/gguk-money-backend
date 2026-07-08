@@ -26,7 +26,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "user_keycap",
-        uniqueConstraints = @UniqueConstraint(name = "ux_user_keycap_user_keycap", columnNames = {"user_id", "keycap_id"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_user_keycap_user_keycap", columnNames = {"user_id", "keycap_id"})
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserKeycap {
@@ -50,14 +50,11 @@ public class UserKeycap {
     private Integer shardCount = 0;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     private Status status = Status.IN_PROGRESS;
 
     @Column(name = "equipped", nullable = false)
     private boolean equipped = false;
-
-    @Column(name = "completed_at")
-    private Instant completedAt;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
