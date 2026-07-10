@@ -50,6 +50,14 @@ public class AppConfig {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    public static AppConfig createFor(String configKey, String configValue, Instant effectiveAt) {
+        AppConfig config = new AppConfig();
+        config.configKey = configKey;
+        config.configValue = configValue;
+        config.effectiveAt = effectiveAt;
+        return config;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

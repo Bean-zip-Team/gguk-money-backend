@@ -51,6 +51,9 @@ public class UserTapDaily {
     @Column(name = "point_earned_amount", nullable = false)
     private Integer pointEarnedAmount = 0;
 
+    @Column(name = "next_point_target", nullable = false)
+    private Integer nextPointTarget;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
@@ -60,6 +63,27 @@ public class UserTapDaily {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static UserTapDaily createFor(AppUser user, LocalDate tapDate, int initialTarget) {
+        UserTapDaily daily = new UserTapDaily();
+        daily.user = user;
+        daily.tapDate = tapDate;
+        daily.nextPointTarget = initialTarget;
+        return daily;
+    }
+
+    public void addValidTaps(int count) {
+        this.validTapCount += count;
+    }
+
+    public boolean hasReachedTarget() {
+        return validTapCount >= nextPointTarget;
+    }
+
+    public void awardPoint(int nextTarget) {
+        this.pointEarnedAmount += 1;
+        this.nextPointTarget = nextTarget;
+    }
 
     @PrePersist
     void prePersist() {

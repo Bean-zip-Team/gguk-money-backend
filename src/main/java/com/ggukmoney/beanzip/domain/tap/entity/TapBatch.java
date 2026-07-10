@@ -55,11 +55,32 @@ public class TapBatch {
     @Column(name = "request_hash", nullable = false, length = 128)
     private String requestHash;
 
+    @Column(name = "bot_suspected", nullable = false)
+    private boolean botSuspected = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static TapBatch createFor(AppUser user, UUID tapSessionId, Long sequence, int submittedCount, String requestHash) {
+        TapBatch batch = new TapBatch();
+        batch.user = user;
+        batch.tapSessionId = tapSessionId;
+        batch.sequence = sequence;
+        batch.submittedCount = submittedCount;
+        batch.requestHash = requestHash;
+        return batch;
+    }
+
+    public void markAccepted(int acceptedCount) {
+        this.acceptedCount = acceptedCount;
+    }
+
+    public void markBotSuspected() {
+        this.botSuspected = true;
+    }
 
     @PrePersist
     void prePersist() {
