@@ -1,14 +1,17 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
+import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,17 +20,19 @@ public class AuthServiceLogoutAllTest {
 
     @Test
     void logoutAllDeletesAllRedisSessionsAndReturnsRevokedCount() {
-        RedisAuthSessionRepository authSessionRepository = mock(RedisAuthSessionRepository.class);
+        RedisService redisService = mock(RedisService.class);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
-        when(authSessionRepository.revokeAllUserSessions(
-                eq(userId),
+        when(redisService.executeScript(
+                any(RedisScript.class),
+                eq(List.of(AuthService.userSessionsKey(userId), "auth:revoke:user:" + userId)),
+                anyString(),
+                anyString(),
+                anyString(),
                 eq("access-jti-1"),
-                eq(Instant.parse("2026-07-02T00:15:00Z")),
-                any(Instant.class),
-                eq("LOGOUT_ALL")
+                eq(String.valueOf(Instant.parse("2026-07-02T00:15:00Z").toEpochMilli()))
         )).thenReturn(3L);
 
-        AuthService authService = new AuthService(null, authSessionRepository, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
 
         LogoutAllResponse response = authService.logoutAll(
                 userId,

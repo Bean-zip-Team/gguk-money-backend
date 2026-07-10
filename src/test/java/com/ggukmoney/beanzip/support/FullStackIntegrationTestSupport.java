@@ -1,9 +1,8 @@
 package com.ggukmoney.beanzip.support;
 
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
+import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
-import com.ggukmoney.beanzip.domain.auth.util.TokenHash;
+import com.ggukmoney.beanzip.global.util.TokenHash;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -43,7 +42,7 @@ public abstract class FullStackIntegrationTestSupport {
     protected StringRedisTemplate redisTemplate;
 
     @Autowired
-    protected RedisAuthSessionRepository authSessionRepository;
+    protected AuthService authService;
 
     @Autowired
     protected JwtTokenProvider jwtTokenProvider;
@@ -81,7 +80,7 @@ public abstract class FullStackIntegrationTestSupport {
         String accessToken = jwtTokenProvider.createAccessToken(userId, sessionId, accessJti);
         JwtTokenProvider.JwtTokenClaims refreshClaims = jwtTokenProvider.parseToken(refreshToken);
         JwtTokenProvider.JwtTokenClaims accessClaims = jwtTokenProvider.parseToken(accessToken);
-        AuthSession session = new AuthSession(
+        AuthService.AuthSession session = new AuthService.AuthSession(
                 sessionId,
                 userId,
                 devicePublicId,
@@ -94,12 +93,12 @@ public abstract class FullStackIntegrationTestSupport {
                 refreshClaims.expiresAt(),
                 "ACTIVE"
         );
-        authSessionRepository.save(session);
+        authService.save(session);
         return new TestTokens(session, accessToken, refreshToken, accessJti, refreshJti, accessClaims.expiresAt());
     }
 
     protected record TestTokens(
-            AuthSession session,
+            AuthService.AuthSession session,
             String accessToken,
             String refreshToken,
             String accessJti,

@@ -1,6 +1,5 @@
-package com.ggukmoney.beanzip.domain.auth.infra;
+package com.ggukmoney.beanzip.domain.auth.service;
 
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
 import com.ggukmoney.beanzip.support.RedisIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -10,13 +9,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupport {
+class AuthServiceRedisSessionIntegrationTest extends RedisIntegrationTestSupport {
 
     @Test
     void savesFindsAndDeletesRefreshSessionInRealRedis() {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        AuthSession session = activeSession(
+        AuthService.AuthSession session = activeSession(
                 sessionId,
                 userId,
                 UUID.randomUUID().toString(),
@@ -27,9 +26,9 @@ class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupp
                 Instant.now().plusSeconds(3600)
         );
 
-        repository.save(session);
+        authService.save(session);
 
-        String refreshKey = RedisAuthSessionRepository.refreshKey(sessionId);
+        String refreshKey = AuthService.refreshKey(sessionId);
         Map<Object, Object> stored = redisTemplate.opsForHash().entries(refreshKey);
         assertThat(stored).containsEntry("userId", session.userId().toString())
                 .containsEntry("devicePublicId", session.devicePublicId())
@@ -42,16 +41,16 @@ class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupp
                 .containsEntry("expiresAt", session.expiresAt().toString())
                 .containsEntry("status", "ACTIVE");
         assertThat(redisTemplate.getExpire(refreshKey)).isBetween(3500L, 3600L);
-        assertThat(redisTemplate.opsForZSet().score(RedisAuthSessionRepository.userSessionsKey(userId), sessionId.toString()))
+        assertThat(redisTemplate.opsForZSet().score(AuthService.userSessionsKey(userId), sessionId.toString()))
                 .isEqualTo((double) session.expiresAt().toEpochMilli());
 
-        assertThat(repository.findBySessionId(sessionId)).contains(session);
+        assertThat(authService.findBySessionId(sessionId)).contains(session);
 
-        repository.deleteSession(sessionId);
+        authService.deleteSession(sessionId);
 
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(refreshKey))).isFalse();
-        assertThat(redisTemplate.opsForZSet().score(RedisAuthSessionRepository.userSessionsKey(userId), sessionId.toString())).isNull();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userId)))).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(AuthService.userSessionsKey(userId), sessionId.toString())).isNull();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
     }
 
     @Test
@@ -62,15 +61,15 @@ class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupp
         UUID expiredSessionId = UUID.randomUUID();
         Instant now = Instant.now();
 
-        repository.save(activeSession(liveSessionId, userId, UUID.randomUUID().toString(), "jti-live", "token-live", "family-live", now, now.plusSeconds(3600)));
-        redisTemplate.opsForZSet().add(RedisAuthSessionRepository.userSessionsKey(userId), missingSessionId.toString(), now.plusSeconds(3600).toEpochMilli());
-        redisTemplate.opsForZSet().add(RedisAuthSessionRepository.userSessionsKey(userId), expiredSessionId.toString(), now.minusSeconds(60).toEpochMilli());
+        authService.save(activeSession(liveSessionId, userId, UUID.randomUUID().toString(), "jti-live", "token-live", "family-live", now, now.plusSeconds(3600)));
+        redisTemplate.opsForZSet().add(AuthService.userSessionsKey(userId), missingSessionId.toString(), now.plusSeconds(3600).toEpochMilli());
+        redisTemplate.opsForZSet().add(AuthService.userSessionsKey(userId), expiredSessionId.toString(), now.minusSeconds(60).toEpochMilli());
 
-        long revokedCount = repository.revokeAllUserSessions(userId, "access-jti", now.plusSeconds(900), now, "LOGOUT_ALL");
+        long revokedCount = authService.revokeAllUserSessions(userId, "access-jti", now.plusSeconds(900), now, "LOGOUT_ALL");
 
         assertThat(revokedCount).isEqualTo(1);
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(liveSessionId)))).isFalse();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userId)))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(liveSessionId)))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
         assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId))
                 .contains("\"revokedAtMillis\":" + now.toEpochMilli())
                 .contains("\"reason\":\"LOGOUT_ALL\"");
@@ -82,12 +81,12 @@ class RedisAuthSessionRepositoryIntegrationTest extends RedisIntegrationTestSupp
         UUID userId = UUID.randomUUID();
         Instant now = Instant.now();
 
-        long revokedCount = repository.revokeAllUserSessions(userId, null, null, now, "LOGOUT_ALL");
+        long revokedCount = authService.revokeAllUserSessions(userId, null, null, now, "LOGOUT_ALL");
 
         assertThat(revokedCount).isZero();
         assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId))
                 .contains("\"revokedAtMillis\":" + now.toEpochMilli())
                 .contains("\"reason\":\"LOGOUT_ALL\"");
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userId)))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
     }
 }

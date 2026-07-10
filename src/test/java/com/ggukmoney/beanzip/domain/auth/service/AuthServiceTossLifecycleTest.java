@@ -5,15 +5,17 @@ import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossUnlinkWebhookRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,17 +25,23 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
@@ -45,7 +53,7 @@ class AuthServiceTossLifecycleTest {
             "ggukmoney",
             Clock.fixed(Instant.parse("2026-07-02T00:00:00Z"), ZoneOffset.UTC)
     );
-    private RedisAuthSessionRepository authSessionRepository;
+    private RedisService redisService;
     private TossAuthClient tossAuthClient;
     private AuthIdentityRepository authIdentityRepository;
     private UserService userService;
@@ -55,7 +63,8 @@ class AuthServiceTossLifecycleTest {
 
     @BeforeEach
     void setUp() {
-        authSessionRepository = mock(RedisAuthSessionRepository.class);
+        redisService = mock(RedisService.class);
+        lenient().when(redisService.executeScript(any(RedisScript.class), anyList(), anyString(), anyString(), anyString(), anyString(), anyString())).thenReturn(0L);
         tossAuthClient = mock(TossAuthClient.class);
         authIdentityRepository = mock(AuthIdentityRepository.class);
         userService = mock(UserService.class);
@@ -63,7 +72,7 @@ class AuthServiceTossLifecycleTest {
         keycapBoxAccountService = mock(KeycapBoxAccountService.class);
         authService = new AuthService(
                 jwtTokenProvider,
-                authSessionRepository,
+                redisService,
                 tossAuthClient,
                 authIdentityRepository,
                 userService,
@@ -71,6 +80,20 @@ class AuthServiceTossLifecycleTest {
                 keycapBoxAccountService
         );
         ReflectionTestUtils.setField(authService, "tossWebhookSecret", "webhook-secret");
+    }
+
+    private List<String> capturedRevokeReasons(UUID userId, int expectedCallCount) {
+        ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisService, times(expectedCallCount)).executeScript(
+                any(RedisScript.class),
+                eq(List.of(AuthService.userSessionsKey(userId), "auth:revoke:user:" + userId)),
+                anyString(),
+                reasonCaptor.capture(),
+                anyString(),
+                anyString(),
+                anyString()
+        );
+        return reasonCaptor.getAllValues();
     }
 
     @Test
@@ -89,7 +112,7 @@ class AuthServiceTossLifecycleTest {
         verify(authIdentityRepository).save(any(AuthIdentity.class));
         verify(pointAccountService).createFor(any(AppUser.class));
         verify(keycapBoxAccountService).createFor(any(AppUser.class));
-        verify(authSessionRepository).save(any());
+        verify(redisService).putAllHash(anyString(), anyMap());
     }
 
     @Test
@@ -113,7 +136,7 @@ class AuthServiceTossLifecycleTest {
         verify(userService, never()).createActive(any(), any());
         verify(pointAccountService, never()).createFor(any());
         verify(keycapBoxAccountService, never()).createFor(any());
-        verify(authSessionRepository).save(any());
+        verify(redisService).putAllHash(anyString(), anyMap());
     }
 
     @Test
@@ -173,7 +196,7 @@ class AuthServiceTossLifecycleTest {
         verify(tossAuthClient).removeByUserKey("toss-access", "user-key-1");
         assertThat(user.isWithdrawn()).isTrue();
         assertThat(user.getProfileImageUrl()).isNull();
-        verify(authSessionRepository).revokeAllUserSessions(eq(userId), eq("jti"), eq(Instant.parse("2026-07-02T00:15:00Z")), any(Instant.class), eq("WITHDRAWAL"));
+        assertThat(capturedRevokeReasons(userId, 1)).allMatch(reason -> reason.contains("\"reason\":\"WITHDRAWAL\""));
     }
 
     @Test
@@ -195,7 +218,7 @@ class AuthServiceTossLifecycleTest {
 
         assertThat(user.isWithdrawn()).isFalse();
         verify(userService, never()).withdraw(any());
-        verify(authSessionRepository, never()).revokeAllUserSessions(any(), any(), any(), any(), any());
+        verifyNoInteractions(redisService);
     }
 
     @Test
@@ -228,7 +251,7 @@ class AuthServiceTossLifecycleTest {
         assertThat(user.isWithdrawn()).isTrue();
         assertThat(user.getProfileImageUrl()).isNull();
         verify(userService, times(1)).withdraw(any());
-        verify(authSessionRepository, times(2)).revokeAllUserSessions(eq(userId), eq(null), eq(null), any(Instant.class), eq("TOSS_UNLINK_WEBHOOK"));
+        assertThat(capturedRevokeReasons(userId, 2)).allMatch(reason -> reason.contains("\"reason\":\"TOSS_UNLINK_WEBHOOK\""));
         verify(tossAuthClient, never()).removeByUserKey(any(), any());
     }
 

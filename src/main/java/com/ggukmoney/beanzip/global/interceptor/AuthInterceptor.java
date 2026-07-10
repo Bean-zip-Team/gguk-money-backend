@@ -1,7 +1,5 @@
 package com.ggukmoney.beanzip.global.interceptor;
 
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
 import com.ggukmoney.beanzip.global.common.ApiPaths;
@@ -24,7 +22,6 @@ public class AuthInterceptor implements HandlerInterceptor {
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private final AuthService authService;
-    private final RedisAuthSessionRepository authSessionRepository;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
@@ -38,17 +35,17 @@ public class AuthInterceptor implements HandlerInterceptor {
     private void authenticate(HttpServletRequest request) {
         JwtTokenProvider.JwtTokenClaims claims = authService.parseAccessToken(resolveAccessToken(request));
 
-        if (authSessionRepository.isAccessDenied(claims.jti())) {
+        if (authService.isAccessDenied(claims.jti())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_ACCESS_DENIED");
         }
 
-        authSessionRepository.findUserRevokedAtMillis(claims.userId()).ifPresent(revokedAtMillis -> {
+        authService.findUserRevokedAtMillis(claims.userId()).ifPresent(revokedAtMillis -> {
             if (claims.issuedAtMillis() <= revokedAtMillis) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_USER_REVOKED");
             }
         });
 
-        AuthSession session = authSessionRepository.findBySessionId(claims.sessionId())
+        AuthService.AuthSession session = authService.findBySessionId(claims.sessionId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_NOT_FOUND"));
 
         if (!claims.userId().equals(session.userId())) {

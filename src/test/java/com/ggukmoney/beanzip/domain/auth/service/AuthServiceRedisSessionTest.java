@@ -1,11 +1,8 @@
-package com.ggukmoney.beanzip.domain.auth.infra;
+package com.ggukmoney.beanzip.domain.auth.service;
 
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
-import com.ggukmoney.beanzip.domain.auth.model.RefreshRotationResult;
+import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Instant;
@@ -17,15 +14,15 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class RedisAuthSessionRepositoryTest {
+class AuthServiceRedisSessionTest {
 
     @Test
     void rotatesRefreshTokenWithLuaCasAndNoLockKey() {
-        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        RedisService redisService = mock(RedisService.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<RedisScript<Long>> scriptCaptor = ArgumentCaptor.forClass(RedisScript.class);
         ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.captor();
-        when(redisTemplate.execute(
+        when(redisService.executeScript(
                 scriptCaptor.capture(),
                 keysCaptor.capture(),
                 eq("refresh-jti-old-hash"),
@@ -40,9 +37,9 @@ public class RedisAuthSessionRepositoryTest {
                 eq("2000")
         )).thenReturn(1L);
 
-        RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
-        AuthSession session = new AuthSession(
+        AuthService.AuthSession session = new AuthService.AuthSession(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 userId,
                 "device_public_1",
@@ -56,7 +53,7 @@ public class RedisAuthSessionRepositoryTest {
                 "ACTIVE"
         );
 
-        RefreshRotationResult result = repository.rotateRefreshToken(
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
                 session,
                 "refresh-jti-old-hash",
                 "refresh-token-old-hash",
@@ -66,7 +63,7 @@ public class RedisAuthSessionRepositoryTest {
                 Instant.parse("2026-08-01T00:01:00Z")
         );
 
-        assertThat(result).isEqualTo(RefreshRotationResult.ROTATED);
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.ROTATED);
         assertThat(keysCaptor.getValue()).containsExactly(
                 "auth:refresh:00000000-0000-0000-0000-000000000001",
                 "auth:user-sessions:10000000-0000-0000-0000-000000000001"
@@ -80,11 +77,11 @@ public class RedisAuthSessionRepositoryTest {
 
     @Test
     void revokeAllUserSessionsDeletesRefreshSessionsAndStoresReasonedRevokeMarker() {
-        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        RedisService redisService = mock(RedisService.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<RedisScript<Long>> scriptCaptor = ArgumentCaptor.forClass(RedisScript.class);
         ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.captor();
-        when(redisTemplate.execute(
+        when(redisService.executeScript(
                 scriptCaptor.capture(),
                 keysCaptor.capture(),
                 eq("1782950400000"),
@@ -94,9 +91,9 @@ public class RedisAuthSessionRepositoryTest {
                 eq("1782951300000")
         )).thenReturn(2L);
 
-        RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
-        long revokedCount = repository.revokeAllUserSessions(
+        long revokedCount = authService.revokeAllUserSessions(
                 userId,
                 "access-jti-1",
                 Instant.parse("2026-07-02T00:15:00Z"),
@@ -119,16 +116,13 @@ public class RedisAuthSessionRepositoryTest {
 
     @Test
     void parsesReasonedRevokeMarkerForAccessTokenChecks() {
-        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        RedisService redisService = mock(RedisService.class);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
-        when(valueOperations.get("auth:revoke:user:10000000-0000-0000-0000-000000000001"))
-                .thenReturn("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}");
+        when(redisService.get("auth:revoke:user:10000000-0000-0000-0000-000000000001"))
+                .thenReturn(java.util.Optional.of("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"));
 
-        RedisAuthSessionRepository repository = new RedisAuthSessionRepository(redisTemplate);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
 
-        assertThat(repository.findUserRevokedAtMillis(userId)).contains(1782950400000L);
+        assertThat(authService.findUserRevokedAtMillis(userId)).contains(1782950400000L);
     }
 }
