@@ -1,6 +1,6 @@
-package com.ggukmoney.beanzip.domain.config.repository;
+package com.ggukmoney.beanzip.global.config.repository;
 
-import com.ggukmoney.beanzip.domain.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;

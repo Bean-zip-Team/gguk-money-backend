@@ -1,6 +1,6 @@
-package com.ggukmoney.beanzip.domain.tap.config;
+package com.ggukmoney.beanzip.global.config;
 
-import com.ggukmoney.beanzip.domain.config.repository.AppConfigRepository;
+import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -12,10 +12,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * First real consumer of {@code AppConfig}. Caches tunable tap-domain policy values in memory
- * and refreshes them periodically so config changes can be rolled out without a redeploy.
- */
 @Component
 @RequiredArgsConstructor
 public class TapPolicyConfig {
@@ -66,8 +62,6 @@ public class TapPolicyConfig {
                         .ifPresent(config -> cache.put(key, config.getConfigValue()));
             }
         } catch (RuntimeException exception) {
-            // Config refresh must never crash startup or a scheduled tick; DEFAULT_VALUES already
-            // covers every key, so a stale/empty cache degrades gracefully.
             log.warn("Failed to refresh tap policy config from AppConfig; falling back to defaults", exception);
         }
     }

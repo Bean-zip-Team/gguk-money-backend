@@ -15,7 +15,7 @@ class ADomainPersistenceSmokeTest {
     private static final EntityContract[] ENTITIES = {
             entity("com.ggukmoney.beanzip.domain.user.entity.AppUser", "app_user", false, UUID.class),
             entity("com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity", "auth_identity", true),
-            entity("com.ggukmoney.beanzip.domain.config.entity.AppConfig", "app_config", true),
+            entity("com.ggukmoney.beanzip.global.config.entity.AppConfig", "app_config", true),
             entity("com.ggukmoney.beanzip.domain.keycap.entity.Keycap", "keycap", true),
             entity("com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap", "user_keycap", true),
             entity("com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount", "keycap_box_account", true),
@@ -31,7 +31,7 @@ class ADomainPersistenceSmokeTest {
     private static final String[] REPOSITORIES = {
             "com.ggukmoney.beanzip.domain.user.repository.AppUserRepository",
             "com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository",
-            "com.ggukmoney.beanzip.domain.config.repository.AppConfigRepository",
+            "com.ggukmoney.beanzip.global.config.repository.AppConfigRepository",
             "com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository",
             "com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository",
             "com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository",

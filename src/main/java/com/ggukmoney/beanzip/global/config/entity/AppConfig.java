@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.config.entity;
+package com.ggukmoney.beanzip.global.config.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

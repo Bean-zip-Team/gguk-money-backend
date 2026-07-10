@@ -1,7 +1,7 @@
-package com.ggukmoney.beanzip.domain.tap.config;
+package com.ggukmoney.beanzip.global.config;
 
-import com.ggukmoney.beanzip.domain.config.entity.AppConfig;
-import com.ggukmoney.beanzip.domain.config.repository.AppConfigRepository;
+import com.ggukmoney.beanzip.global.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,12 +10,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
-/**
- * Idempotently seeds default tap-policy {@code AppConfig} rows on startup so operators can
- * later override individual keys without a redeploy. Safe to run on every boot — only inserts
- * keys that don't exist yet. Failures are logged, not propagated: {@code TapPolicyConfig}
- * already falls back to hardcoded defaults, so a seeding failure must not block app startup.
- */
 @Component
 @RequiredArgsConstructor
 public class TapConfigSeeder implements CommandLineRunner {
