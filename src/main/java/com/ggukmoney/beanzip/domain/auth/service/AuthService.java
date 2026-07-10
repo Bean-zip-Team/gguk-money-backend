@@ -14,14 +14,12 @@ import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
 import com.ggukmoney.beanzip.domain.auth.model.RefreshRotationResult;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.auth.util.TokenHash;
-import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
-import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
-import com.ggukmoney.beanzip.domain.point.repository.PointAccountRepository;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
-import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -47,10 +45,10 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisAuthSessionRepository authSessionRepository;
     private final TossAuthClient tossAuthClient;
-    private final AppUserRepository appUserRepository;
     private final AuthIdentityRepository authIdentityRepository;
-    private final PointAccountRepository pointAccountRepository;
-    private final KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private final UserService userService;
+    private final PointAccountService pointAccountService;
+    private final KeycapBoxAccountService keycapBoxAccountService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -71,17 +69,17 @@ public class AuthService {
         boolean newUser = false;
         AppUser user;
         if (identity == null) {
-            user = appUserRepository.save(AppUser.createActive(loginMe.nickname(), loginMe.profileImageUrl()));
+            user = userService.createActive(loginMe.nickname(), loginMe.profileImageUrl());
             authIdentityRepository.save(AuthIdentity.toss(user, userKey));
-            pointAccountRepository.save(PointAccount.createFor(user));
-            keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+            pointAccountService.createFor(user);
+            keycapBoxAccountService.createFor(user);
             newUser = true;
         } else {
             user = identity.getUser();
             if (user.isWithdrawn()) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_WITHDRAWN");
             }
-            user.recordLogin(loginMe.nickname(), loginMe.profileImageUrl());
+            user = userService.recordLogin(user, loginMe.nickname(), loginMe.profileImageUrl());
         }
 
         return issueSessionTokens(user.getId(), newUser);
@@ -177,8 +175,7 @@ public class AuthService {
             Instant accessExpiresAt,
             UserWithdrawalRequest request
     ) {
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_USER_NOT_FOUND"));
+        AppUser user = userService.getById(userId);
         if (user.isWithdrawn()) {
             authSessionRepository.revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
             return new UserWithdrawalResponse(true);
@@ -197,7 +194,7 @@ public class AuthService {
         }
 
         tossAuthClient.removeByUserKey(tossToken.accessToken(), userKey);
-        withdrawLocally(user);
+        userService.withdraw(user);
         authSessionRepository.revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
         return new UserWithdrawalResponse(true);
     }
@@ -214,7 +211,7 @@ public class AuthService {
                 .ifPresent(identity -> {
                     AppUser user = identity.getUser();
                     if (!user.isWithdrawn()) {
-                        withdrawLocally(user);
+                        userService.withdraw(user);
                     }
                     authSessionRepository.revokeAllUserSessions(user.getId(), null, null, Instant.now(), "TOSS_UNLINK_WEBHOOK");
                 });
@@ -245,10 +242,6 @@ public class AuthService {
         );
         authSessionRepository.save(session);
         return new AuthTokenResponse(userId, accessToken, refreshToken, TOKEN_TYPE, accessClaims.expiresAt(), refreshClaims.expiresAt(), newUser);
-    }
-
-    private void withdrawLocally(AppUser user) {
-        user.withdraw();
     }
 
     private void validateWebhookSecret(String authorizationHeader) {

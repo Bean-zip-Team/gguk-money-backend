@@ -7,11 +7,11 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
-import com.ggukmoney.beanzip.domain.point.repository.PointAccountRepository;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
-import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -47,28 +47,28 @@ class AuthServiceTossLifecycleTest {
     );
     private RedisAuthSessionRepository authSessionRepository;
     private TossAuthClient tossAuthClient;
-    private AppUserRepository appUserRepository;
     private AuthIdentityRepository authIdentityRepository;
-    private PointAccountRepository pointAccountRepository;
-    private KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private UserService userService;
+    private PointAccountService pointAccountService;
+    private KeycapBoxAccountService keycapBoxAccountService;
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         authSessionRepository = mock(RedisAuthSessionRepository.class);
         tossAuthClient = mock(TossAuthClient.class);
-        appUserRepository = mock(AppUserRepository.class);
         authIdentityRepository = mock(AuthIdentityRepository.class);
-        pointAccountRepository = mock(PointAccountRepository.class);
-        keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
+        userService = mock(UserService.class);
+        pointAccountService = mock(PointAccountService.class);
+        keycapBoxAccountService = mock(KeycapBoxAccountService.class);
         authService = new AuthService(
                 jwtTokenProvider,
                 authSessionRepository,
                 tossAuthClient,
-                appUserRepository,
                 authIdentityRepository,
-                pointAccountRepository,
-                keycapBoxAccountRepository
+                userService,
+                pointAccountService,
+                keycapBoxAccountService
         );
         ReflectionTestUtils.setField(authService, "tossWebhookSecret", "webhook-secret");
     }
@@ -79,7 +79,7 @@ class AuthServiceTossLifecycleTest {
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "user-key-1")).thenReturn(Optional.empty());
-        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), userId));
+        when(userService.createActive("Bean", "https://img")).thenReturn(withId(AppUser.createActive("Bean", "https://img"), userId));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
 
@@ -87,8 +87,8 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.newUser()).isTrue();
         assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
         verify(authIdentityRepository).save(any(AuthIdentity.class));
-        verify(pointAccountRepository).save(any());
-        verify(keycapBoxAccountRepository).save(any());
+        verify(pointAccountService).createFor(any(AppUser.class));
+        verify(keycapBoxAccountService).createFor(any(AppUser.class));
         verify(authSessionRepository).save(any());
     }
 
@@ -100,15 +100,19 @@ class AuthServiceTossLifecycleTest {
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "user-key-1"))
                 .thenReturn(Optional.of(AuthIdentity.toss(user, "user-key-1")));
+        when(userService.recordLogin(user, "Bean", "https://img")).thenAnswer(invocation -> {
+            user.recordLogin("Bean", "https://img");
+            return user;
+        });
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isFalse();
         assertThat(user.getNickname()).isEqualTo("Bean");
-        verify(appUserRepository, never()).save(any());
-        verify(pointAccountRepository, never()).save(any());
-        verify(keycapBoxAccountRepository, never()).save(any());
+        verify(userService, never()).createActive(any(), any());
+        verify(pointAccountService, never()).createFor(any());
+        verify(keycapBoxAccountService, never()).createFor(any());
         verify(authSessionRepository).save(any());
     }
 
@@ -126,14 +130,15 @@ class AuthServiceTossLifecycleTest {
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
 
-        verify(appUserRepository, never()).save(any());
+        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).recordLogin(any(), any(), any());
     }
 
     @Test
     void withdrawalRequiresFreshTossUserKeyToMatchCurrentIdentity() {
         UUID userId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", null), userId);
-        when(appUserRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userService.getById(userId)).thenReturn(user);
         when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS))
                 .thenReturn(Optional.of(AuthIdentity.toss(user, "user-key-1")));
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
@@ -146,17 +151,22 @@ class AuthServiceTossLifecycleTest {
 
         assertThat(user.isWithdrawn()).isFalse();
         verify(tossAuthClient, never()).removeByUserKey(any(), any());
+        verify(userService, never()).withdraw(any());
     }
 
     @Test
     void withdrawalUnlinksTossThenSoftWithdrawsAndRevokesSessions() {
         UUID userId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
-        when(appUserRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userService.getById(userId)).thenReturn(user);
         when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS))
                 .thenReturn(Optional.of(AuthIdentity.toss(user, "user-key-1")));
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", null, null));
+        when(userService.withdraw(user)).thenAnswer(invocation -> {
+            user.withdraw();
+            return user;
+        });
 
         authService.withdrawCurrentUser(userId, "jti", Instant.parse("2026-07-02T00:15:00Z"), new UserWithdrawalRequest("code", "DEFAULT"));
 
@@ -170,7 +180,7 @@ class AuthServiceTossLifecycleTest {
     void withdrawalDoesNotSoftWithdrawWhenTossUnlinkFails() {
         UUID userId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
-        when(appUserRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userService.getById(userId)).thenReturn(user);
         when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS))
                 .thenReturn(Optional.of(AuthIdentity.toss(user, "user-key-1")));
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
@@ -184,6 +194,7 @@ class AuthServiceTossLifecycleTest {
                 .isEqualTo("TOSS_UNLINK_FAILED");
 
         assertThat(user.isWithdrawn()).isFalse();
+        verify(userService, never()).withdraw(any());
         verify(authSessionRepository, never()).revokeAllUserSessions(any(), any(), any(), any(), any());
     }
 
@@ -195,6 +206,7 @@ class AuthServiceTossLifecycleTest {
                 .isTrue();
 
         verify(tossAuthClient, never()).removeByUserKey(any(), any());
+        verify(userService, never()).withdraw(any());
     }
 
     @Test
@@ -203,6 +215,10 @@ class AuthServiceTossLifecycleTest {
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "user-key-1"))
                 .thenReturn(Optional.of(AuthIdentity.toss(user, "user-key-1")));
+        when(userService.withdraw(user)).thenAnswer(invocation -> {
+            user.withdraw();
+            return user;
+        });
 
         assertThat(authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("user-key-1", "UNLINK")).processed())
                 .isTrue();
@@ -211,6 +227,7 @@ class AuthServiceTossLifecycleTest {
 
         assertThat(user.isWithdrawn()).isTrue();
         assertThat(user.getProfileImageUrl()).isNull();
+        verify(userService, times(1)).withdraw(any());
         verify(authSessionRepository, times(2)).revokeAllUserSessions(eq(userId), eq(null), eq(null), any(Instant.class), eq("TOSS_UNLINK_WEBHOOK"));
         verify(tossAuthClient, never()).removeByUserKey(any(), any());
     }
