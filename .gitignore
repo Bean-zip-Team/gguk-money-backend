@@ -42,3 +42,9 @@ out/
 .codex/
 .agents/
 AGENTS.md
+
+### macOS ###
+.DS_Store
+
+### Local design docs (not shared to remote) ###
+docs/domain-b-tap-design-decisions.md

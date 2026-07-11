@@ -1,6 +1,6 @@
 package com.ggukmoney.beanzip.domain.auth.controller;
 
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
+import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -31,7 +31,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.accessToken").exists())
                 .andExpect(jsonPath("$.data.refreshToken").exists());
 
-        assertThat(authSessionRepository.findBySessionId(tokens.session().sessionId()).orElseThrow().previousRefreshJtiHash())
+        assertThat(authService.findBySessionId(tokens.session().sessionId()).orElseThrow().previousRefreshJtiHash())
                 .isEqualTo(tokens.session().currentRefreshJtiHash());
     }
 
@@ -48,7 +48,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$." + "trace" + "Id").doesNotExist())
                 .andExpect(jsonPath("$.requestId").doesNotExist());
 
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(tokens.session().sessionId())))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(tokens.session().sessionId())))).isFalse();
     }
 
     @Test
@@ -65,7 +65,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$." + "trace" + "Id").doesNotExist())
                 .andExpect(jsonPath("$.requestId").doesNotExist());
 
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.userSessionsKey(userId)))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
     }
 
     @Test
@@ -98,8 +98,8 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$." + "trace" + "Id").doesNotExist())
                 .andExpect(jsonPath("$.requestId").doesNotExist());
 
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(current.session().sessionId())))).isTrue();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(other.session().sessionId())))).isTrue();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isTrue();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(other.session().sessionId())))).isTrue();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey("auth:deny:access:" + current.accessJti()))).isFalse();
     }
 
@@ -118,9 +118,9 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$." + "trace" + "Id").doesNotExist())
                 .andExpect(jsonPath("$.requestId").doesNotExist());
 
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(current.session().sessionId())))).isFalse();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(otherSameUser.session().sessionId())))).isTrue();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(otherUser.session().sessionId())))).isTrue();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherSameUser.session().sessionId())))).isTrue();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherUser.session().sessionId())))).isTrue();
         assertThat(redisTemplate.opsForValue().get("auth:deny:access:" + current.accessJti())).isEqualTo("1");
     }
 
@@ -136,7 +136,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.accessToken").exists())
                 .andExpect(jsonPath("$.data.refreshToken").exists());
 
-        assertThat(authSessionRepository.findBySessionId(tokens.session().sessionId()).orElseThrow().previousRefreshJtiHash())
+        assertThat(authService.findBySessionId(tokens.session().sessionId()).orElseThrow().previousRefreshJtiHash())
                 .isEqualTo(tokens.session().currentRefreshJtiHash());
     }
 }

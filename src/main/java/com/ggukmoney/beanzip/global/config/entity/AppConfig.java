@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.config.entity;
+package com.ggukmoney.beanzip.global.config.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -49,6 +49,14 @@ public class AppConfig {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static AppConfig createFor(String configKey, String configValue, Instant effectiveAt) {
+        AppConfig config = new AppConfig();
+        config.configKey = configKey;
+        config.configValue = configValue;
+        config.effectiveAt = effectiveAt;
+        return config;
+    }
 
     @PrePersist
     void prePersist() {

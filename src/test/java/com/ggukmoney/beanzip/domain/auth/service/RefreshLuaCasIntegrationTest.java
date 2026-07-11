@@ -1,7 +1,5 @@
-package com.ggukmoney.beanzip.domain.auth.infra;
+package com.ggukmoney.beanzip.domain.auth.service;
 
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
-import com.ggukmoney.beanzip.domain.auth.model.RefreshRotationResult;
 import com.ggukmoney.beanzip.support.RedisIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -20,11 +18,11 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
 
     @Test
     void rotatesRefreshTokenAtomicallyInRealRedis() {
-        AuthSession session = savedSession();
+        AuthService.AuthSession session = savedSession();
         Instant rotatedAt = Instant.now();
         Instant newExpiresAt = rotatedAt.plusSeconds(7200);
 
-        RefreshRotationResult result = repository.rotateRefreshToken(
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
                 session,
                 "jti-A",
                 "token-A",
@@ -34,23 +32,23 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 newExpiresAt
         );
 
-        assertThat(result).isEqualTo(RefreshRotationResult.ROTATED);
-        AuthSession rotated = repository.findBySessionId(session.sessionId()).orElseThrow();
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.ROTATED);
+        AuthService.AuthSession rotated = authService.findBySessionId(session.sessionId()).orElseThrow();
         assertThat(rotated.currentRefreshJtiHash()).isEqualTo("jti-B");
         assertThat(rotated.refreshTokenHash()).isEqualTo("token-B");
         assertThat(rotated.previousRefreshJtiHash()).isEqualTo("jti-A");
         assertThat(rotated.rotatedAt()).isEqualTo(rotatedAt);
         assertThat(rotated.expiresAt()).isEqualTo(newExpiresAt);
-        assertThat(redisTemplate.getExpire(RedisAuthSessionRepository.refreshKey(session.sessionId()))).isBetween(7100L, 7200L);
-        assertThat(redisTemplate.opsForZSet().score(RedisAuthSessionRepository.userSessionsKey(session.userId()), session.sessionId().toString()))
+        assertThat(redisTemplate.getExpire(AuthService.refreshKey(session.sessionId()))).isBetween(7100L, 7200L);
+        assertThat(redisTemplate.opsForZSet().score(AuthService.userSessionsKey(session.userId()), session.sessionId().toString()))
                 .isEqualTo((double) newExpiresAt.toEpochMilli());
     }
 
     @Test
     void returnsConflictWithoutMutatingSessionWhenExpectedValuesDoNotMatch() {
-        AuthSession session = savedSession();
+        AuthService.AuthSession session = savedSession();
 
-        RefreshRotationResult result = repository.rotateRefreshToken(
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
                 session,
                 "wrong-jti",
                 "token-A",
@@ -60,8 +58,8 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 Instant.now().plusSeconds(7200)
         );
 
-        assertThat(result).isEqualTo(RefreshRotationResult.CONFLICT);
-        AuthSession unchanged = repository.findBySessionId(session.sessionId()).orElseThrow();
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.CONFLICT);
+        AuthService.AuthSession unchanged = authService.findBySessionId(session.sessionId()).orElseThrow();
         assertThat(unchanged.currentRefreshJtiHash()).isEqualTo("jti-A");
         assertThat(unchanged.refreshTokenHash()).isEqualTo("token-A");
         assertThat(unchanged.previousRefreshJtiHash()).isNull();
@@ -69,9 +67,9 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
 
     @Test
     void returnsNotFoundWithoutCreatingKeysWhenSessionDoesNotExist() {
-        AuthSession session = activeSession(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID().toString(), "jti-A", "token-A", "family-A", Instant.now(), Instant.now().plusSeconds(3600));
+        AuthService.AuthSession session = activeSession(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID().toString(), "jti-A", "token-A", "family-A", Instant.now(), Instant.now().plusSeconds(3600));
 
-        RefreshRotationResult result = repository.rotateRefreshToken(
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
                 session,
                 "jti-A",
                 "token-A",
@@ -81,20 +79,20 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 Instant.now().plusSeconds(7200)
         );
 
-        assertThat(result).isEqualTo(RefreshRotationResult.NOT_FOUND);
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(RedisAuthSessionRepository.refreshKey(session.sessionId())))).isFalse();
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.NOT_FOUND);
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(session.sessionId())))).isFalse();
     }
 
     @Test
     void allowsOnlyOneConcurrentRotationAndKeepsSessionActive() throws Exception {
-        AuthSession session = savedSession();
+        AuthService.AuthSession session = savedSession();
         ExecutorService executorService = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
-        Callable<RefreshRotationResult> rotation = () -> {
+        Callable<AuthService.RefreshRotationResult> rotation = () -> {
             ready.countDown();
             start.await();
-            return repository.rotateRefreshToken(
+            return authService.rotateRefreshToken(
                     session,
                     "jti-A",
                     "token-A",
@@ -105,24 +103,24 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
             );
         };
 
-        Future<RefreshRotationResult> first = executorService.submit(rotation);
-        Future<RefreshRotationResult> second = executorService.submit(rotation);
+        Future<AuthService.RefreshRotationResult> first = executorService.submit(rotation);
+        Future<AuthService.RefreshRotationResult> second = executorService.submit(rotation);
         ready.await();
         start.countDown();
-        List<RefreshRotationResult> results = List.of(first.get(), second.get());
+        List<AuthService.RefreshRotationResult> results = List.of(first.get(), second.get());
         executorService.shutdownNow();
 
-        assertThat(results).containsExactlyInAnyOrder(RefreshRotationResult.ROTATED, RefreshRotationResult.CONFLICT);
-        assertThat(repository.findBySessionId(session.sessionId())).isPresent();
+        assertThat(results).containsExactlyInAnyOrder(AuthService.RefreshRotationResult.ROTATED, AuthService.RefreshRotationResult.CONFLICT);
+        assertThat(authService.findBySessionId(session.sessionId())).isPresent();
     }
 
     @Test
     void treatsPreviousRefreshAfterConflictWindowAsReuse() {
-        AuthSession session = savedSession();
+        AuthService.AuthSession session = savedSession();
         Instant firstRotationAt = Instant.now();
-        repository.rotateRefreshToken(session, "jti-A", "token-A", "jti-B", "token-B", firstRotationAt, firstRotationAt.plusSeconds(7200));
+        authService.rotateRefreshToken(session, "jti-A", "token-A", "jti-B", "token-B", firstRotationAt, firstRotationAt.plusSeconds(7200));
 
-        RefreshRotationResult result = repository.rotateRefreshToken(
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
                 session,
                 "jti-A",
                 "token-A",
@@ -132,11 +130,11 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 firstRotationAt.plusSeconds(9000)
         );
 
-        assertThat(result).isEqualTo(RefreshRotationResult.REUSED);
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.REUSED);
     }
 
-    private AuthSession savedSession() {
-        AuthSession session = activeSession(
+    private AuthService.AuthSession savedSession() {
+        AuthService.AuthSession session = activeSession(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID().toString(),
@@ -146,7 +144,7 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 Instant.now(),
                 Instant.now().plusSeconds(3600)
         );
-        repository.save(session);
+        authService.save(session);
         return session;
     }
 }

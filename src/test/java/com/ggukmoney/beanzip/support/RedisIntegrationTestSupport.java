@@ -1,7 +1,8 @@
 package com.ggukmoney.beanzip.support;
 
-import com.ggukmoney.beanzip.domain.auth.infra.RedisAuthSessionRepository;
-import com.ggukmoney.beanzip.domain.auth.model.AuthSession;
+import com.ggukmoney.beanzip.domain.auth.service.AuthService;
+import com.ggukmoney.beanzip.domain.tap.service.TapBatchService;
+import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -23,7 +24,8 @@ public abstract class RedisIntegrationTestSupport {
             .withExposedPorts(6379);
 
     protected StringRedisTemplate redisTemplate;
-    protected RedisAuthSessionRepository repository;
+    protected AuthService authService;
+    protected TapBatchService tapBatchService;
 
     private LettuceConnectionFactory connectionFactory;
 
@@ -37,7 +39,9 @@ public abstract class RedisIntegrationTestSupport {
         connectionFactory.afterPropertiesSet();
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
-        repository = new RedisAuthSessionRepository(redisTemplate);
+        RedisService redisService = new RedisService(redisTemplate);
+        authService = new AuthService(null, redisService, null, null, null, null, null);
+        tapBatchService = new TapBatchService(null, null, null, null, redisService, null, null);
         flushRedis();
     }
 
@@ -52,7 +56,7 @@ public abstract class RedisIntegrationTestSupport {
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushDb();
     }
 
-    protected AuthSession activeSession(
+    protected AuthService.AuthSession activeSession(
             UUID sessionId,
             UUID userId,
             String devicePublicId,
@@ -62,7 +66,7 @@ public abstract class RedisIntegrationTestSupport {
             Instant issuedAt,
             Instant expiresAt
     ) {
-        return new AuthSession(
+        return new AuthService.AuthSession(
                 sessionId,
                 userId,
                 devicePublicId,

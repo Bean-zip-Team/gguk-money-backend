@@ -52,7 +52,12 @@ public enum ErrorCode {
     TOSS_UNLINK_FAILED("TOSS_UNLINK_FAILED", "Toss 연결 해제에 실패했습니다.", HttpStatus.BAD_GATEWAY),
     TOSS_CLIENT_NOT_CONFIGURED("TOSS_CLIENT_NOT_CONFIGURED", "Toss 클라이언트 설정이 올바르지 않습니다.", HttpStatus.BAD_GATEWAY),
     TOSS_REQUEST_INVALID("TOSS_REQUEST_INVALID", "Toss 요청 값이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
-    TOSS_INVALID_GRANT("TOSS_INVALID_GRANT", "Toss 인증 코드가 유효하지 않습니다.", HttpStatus.UNAUTHORIZED);
+    TOSS_INVALID_GRANT("TOSS_INVALID_GRANT", "Toss 인증 코드가 유효하지 않습니다.", HttpStatus.UNAUTHORIZED),
+
+    TAP_RATE_LIMITED("TAP_RATE_LIMITED", "잠시 후 다시 시도해주세요.", HttpStatus.TOO_MANY_REQUESTS),
+    TAP_REDIS_UNAVAILABLE("TAP_REDIS_UNAVAILABLE", "탭 처리 서버가 일시적으로 불안정합니다.", HttpStatus.SERVICE_UNAVAILABLE),
+
+    POINT_ACCOUNT_NOT_FOUND("POINT_ACCOUNT_NOT_FOUND", "포인트 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
 
     private final String code;
     private final String message;

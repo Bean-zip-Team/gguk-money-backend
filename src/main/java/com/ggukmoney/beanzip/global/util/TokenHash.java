@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.auth.util;
+package com.ggukmoney.beanzip.global.util;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
