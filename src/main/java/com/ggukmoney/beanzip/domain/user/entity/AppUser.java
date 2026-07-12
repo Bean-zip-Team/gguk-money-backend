@@ -80,6 +80,23 @@ public class AppUser {
         this.lastLoginAt = Instant.now();
     }
 
+    public void updateProfile(String nickname, String profileImageUrl) {
+        if (isWithdrawn()) {
+            return;
+        }
+        if (nickname != null) {
+            this.nickname = normalizeNullable(nickname);
+            this.nicknameNormalized = normalizeNickname(nickname);
+        }
+        if (profileImageUrl != null) {
+            this.profileImageUrl = normalizeNullable(profileImageUrl);
+        }
+    }
+
+    public static String normalizeNicknameForLookup(String nickname) {
+        return normalizeNickname(nickname);
+    }
+
     public void claimOnboardingReward() {
         this.onboardingRewardClaimed = true;
         this.onboardingCompletedAt = Instant.now();

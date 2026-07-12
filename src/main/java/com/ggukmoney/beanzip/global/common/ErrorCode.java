@@ -38,6 +38,8 @@ public enum ErrorCode {
     JWT_SIGN_FAILED("JWT_SIGN_FAILED", "인증 토큰 서명에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
 
     ACCOUNT_WITHDRAWN("ACCOUNT_WITHDRAWN", "탈퇴한 계정입니다.", HttpStatus.FORBIDDEN),
+    MEMBER_NOT_FOUND("MEMBER_NOT_FOUND", "회원을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    NICKNAME_ALREADY_EXISTS("NICKNAME_ALREADY_EXISTS", "이미 사용 중인 닉네임입니다.", HttpStatus.CONFLICT),
 
     TOSS_AUTHORIZATION_CODE_REQUIRED("TOSS_AUTHORIZATION_CODE_REQUIRED", "Toss authorizationCode가 필요합니다.", HttpStatus.BAD_REQUEST),
     TOSS_ACCESS_TOKEN_MISSING("TOSS_ACCESS_TOKEN_MISSING", "Toss accessToken이 없습니다.", HttpStatus.BAD_REQUEST),

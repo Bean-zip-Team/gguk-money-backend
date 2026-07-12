@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
 
     Optional<UserKeycap> findByPublicId(UUID publicId);
+
+    Optional<UserKeycap> findByUserIdAndEquippedTrue(UUID userId);
 }
