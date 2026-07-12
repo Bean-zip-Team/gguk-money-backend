@@ -1,14 +1,20 @@
 package com.ggukmoney.beanzip.domain.user.controller;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
+import com.ggukmoney.beanzip.domain.user.dto.request.UpdateMemberRequest;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
+import com.ggukmoney.beanzip.domain.user.dto.response.MemberMeResponse;
+import com.ggukmoney.beanzip.domain.user.dto.response.MemberUpdateResponse;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +26,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemberController {
 
     private final AuthService authService;
+    private final UserService userService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<MemberMeResponse>> getMe(HttpServletRequest httpServletRequest) {
+        return ResponseEntity.ok(ApiResponse.success(userService.getCurrentMember(
+                AuthRequestAttributes.getRequiredUserId(httpServletRequest)
+        )));
+    }
+
+    @PatchMapping
+    public ResponseEntity<ApiResponse<MemberUpdateResponse>> updateMe(
+            @Valid @RequestBody UpdateMemberRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(userService.updateCurrentMember(
+                AuthRequestAttributes.getRequiredUserId(httpServletRequest),
+                request
+        )));
+    }
 
     @PostMapping("/withdrawal")
     public ResponseEntity<ApiResponse<UserWithdrawalResponse>> withdraw(
