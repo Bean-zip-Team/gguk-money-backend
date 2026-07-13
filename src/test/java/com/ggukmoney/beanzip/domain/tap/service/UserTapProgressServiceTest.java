@@ -75,6 +75,18 @@ class UserTapProgressServiceTest {
         }
     }
 
+    @Test
+    void drawsFixedBoxTargetWhenVarianceIsZero() {
+        TapPolicyConfig config = mock(TapPolicyConfig.class);
+        when(config.boxDropBase()).thenReturn(200);
+        when(config.boxDropVariance()).thenReturn(0.0);
+
+        for (int i = 0; i < 50; i++) {
+            int target = userTapProgressService.drawNextBoxTarget(3000, config);
+            assertThat(target).isEqualTo(3200);
+        }
+    }
+
     private TapPolicyConfig configWithGeneralCurveAndBoxDrop() {
         TapPolicyConfig config = mock(TapPolicyConfig.class);
         when(config.decelThresholdPoints()).thenReturn(7);

@@ -49,7 +49,7 @@ public class TapPolicyConfig {
             Map.entry(KEY_RATE_LIMIT_CAPACITY, "8"),
             Map.entry(KEY_RATE_LIMIT_REFILL_PER_SECOND, "0.125"),
             Map.entry(KEY_BOX_DROP_BASE, "200"),
-            Map.entry(KEY_BOX_DROP_VARIANCE, "0.10")
+            Map.entry(KEY_BOX_DROP_VARIANCE, "0")
     );
 
     private final AppConfigRepository appConfigRepository;
