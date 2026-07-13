@@ -18,11 +18,12 @@
 
 | 상태 | API |
 |---|---|
-| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal` |
+| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
 | 계약 초안 | 위 구현 확인 API를 제외한 MVP API |
 
 - Toss 로그인 API 자체는 구현 확인 상태다. 다만 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 있고 기존 온보딩 객체 계약은 별도 결정이 필요하다.
-- 탭 API는 현재 브랜치에 Controller와 DTO가 없으므로 `/api/v1/taps/batches`, `/api/v1/taps/today`를 계약 초안으로 둔다.
+- 탭 배치 API는 현재 코드에서 `/api/v1/tap/batches`로 구현되어 있다. 기존 문서의 `/api/v1/taps/batches` 표기는 후속 정합화가 필요하다.
+- 앱 설정 API는 Access JWT 필수이며 원본 `app_config` JSON이 아니라 공개 typed DTO만 반환한다.
 - `IDEMPOTENCY_KEY_REUSED`는 계약상 예정된 `409` 에러지만 현재 공통 `ErrorCode` 구현이 필요하다.
 - 목록 API의 `page/size` 방식은 프론트 Mock과 타입 설계를 위한 초안이며 cursor 방식과 최종 선택이 필요하다.
 
