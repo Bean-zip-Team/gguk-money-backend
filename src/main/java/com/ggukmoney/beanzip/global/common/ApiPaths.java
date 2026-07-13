@@ -6,6 +6,7 @@ public final class ApiPaths {
     public static final String AUTH = API_V1 + "/auth";
     public static final String GUESTS = API_V1 + "/guests";
     public static final String APP_CONFIG = API_V1 + "/app-config";
+    public static final String KEYCAPS = API_V1 + "/keycaps";
     public static final String TAP = API_V1 + "/tap";
     public static final String BOOSTERS = API_V1 + "/boosters";
 

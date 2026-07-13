@@ -1,5 +1,14 @@
 # 수정 내역
 
+## 2026-07-14 키캡 목록 조회 API 구현
+
+- `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 키캡 목록은 `active=true` 기준으로 `sortOrder ASC, code ASC` 정렬해 반환하도록 정리했다.
+- 내 키캡 목록은 현재 인증 사용자 UUID 조건으로만 조회하고 `UserKeycap`과 `Keycap`을 join fetch로 함께 조회하도록 기록했다.
+- `keycap` Entity에 `season`, `imageUrl`, `soundUrl`, `sortOrder`, `active`를, `user_keycap` Entity에 `completedAt`을 현재 테이블 명세와 맞춰 반영했다.
+- `Keycap.imageUrl` 추가에 맞춰 회원 조회의 장착 키캡 `imageUrl`도 실제 저장값을 반환하도록 정합화했다.
+- 현재 브랜치에는 Flyway 의존성과 Migration 경로가 없어 별도 Migration 파일은 추가하지 않았다.
+
 ## 2026-07-14 앱 설정 조회 API 구현
 
 - `GET /api/v1/app-config`를 Access JWT 필수 구현 확인 API로 추가했다.
