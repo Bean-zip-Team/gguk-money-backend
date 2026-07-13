@@ -26,9 +26,10 @@
 - 결과: 실패
 - 원인: Docker/Testcontainers 환경 미탐지로 컨테이너 기반 테스트 초기화 실패
 - 영향 테스트: PostgreSQL/Redis Testcontainers를 사용하는 통합 테스트
-- 최근 실행 결과: `67 tests completed, 7 failed`
-- `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 실패했다.
-- 회원 API 관련 단위·컨트롤러 테스트와 기존 인증/포인트 단위 회귀 테스트는 별도 targeted test로 통과 확인했다.
+- 최근 실행 결과: `88 tests completed, 8 failed`
+- `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 Docker/Testcontainers 초기화 실패로 실패했다.
+- 앱 설정 관련 `AppConfigServiceTest`, `AppConfigControllerTest`, `TapPolicyConfigTest`는 targeted test로 통과 확인했다.
+- 기존 탭/부스터 회귀 테스트인 `TapBatchServiceTest`, `BoosterGrantServiceTest`는 targeted test로 통과 확인했다.
 
 ## 구현 및 통과 확인
 
@@ -44,6 +45,8 @@
 - `UserServiceTest`: 회원 조회, 포인트 잔액 0, 장착 키캡 없음, 프로필 부분 수정, 공백 닉네임, 닉네임 중복, 탈퇴 사용자 차단 확인
 - `MemberControllerTest`: 인증 사용자 UUID 전달, 회원 조회·수정 성공 응답 `success/data`, Validation 실패 확인
 - `KeycapServiceTest`: 회원 조회에 필요한 최소 장착 키캡 요약 조회와 `imageUrl` 미보유 시 null 반환 확인
+- `TapBatchServiceTest`: 탭 배치 처리, 포인트 적립, 상자 지급, 부스터 배율 적용, 중복 요청 재처리 방지 확인
+- `BoosterGrantServiceTest`: 부스터 활성화, 중복 활성화 차단, 일일 제한, 현재 상태, 활성 배율 조회 확인
 - `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인
 - `AppConfigServiceTest`: `TapPolicyConfig` 공개값을 typed `AppConfigResponse`로 매핑하고 내부 설정 구조를 노출하지 않음 확인
 - `AppConfigControllerTest`: Access JWT 필수 정책, `GET /api/v1/app-config` 성공 응답 구조, 내부 설정 키와 원본 JSON 미노출 확인
@@ -59,17 +62,15 @@
 - `AuthServiceLogoutAllIntegrationTest`: 실제 Redis에서 logout-all 삭제와 revoke marker 확인
 - `GlobalExceptionHandlerTest`: Testcontainers 기반 FullStack 지원 클래스에 의존해 환경 문제로 실행 미확인
 - 회원 API 통합 회귀 테스트: 현재 Docker/Testcontainers 환경 부재로 전체 `clean test`, `clean build`에서 확인 필요
+- 탭/부스터 통합 테스트: `TapApiIntegrationTest`, `BoosterApiIntegrationTest`, `TapBatchServiceRateLimitIntegrationTest`는 Docker/Testcontainers 초기화 실패로 이번 전체 검증에서 실행 결과를 확인하지 못했다.
 
 ## 기능 미구현으로 보류
 
-아래 항목은 Entity와 Repository 또는 목표 계약은 있으나 Controller/Service가 아직 없어 기능 테스트를 보류한다.
+아래 항목은 Entity와 Repository 또는 목표 계약은 있으나 Controller/Service 또는 외부 연동 흐름이 아직 없어 기능 테스트를 보류한다.
 
 - 온보딩 정산: 로그인 DTO에 온보딩 필드가 없고 별도 API도 아직 없다.
-- 탭 배치: `TapController`와 탭 Request/Response DTO가 없다.
-- 상자 개봉: 상자 개봉 Controller/Service가 없다.
-- 포인트 적립과 원장 반영: 포인트 서비스가 없다.
+- 상자 개봉 API: 상자 개봉 Controller/Service가 없다.
 - 출금 요청과 Toss 지급: 출금 Controller/Service와 외부 지급 복구 흐름이 없다.
-- 부스터 활성화와 적용: 부스터 Controller/Service가 없다.
 - 앱 설정 외의 운영 정책 API: 앱 버전, 점검 상태, 출금 정책 조회는 실제 설정 키와 서비스 구현이 없어 보류한다.
 
 ## 추가해야 할 테스트
