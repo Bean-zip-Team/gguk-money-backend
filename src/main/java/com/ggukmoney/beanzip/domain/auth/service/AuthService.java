@@ -10,10 +10,12 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
@@ -65,6 +67,8 @@ public class AuthService {
     private final UserService userService;
     private final PointAccountService pointAccountService;
     private final KeycapBoxAccountService keycapBoxAccountService;
+    private final UserTapProgressService userTapProgressService;
+    private final TapPolicyConfig tapPolicyConfig;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -111,6 +115,7 @@ public class AuthService {
             authIdentityRepository.save(AuthIdentity.toss(user, userKey));
             pointAccountService.createFor(user);
             keycapBoxAccountService.createFor(user);
+            userTapProgressService.createFor(user, tapPolicyConfig);
             newUser = true;
         } else {
             user = identity.getUser();

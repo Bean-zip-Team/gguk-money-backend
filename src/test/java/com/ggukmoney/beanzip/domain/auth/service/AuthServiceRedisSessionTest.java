@@ -37,7 +37,7 @@ class AuthServiceRedisSessionTest {
                 eq("2000")
         )).thenReturn(1L);
 
-        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         AuthService.AuthSession session = new AuthService.AuthSession(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -91,7 +91,7 @@ class AuthServiceRedisSessionTest {
                 eq("1782951300000")
         )).thenReturn(2L);
 
-        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         long revokedCount = authService.revokeAllUserSessions(
                 userId,
@@ -121,7 +121,7 @@ class AuthServiceRedisSessionTest {
         when(redisService.get("auth:revoke:user:10000000-0000-0000-0000-000000000001"))
                 .thenReturn(java.util.Optional.of("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"));
 
-        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null, null, null, null);
 
         assertThat(authService.findUserRevokedAtMillis(userId)).contains(1782950400000L);
     }

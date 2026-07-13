@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.keycap.entity;
+package com.ggukmoney.beanzip.domain.tap.entity;
 
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import jakarta.persistence.Column;
@@ -22,9 +22,9 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "keycap_box_account")
+@Table(name = "user_tap_progress")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class KeycapBoxAccount {
+public class UserTapProgress {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,11 +37,14 @@ public class KeycapBoxAccount {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private AppUser user;
 
-    @Column(name = "box_balance", nullable = false)
-    private Integer boxBalance = 0;
+    @Column(name = "cumulative_valid_tap_count", nullable = false)
+    private Long cumulativeValidTapCount = 0L;
 
-    @Column(name = "free_open_ticket_count", nullable = false)
-    private Integer freeOpenTicketCount = 0;
+    @Column(name = "next_point_target", nullable = false)
+    private Integer nextPointTarget;
+
+    @Column(name = "next_box_target", nullable = false)
+    private Integer nextBoxTarget;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -53,14 +56,32 @@ public class KeycapBoxAccount {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static KeycapBoxAccount createFor(AppUser user) {
-        KeycapBoxAccount account = new KeycapBoxAccount();
-        account.user = user;
-        return account;
+    public static UserTapProgress createFor(AppUser user, int initialPointTarget, int initialBoxTarget) {
+        UserTapProgress progress = new UserTapProgress();
+        progress.user = user;
+        progress.nextPointTarget = initialPointTarget;
+        progress.nextBoxTarget = initialBoxTarget;
+        return progress;
     }
 
-    public void addBoxes(int count) {
-        this.boxBalance += count;
+    public void addValidTaps(long count) {
+        this.cumulativeValidTapCount += count;
+    }
+
+    public boolean hasReachedPointTarget() {
+        return cumulativeValidTapCount >= nextPointTarget;
+    }
+
+    public boolean hasReachedBoxTarget() {
+        return cumulativeValidTapCount >= nextBoxTarget;
+    }
+
+    public void advancePointTarget(int nextTarget) {
+        this.nextPointTarget = nextTarget;
+    }
+
+    public void advanceBoxTarget(int nextTarget) {
+        this.nextBoxTarget = nextTarget;
     }
 
     @PrePersist
