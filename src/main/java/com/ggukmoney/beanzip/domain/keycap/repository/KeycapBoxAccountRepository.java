@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface KeycapBoxAccountRepository extends JpaRepository<KeycapBoxAccount, Long> {
 
     Optional<KeycapBoxAccount> findByPublicId(UUID publicId);
+
+    Optional<KeycapBoxAccount> findByUserId(UUID userId);
 }

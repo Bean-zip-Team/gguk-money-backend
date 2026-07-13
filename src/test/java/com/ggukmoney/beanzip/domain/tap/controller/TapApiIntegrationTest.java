@@ -1,9 +1,13 @@
 package com.ggukmoney.beanzip.domain.tap.controller;
 
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.repository.PointAccountRepository;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +28,15 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     @Autowired
     private PointAccountRepository pointAccountRepository;
 
+    @Autowired
+    private KeycapBoxAccountRepository keycapBoxAccountRepository;
+
+    @Autowired
+    private UserTapProgressService userTapProgressService;
+
+    @Autowired
+    private TapPolicyConfig tapPolicyConfig;
+
     @Test
     void submitsBatchAndReturnsAcceptedCountAndBalanceWithoutExposingTarget() throws Exception {
         TestTokens tokens = registerUserWithSession("tester-1");
@@ -37,8 +50,10 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.acceptedCount").value(50))
                 .andExpect(jsonPath("$.data.pointsAwarded").exists())
+                .andExpect(jsonPath("$.data.boxesDropped").exists())
                 .andExpect(jsonPath("$.data.balance").exists())
-                .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist());
+                .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist())
+                .andExpect(jsonPath("$.data.nextBoxTarget").doesNotExist());
     }
 
     @Test
@@ -84,6 +99,8 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TestTokens registerUserWithSession(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        userTapProgressService.createFor(user, tapPolicyConfig);
         return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
     }
 

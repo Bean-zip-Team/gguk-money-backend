@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
@@ -8,6 +9,7 @@ import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
@@ -49,8 +51,10 @@ public class TapBatchService {
 
     private final TapBatchRepository tapBatchRepository;
     private final UserTapDailyService userTapDailyService;
+    private final UserTapProgressService userTapProgressService;
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
+    private final KeycapBoxAccountService keycapBoxAccountService;
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
     private final UserService userService;
@@ -64,7 +68,7 @@ public class TapBatchService {
         Optional<TapBatch> existing = tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, request.tapSessionId(), request.sequence());
         if (existing.isPresent()) {
             long balance = pointAccountService.getBalance(userId);
-            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), 0, balance);
+            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), 0, 0, balance);
         }
 
         AppUser user = userService.getById(userId);
@@ -77,7 +81,7 @@ public class TapBatchService {
 
         int minuteRemaining = tapPolicyConfig.maxPerMinute() - getMinuteCount(userId);
 
-        UserTapDaily daily = userTapDailyService.getOrCreateToday(user, tapPolicyConfig);
+        UserTapDaily daily = userTapDailyService.getOrCreateToday(user);
         int dailyRemaining = tapPolicyConfig.maxPerDay() - daily.getValidTapCount();
 
         int acceptedCount = calculateAcceptedCount(
@@ -99,28 +103,44 @@ public class TapBatchService {
         addMinuteCount(userId, acceptedCount);
 
         int pointsAwarded = 0;
+        int boxesDropped = 0;
         long balance = pointAccountService.getBalance(userId);
 
         if (!botSuspected && acceptedCount > 0) {
             daily.addValidTaps(acceptedCount);
+            UserTapProgress progress = userTapProgressService.getForUser(userId);
+            progress.addValidTaps(acceptedCount);
+
             int dailyCap = tapPolicyConfig.pointDailyCap();
             int awardIndex = 0;
-            while (daily.hasReachedTarget() && daily.getPointEarnedAmount() < dailyCap) {
+            while (progress.hasReachedPointTarget() && daily.getPointEarnedAmount() < dailyCap) {
                 UUID idempotencyKey = deterministicIdempotencyKey(batch.getPublicId(), awardIndex);
                 PointAccount account = pointAccountService.credit(userId, 1);
                 pointLedgerService.recordCredit(account, user, 1, CREDIT_REASON_TAP, idempotencyKey);
+                daily.incrementPointEarned();
 
-                int nextTarget = userTapDailyService.drawNextTarget(daily.getValidTapCount(), daily.getPointEarnedAmount() + 1, tapPolicyConfig);
-                daily.awardPoint(nextTarget);
+                int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), daily.getPointEarnedAmount(), tapPolicyConfig);
+                progress.advancePointTarget(nextTarget);
 
                 balance = account.getBalance();
                 pointsAwarded++;
                 awardIndex++;
             }
+
+            while (progress.hasReachedBoxTarget()) {
+                keycapBoxAccountService.addBoxes(userId, 1);
+
+                int nextBoxTarget = userTapProgressService.drawNextBoxTarget(progress.getCumulativeValidTapCount(), tapPolicyConfig);
+                progress.advanceBoxTarget(nextBoxTarget);
+
+                boxesDropped++;
+            }
+
             userTapDailyService.save(daily);
+            userTapProgressService.save(progress);
         }
 
-        return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, balance);
+        return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, boxesDropped, balance);
     }
 
     private int calculateAcceptedCount(

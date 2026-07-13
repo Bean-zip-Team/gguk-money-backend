@@ -31,6 +31,8 @@ public class TapPolicyConfig {
     public static final String KEY_BOT_STDDEV_THRESHOLD_MS = "tap.bot.stddevThresholdMs";
     public static final String KEY_RATE_LIMIT_CAPACITY = "tap.rateLimit.capacity";
     public static final String KEY_RATE_LIMIT_REFILL_PER_SECOND = "tap.rateLimit.refillPerSecond";
+    public static final String KEY_BOX_DROP_BASE = "tap.box.dropBase";
+    public static final String KEY_BOX_DROP_VARIANCE = "tap.box.dropVariance";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_MIN_INTERVAL_MS, "80"),
@@ -45,7 +47,9 @@ public class TapPolicyConfig {
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
             Map.entry(KEY_BOT_STDDEV_THRESHOLD_MS, "12"),
             Map.entry(KEY_RATE_LIMIT_CAPACITY, "8"),
-            Map.entry(KEY_RATE_LIMIT_REFILL_PER_SECOND, "0.125")
+            Map.entry(KEY_RATE_LIMIT_REFILL_PER_SECOND, "0.125"),
+            Map.entry(KEY_BOX_DROP_BASE, "200"),
+            Map.entry(KEY_BOX_DROP_VARIANCE, "0")
     );
 
     private final AppConfigRepository appConfigRepository;
@@ -116,6 +120,14 @@ public class TapPolicyConfig {
 
     public double rateLimitRefillPerSecond() {
         return getDouble(KEY_RATE_LIMIT_REFILL_PER_SECOND);
+    }
+
+    public int boxDropBase() {
+        return getInt(KEY_BOX_DROP_BASE);
+    }
+
+    public double boxDropVariance() {
+        return getDouble(KEY_BOX_DROP_VARIANCE);
     }
 
     private int getInt(String key) {

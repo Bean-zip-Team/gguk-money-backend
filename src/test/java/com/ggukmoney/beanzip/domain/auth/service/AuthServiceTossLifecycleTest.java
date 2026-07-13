@@ -8,9 +8,11 @@ import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,8 @@ class AuthServiceTossLifecycleTest {
     private UserService userService;
     private PointAccountService pointAccountService;
     private KeycapBoxAccountService keycapBoxAccountService;
+    private UserTapProgressService userTapProgressService;
+    private TapPolicyConfig tapPolicyConfig;
     private AuthService authService;
 
     @BeforeEach
@@ -70,6 +74,8 @@ class AuthServiceTossLifecycleTest {
         userService = mock(UserService.class);
         pointAccountService = mock(PointAccountService.class);
         keycapBoxAccountService = mock(KeycapBoxAccountService.class);
+        userTapProgressService = mock(UserTapProgressService.class);
+        tapPolicyConfig = mock(TapPolicyConfig.class);
         authService = new AuthService(
                 jwtTokenProvider,
                 redisService,
@@ -77,7 +83,9 @@ class AuthServiceTossLifecycleTest {
                 authIdentityRepository,
                 userService,
                 pointAccountService,
-                keycapBoxAccountService
+                keycapBoxAccountService,
+                userTapProgressService,
+                tapPolicyConfig
         );
         ReflectionTestUtils.setField(authService, "tossWebhookSecret", "webhook-secret");
     }
@@ -112,6 +120,7 @@ class AuthServiceTossLifecycleTest {
         verify(authIdentityRepository).save(any(AuthIdentity.class));
         verify(pointAccountService).createFor(any(AppUser.class));
         verify(keycapBoxAccountService).createFor(any(AppUser.class));
+        verify(userTapProgressService).createFor(any(AppUser.class), eq(tapPolicyConfig));
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -136,6 +145,7 @@ class AuthServiceTossLifecycleTest {
         verify(userService, never()).createActive(any(), any());
         verify(pointAccountService, never()).createFor(any());
         verify(keycapBoxAccountService, never()).createFor(any());
+        verify(userTapProgressService, never()).createFor(any(), any());
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
