@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
+import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
@@ -26,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -55,6 +58,7 @@ public class TapBatchService {
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
     private final KeycapBoxAccountService keycapBoxAccountService;
+    private final BoosterGrantService boosterGrantService;
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
     private final UserService userService;
@@ -111,19 +115,22 @@ public class TapBatchService {
             UserTapProgress progress = userTapProgressService.getForUser(userId);
             progress.addValidTaps(acceptedCount);
 
+            BigDecimal boosterMultiplier = boosterGrantService.findActiveMultiplier(userId, now);
+            long creditAmount = BigDecimal.ONE.multiply(boosterMultiplier).setScale(0, RoundingMode.DOWN).longValueExact();
+
             int dailyCap = tapPolicyConfig.pointDailyCap();
             int awardIndex = 0;
             while (progress.hasReachedPointTarget() && daily.getPointEarnedAmount() < dailyCap) {
                 UUID idempotencyKey = deterministicIdempotencyKey(batch.getPublicId(), awardIndex);
-                PointAccount account = pointAccountService.credit(userId, 1);
-                pointLedgerService.recordCredit(account, user, 1, CREDIT_REASON_TAP, idempotencyKey);
+                PointAccount account = pointAccountService.credit(userId, creditAmount);
+                pointLedgerService.recordCredit(account, user, creditAmount, CREDIT_REASON_TAP, idempotencyKey);
                 daily.incrementPointEarned();
 
                 int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), daily.getPointEarnedAmount(), tapPolicyConfig);
                 progress.advancePointTarget(nextTarget);
 
                 balance = account.getBalance();
-                pointsAwarded++;
+                pointsAwarded += creditAmount;
                 awardIndex++;
             }
 

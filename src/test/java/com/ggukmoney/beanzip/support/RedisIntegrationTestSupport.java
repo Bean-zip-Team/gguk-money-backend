@@ -41,7 +41,7 @@ public abstract class RedisIntegrationTestSupport {
         redisTemplate.afterPropertiesSet();
         RedisService redisService = new RedisService(redisTemplate);
         authService = new AuthService(null, redisService, null, null, null, null, null, null, null);
-        tapBatchService = new TapBatchService(null, null, null, null, null, null, redisService, null, null);
+        tapBatchService = new TapBatchService(null, null, null, null, null, null, null, redisService, null, null);
         flushRedis();
     }
 
