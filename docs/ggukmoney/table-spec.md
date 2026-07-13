@@ -111,10 +111,11 @@ Unique:
 
 설정 키 예시:
 
-- `point_policy`
-- `box_policy`
-- `cashout_policy`
-- `booster_policy`
+- `tap.point.dailyCap`
+- `tap.box.dropBase`
+- `tap.box.dropVariance`
+- `tap.booster.durationSeconds`
+- `tap.booster.dailyLimit`
 
 ## 4. keycap
 
@@ -357,4 +358,4 @@ Unique와 Check:
 - Migration 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
 - Migration 기준으로 `booster_grant`의 사용자별 활성 부스터 1개 제한은 없다.
 - Migration 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.
-- `app_config`는 `(config_key, effective_at)` Unique와 인덱스를 갖지만 현재 Repository에는 유효 시각 기준 조회 메서드가 없다.
+- `app_config`는 `(config_key, effective_at)` Unique와 인덱스를 갖고, 현재 Repository에는 유효 시각 기준 최신 설정을 조회하는 `findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(...)`가 있다.

@@ -1,5 +1,13 @@
 # 수정 내역
 
+## 2026-07-14 앱 설정 조회 API 구현
+
+- `GET /api/v1/app-config`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 응답은 원본 `app_config.config_value` JSON이 아니라 `pointPolicy`, `boxPolicy`, `boosterPolicy` typed DTO만 반환하도록 정리했다.
+- 공개값은 `TapPolicyConfig` 기준으로 `pointPolicy.dailyLimit=20`, `boxPolicy.baseRequiredTapCount=200`, `boosterPolicy.durationSeconds=300`, `boosterPolicy.dailyLimit=3`을 사용한다.
+- 내부 탭 검증값, 봇 판정값, 레이트리밋 값, `boxDropVariance`, 앱 버전, 점검 상태, 출금 정책, 부스터 배율은 앱 설정 응답에 포함하지 않는다.
+- `AppConfigRepository`의 유효 시각 기준 조회 메서드가 존재함을 문서에 반영했다.
+
 ## 2026-07-12 회원 조회·수정 API 구현
 
 - `GET /api/v1/members/me`, `PATCH /api/v1/members/me`를 구현 확인 상태로 갱신했다.

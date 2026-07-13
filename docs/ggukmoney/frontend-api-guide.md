@@ -22,10 +22,12 @@
 
 | 상태 | API 수 |
 |---|---:|
-| 구현 확인 | 8 |
+| 구현 확인 | 12 |
 | 구현 확인 · 결정 필요 | 0 |
-| 계약 초안 | 17 |
+| 계약 초안 | 13 |
 | 전체 | 25 |
+
+> 탭과 부스터는 현재 Controller와 DTO가 존재하므로 집계에는 구현 확인으로 반영한다. 다만 세부 문서의 경로·상태 문구는 별도 문서 정리에서 계속 정합화가 필요하다.
 
 ## 공통 규칙
 
@@ -818,19 +820,17 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 9. `GET /api/v1/app-config`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-앱 운영 정책과 버전 정보를 조회한다. 로그인 전 공개 API로 제공할지는 확정이 필요하다.
-
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
+앱에서 표시할 공개 운영 정책을 조회한다. Access JWT가 필요한 인증 API이며, 서버 내부 검증값과 원본 `app_config.config_value` JSON은 반환하지 않는다.
 
 #### Request Header
 
 | name | type | required | description |
 |---|---|---:|---|
-| `Authorization` | String | X | 공개 여부 확정 필요 |
+| `Authorization` | String | O | `Bearer {accessToken}` |
 
 #### Request Body
 
@@ -840,7 +840,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+`200 OK`
 
 ##### Response Body
 
@@ -849,30 +849,49 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `success` | Boolean | 요청 성공 여부 |
 | `data.pointPolicy` | Object | 포인트 정책 |
 | `data.boxPolicy` | Object | 상자 정책 |
-| `data.cashoutPolicy` | Object | 출금 정책 |
 | `data.boosterPolicy` | Object | 부스터 정책 |
+| `data.pointPolicy.dailyLimit` | Number | 일일 포인트 적립 한도 |
+| `data.boxPolicy.baseRequiredTapCount` | Number | 누적 유효 탭 기준 상자 지급 기본 간격 |
+| `data.boosterPolicy.durationSeconds` | Number | 부스터 지속 시간(초) |
+| `data.boosterPolicy.dailyLimit` | Number | 일일 부스터 활성화 제한 |
 
 ```json
 {
   "success": true,
   "data": {
     "pointPolicy": {
-      "dailyLimit": 100
+      "dailyLimit": 20
     },
     "boxPolicy": {
-      "nextBoxRequiredTapCount": 100
-    },
-    "cashoutPolicy": {
-      "exchangeRate": 0.7
+      "baseRequiredTapCount": 200
     },
     "boosterPolicy": {
-      "multiplier": 2.0
+      "durationSeconds": 300,
+      "dailyLimit": 3
     }
   }
 }
 ```
 
+반환하지 않는 값:
+
+- 내부 BIGINT PK, `publicId`, `effectiveAt`, 원본 `configKey`, 원본 `configValue`
+- 탭 최소 간격, 분당/일일 탭 제한, 봇 판정값, 레이트리밋 값, 포인트 곡선 내부값, `boxDropVariance`
+- 앱 버전, 점검 상태, 출금 환율/한도, 부스터 배율, 사용자별 다음 상자까지 남은 탭 수, 사용자별 상자 잔액
+
 #### Error Response
+
+##### `401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "인증이 필요합니다."
+  }
+}
+```
 
 ##### `500 Internal Server Error`
 
@@ -2083,8 +2102,8 @@ Query Parameter 초안:
 
 1. 현재 Toss 로그인 DTO에는 `authorizationCode`, `referrer`만 있으며 기존 온보딩 계약에는 `onboardingAttemptId`, `onboardingTapCount`가 있다.
 2. 로그인 온보딩 정산을 로그인 DTO에 포함할지 별도 API로 분리할지 결정해야 한다.
-3. 현재 브랜치에는 `TapController`와 탭 DTO가 없어 `/api/v1/taps/batches`는 계약 초안 상태다.
+3. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
 4. `IDEMPOTENCY_KEY_REUSED`는 계약 문서에는 있지만 현재 `ErrorCode`에는 없다.
 5. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
-6. `app-config`, `keycaps` API의 공개 여부 확정이 필요하다.
+6. `keycaps` API의 공개 여부 확정이 필요하다. `app-config`는 Access JWT 필수 API로 확정됐다.
 7. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.

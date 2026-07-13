@@ -159,7 +159,7 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 | MEDIUM | 원장 사용자 정합성 | `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 DB 제약으로 보장하지 않는다. | 서비스 검증 또는 복합 FK/제약 검토 |
 | MEDIUM | 활성 부스터 제한 | `booster_grant`에 사용자별 활성 부스터 1개 제한이 없다. | Partial Unique 또는 서비스 잠금 검토 |
 | MEDIUM | 키캡 장착 상태 | `user_keycap.equipped=true`가 `COMPLETED`일 때만 가능하다는 DB 제약이 없다. | CHECK/서비스 검증 검토 |
-| MEDIUM | app_config 조회 정책 | Repository는 `findByPublicId`만 있고 `config_key/effective_at` 기준 선택 구현이 없다. | 유효 설정 선택 쿼리 추가 |
+| MEDIUM | app_config 공개 범위 | Repository에는 `config_key/effective_at` 기준 선택 메서드가 있고 앱 설정 조회 API는 `TapPolicyConfig`의 공개 typed DTO만 반환한다. 원본 JSON과 내부 검증값은 외부에 노출하지 않는다. | 신규 운영 정책 키 추가 시 공개 DTO 반영 여부를 별도 검토 |
 
 ## 민감정보 로그 정책
 

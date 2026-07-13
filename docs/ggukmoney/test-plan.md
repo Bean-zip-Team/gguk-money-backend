@@ -44,6 +44,9 @@
 - `UserServiceTest`: 회원 조회, 포인트 잔액 0, 장착 키캡 없음, 프로필 부분 수정, 공백 닉네임, 닉네임 중복, 탈퇴 사용자 차단 확인
 - `MemberControllerTest`: 인증 사용자 UUID 전달, 회원 조회·수정 성공 응답 `success/data`, Validation 실패 확인
 - `KeycapServiceTest`: 회원 조회에 필요한 최소 장착 키캡 요약 조회와 `imageUrl` 미보유 시 null 반환 확인
+- `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인
+- `AppConfigServiceTest`: `TapPolicyConfig` 공개값을 typed `AppConfigResponse`로 매핑하고 내부 설정 구조를 노출하지 않음 확인
+- `AppConfigControllerTest`: Access JWT 필수 정책, `GET /api/v1/app-config` 성공 응답 구조, 내부 설정 키와 원본 JSON 미노출 확인
 
 ## 코드 존재·환경 문제로 실행 미확인
 
@@ -67,7 +70,7 @@
 - 포인트 적립과 원장 반영: 포인트 서비스가 없다.
 - 출금 요청과 Toss 지급: 출금 Controller/Service와 외부 지급 복구 흐름이 없다.
 - 부스터 활성화와 적용: 부스터 Controller/Service가 없다.
-- `app_config` 유효 설정 조회: `config_key/effective_at` 기준 Repository 메서드는 존재하지만 Controller, Service, Response DTO가 없다.
+- 앱 설정 외의 운영 정책 API: 앱 버전, 점검 상태, 출금 정책 조회는 실제 설정 키와 서비스 구현이 없어 보류한다.
 
 ## 추가해야 할 테스트
 
