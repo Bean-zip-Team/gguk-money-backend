@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.keycap.dto.mapper;
 
+import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapItemResponse;
@@ -73,6 +74,35 @@ class KeycapMapperTest {
 
         assertThat(response.keycaps()).hasSize(1);
         assertThat(response.keycaps().get(0).status()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void mapsEquippedKeycapImageUrlFromKeycap() {
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap userKeycap =
+                userKeycap(UUID.randomUUID(), keycapId, "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+        ReflectionTestUtils.setField(userKeycap.getKeycap(), "imageUrl", "https://example.com/equipped.png");
+
+        EquippedKeycapResponse response = keycapMapper.mapToEquippedKeycapResponse(userKeycap);
+
+        assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.code()).isEqualTo("BASIC_001");
+        assertThat(response.name()).isEqualTo("Basic");
+        assertThat(response.imageUrl()).isEqualTo("https://example.com/equipped.png");
+    }
+
+    @Test
+    void mapsNullEquippedKeycapImageUrlWhenKeycapImageUrlIsNull() {
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap userKeycap =
+                userKeycap(UUID.randomUUID(), keycapId, "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+
+        EquippedKeycapResponse response = keycapMapper.mapToEquippedKeycapResponse(userKeycap);
+
+        assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.code()).isEqualTo("BASIC_001");
+        assertThat(response.name()).isEqualTo("Basic");
+        assertThat(response.imageUrl()).isNull();
     }
 
     private static UserKeycap userKeycap(

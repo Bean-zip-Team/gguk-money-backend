@@ -575,7 +575,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 내 사용자 정보, 장착 키캡, 포인트 잔액을 조회한다.
 
-현재 구현은 장착 키캡이 없으면 `equippedKeycap=null`을 반환한다. 현재 `keycap` Entity에는 `imageUrl` 필드가 없으므로 장착 키캡이 있어도 `equippedKeycap.imageUrl=null`을 반환하며, 임의의 고정 URL을 만들지 않는다.
+현재 구현은 장착 키캡이 없으면 `equippedKeycap=null`을 반환한다. 장착 키캡이 있으면 `Keycap.imageUrl` 저장값을 `equippedKeycap.imageUrl`로 반환하며, 저장된 imageUrl이 없으면 `null`을 반환한다. 임의의 고정 URL은 만들지 않는다.
 
 #### Request Header
 
@@ -617,7 +617,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
       "keycapId": "4e5d3a9b-02d0-4b45-b2bd-2bb30b01bb9f",
       "code": "BASIC_001",
       "name": "기본 키캡",
-      "imageUrl": null
+      "imageUrl": "https://example.com/keycap.png"
     },
     "pointBalance": 42
   }

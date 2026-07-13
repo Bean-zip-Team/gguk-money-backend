@@ -41,6 +41,6 @@ public interface KeycapMapper {
     @Mapping(target = "keycapId", source = "keycap.publicId")
     @Mapping(target = "code", source = "keycap.code")
     @Mapping(target = "name", source = "keycap.name")
-    @Mapping(target = "imageUrl", expression = "java(null)")
+    @Mapping(target = "imageUrl", source = "keycap.imageUrl")
     EquippedKeycapResponse mapToEquippedKeycapResponse(UserKeycap userKeycap);
 }
