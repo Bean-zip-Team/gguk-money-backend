@@ -18,7 +18,7 @@
 
 | 상태 | API |
 |---|---|
-| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
+| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
 | 계약 초안 | 위 구현 확인 API를 제외한 MVP API |
 
 - Toss 로그인 API 자체는 구현 확인 상태다. 다만 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 있고 기존 온보딩 객체 계약은 별도 결정이 필요하다.

@@ -50,11 +50,14 @@ public class UserKeycap {
     private Integer shardCount = 0;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 30)
+    @Column(name = "status", nullable = false, length = 20)
     private Status status = Status.IN_PROGRESS;
 
     @Column(name = "equipped", nullable = false)
     private boolean equipped = false;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

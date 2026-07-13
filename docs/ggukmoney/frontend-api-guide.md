@@ -22,9 +22,9 @@
 
 | 상태 | API 수 |
 |---|---:|
-| 구현 확인 | 12 |
+| 구현 확인 | 14 |
 | 구현 확인 · 결정 필요 | 0 |
-| 계약 초안 | 13 |
+| 계약 초안 | 11 |
 | 전체 | 25 |
 
 > 탭과 부스터는 현재 Controller와 DTO가 존재하므로 집계에는 구현 확인으로 반영한다. 다만 세부 문서의 경로·상태 문구는 별도 문서 정리에서 계속 정합화가 필요하다.
@@ -907,19 +907,18 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 10. `GET /api/v1/keycaps`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-활성 키캡 마스터 목록을 조회한다. 로그인 전 공개 API로 제공할지는 확정이 필요하다.
+활성 키캡 마스터 목록을 조회한다. Access JWT가 필요하며, `active=true` 키캡만 `sortOrder ASC, code ASC` 순서로 반환한다. 목록이 없으면 `200 OK`와 빈 배열을 반환한다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
 
 #### Request Header
 
 | name | type | required | description |
 |---|---|---:|---|
-| `Authorization` | String | X | 공개 여부 확정 필요 |
+| `Authorization` | String | O | `Bearer {accessToken}` |
 
 #### Request Body
 
@@ -929,7 +928,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+`200 OK`
 
 ##### Response Body
 
@@ -968,6 +967,18 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 #### Error Response
 
+##### `401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "인증이 필요합니다."
+  }
+}
+```
+
 ##### `500 Internal Server Error`
 
 ```json
@@ -982,13 +993,12 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 11. `GET /api/v1/keycaps/me`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-내가 보유한 키캡 조각, 완성 상태, 장착 여부를 조회한다.
+내가 보유한 키캡 조각, 완성 상태, 장착 여부를 조회한다. 현재 인증 사용자 UUID 조건으로만 조회하며, `UserKeycap`과 `Keycap`을 join fetch로 함께 조회해 N+1을 방지한다. 목록이 없으면 `200 OK`와 빈 배열을 반환한다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
 
 #### Request Header
 
@@ -1004,7 +1014,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+`200 OK`
 
 ##### Response Body
 
@@ -2105,5 +2115,5 @@ Query Parameter 초안:
 3. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
 4. `IDEMPOTENCY_KEY_REUSED`는 계약 문서에는 있지만 현재 `ErrorCode`에는 없다.
 5. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
-6. `keycaps` API의 공개 여부 확정이 필요하다. `app-config`는 Access JWT 필수 API로 확정됐다.
+6. `keycaps` 목록 조회 API는 Access JWT 필수 API로 확정됐다.
 7. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.
