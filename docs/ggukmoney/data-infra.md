@@ -110,6 +110,15 @@ keycap_box_account
 + keycap_box_open
 ```
 
+상자 개봉은 후속 구현 대상이다. 확정 계약은 PostgreSQL을 멱등성 Source of Truth로 사용한다.
+
+- 모든 성공 개봉은 `keycap_box_account.box_balance`를 1 차감한다.
+- `FREE`는 추가로 `keycap_box_account.free_open_ticket_count`를 1 차감한다.
+- `ADVERTISEMENT`는 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다. 검증 구현 후에는 `ad_reward_id`를 필수로 받고 전역 중복 사용을 금지한다.
+- 보상 후보는 `keycap.active=true` 키캡이다. 시즌 필터와 가중치는 저장 원본이 없어 후속 결정 사항이다.
+- 기본 지급 조각 수는 1개이며, `user_keycap.shard_count`는 `required_shard_count`를 초과 저장하지 않는다.
+- 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
+
 ### 키캡 장착
 
 ```text
@@ -159,6 +168,8 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 - 같은 멱등 기준과 같은 Request Body 또는 같은 `request_hash`는 상태를 다시 변경하지 않고 기존 결과를 반환한다.
 - 같은 멱등 기준에 다른 Request Body 또는 다른 `request_hash`가 들어오면 계약상 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다.
 - `IDEMPOTENCY_KEY_REUSED`는 현재 공통 `ErrorCode` 구현이 필요하다.
+
+상자 개봉의 `request_hash`는 `openMethod`, `adRewardId`를 정규화한 값의 SHA-256 Base64URL이다. 같은 `(user_id, idempotency_key)`와 같은 `request_hash`는 기존 결과를 반환하고, 다른 `request_hash`는 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다. 동시 동일 요청으로 Unique 충돌이 발생하면 기존 row를 재조회해 같은 응답으로 복구한다.
 
 ## 코드 검토 필요 항목
 

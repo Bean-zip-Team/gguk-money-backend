@@ -157,12 +157,18 @@ tap_batch
 
 ## 상자 개봉과 키캡 조각
 
-1. `keycap_box_account`를 잠근다.
-2. 무료 개봉 또는 검증된 광고 보상 여부를 확인한다.
-3. 서버가 대상 키캡과 조각 수를 결정한다.
-4. `user_keycap.shard_count`를 증가시킨다.
-5. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
-6. `keycap_box_open`에 개봉 방식과 결과를 한 행으로 저장한다.
+상자 개봉 API는 후속 구현 대상이다. 최종 트랜잭션 계약은 아래 순서다.
+
+1. `Idempotency-Key`를 검증하고 `openMethod`, `adRewardId` 기반 `request_hash`를 계산한다.
+2. `(user_id, idempotency_key)` 기존 개봉 이력이 있으면 `request_hash`를 비교한다. 같으면 기존 결과를 반환하고, 다르면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
+3. `keycap_box_account`를 잠근다.
+4. 모든 개봉은 `box_balance`를 1 차감한다. `FREE`는 추가로 `free_open_ticket_count`를 1 차감한다. `ADVERTISEMENT`는 검증된 `ad_reward_id`를 소비하며, 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다.
+5. 서버가 활성 키캡 후보에서 대상 키캡과 지급 조각 수를 결정한다. MVP 기본 지급 조각 수는 1개다.
+6. `user_keycap`이 없으면 생성하고, 있으면 `shard_count`를 증가시킨다. 조각 수는 `required_shard_count`를 초과 저장하지 않는다.
+7. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
+8. `keycap_box_open`에 개봉 방식, 멱등키, 요청 해시, 보상 결과를 한 행으로 저장한다.
+
+현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
 
 ## 포인트 출금
 

@@ -198,13 +198,13 @@ Unique와 인덱스:
 | `public_id` | UUID | N | Java 생성 | UNIQUE |
 | `user_id` | UUID | N | | FK `app_user(id)` |
 | `open_method` | VARCHAR(20) | N | | CHECK `FREE`, `ADVERTISEMENT` |
-| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지 |
-| `ad_reward_id` | VARCHAR(255) | Y | | 광고 보상 식별자 |
+| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지. 현재 Entity는 nullable이므로 구현 이슈에서 NOT NULL 정합화 필요 |
+| `request_hash` | VARCHAR(255) | N | | 같은 멱등키의 요청 내용 일치 확인. 구현 이슈에서 추가 필요 |
+| `ad_reward_id` | VARCHAR(255) | Y | | 광고 보상 식별자. 광고 검증 Service 구현 전에는 저장하지 않음 |
 | `keycap_id` | BIGINT | N | | FK `keycap(id)` |
 | `shard_count` | INTEGER | N | | CHECK `> 0` |
-| `boost_applied` | BOOLEAN | N | false | 부스터 적용 여부 |
-| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지 |
-| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각 |
+| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지. 구현 이슈에서 추가 필요 |
+| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각. 구현 이슈에서 추가 필요 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
@@ -213,6 +213,8 @@ Unique와 인덱스:
 - `(user_id, idempotency_key)`
 - `UNIQUE (ad_reward_id) WHERE ad_reward_id IS NOT NULL`
 - `ix_keycap_box_open_user_time(user_id, opened_at DESC)`
+
+현재 부스터는 포인트 적립 전용이므로 상자 개봉 MVP 명세에는 `boost_applied`를 포함하지 않는다. 키캡 조각 부스터가 도입되면 별도 설계와 Migration으로 추가한다.
 
 ## 8. tap_batch
 

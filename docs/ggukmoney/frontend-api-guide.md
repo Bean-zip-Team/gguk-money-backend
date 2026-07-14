@@ -177,6 +177,14 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 404 | `USER_KEYCAP_NOT_FOUND` | 구현 확인 | 보유 키캡 목록 새로고침 |
 | 400 | `KEYCAP_NOT_COMPLETED` | 구현 확인 | 미완성 키캡 장착 차단 안내 |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 계약상 예정 · 구현 필요 | 변경된 작업은 새 키 생성 |
+| 400 | `IDEMPOTENCY_KEY_REQUIRED` | 계약상 예정 · 구현 필요 | 같은 작업 재시도에는 기존 키 유지 |
+| 400 | `KEYCAP_BOX_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 상자 잔액 부족 안내 |
+| 400 | `FREE_OPEN_TICKET_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 무료권 부족 안내 |
+| 400 | `ADVERTISEMENT_OPEN_NOT_SUPPORTED` | 계약상 예정 · 구현 필요 | 광고 개봉 미지원 안내 |
+| 400 | `AD_REWARD_ID_REQUIRED` | 계약상 예정 · 구현 필요 | 광고 보상 식별자 확인 |
+| 409 | `AD_REWARD_ALREADY_USED` | 계약상 예정 · 구현 필요 | 새 광고 보상으로 재시도 |
+| 502 | `AD_REWARD_VERIFICATION_FAILED` | 계약상 예정 · 구현 필요 | 광고 검증 실패 안내 |
+| 409 | `KEYCAP_REWARD_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 보상 후보 없음 안내 |
 
 ## 인증과 회원
 
@@ -1243,13 +1251,49 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 14. `POST /api/v1/keycap-boxes/open`
 
-상태: 계약 초안
+상태: 계약 확정 · 구현 필요
 
 #### Description
 
 상자를 개봉하고 키캡 조각을 지급한다. 이 API는 `Idempotency-Key` Header가 필수다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
+현재 Controller와 Service는 아직 없다. 이 섹션은 후속 구현 이슈의 기준 계약이다.
+
+자원 소비 규칙:
+
+- 모든 성공 개봉은 `boxBalance`를 1 차감한다.
+- `FREE`: `boxBalance` 1개와 `freeOpenTicketCount` 1개를 차감한다.
+- `ADVERTISEMENT`: `boxBalance` 1개를 차감하고 검증된 `adRewardId`를 소비한다. `freeOpenTicketCount`는 차감하지 않는다.
+- 광고 검증 Service가 구현되기 전의 `ADVERTISEMENT` 요청은 미지원 오류로 처리하며 어떤 자원도 차감하지 않는다.
+- 부족 오류 우선순위는 `boxBalance` 부족을 먼저 확인한 뒤, `FREE`는 무료권 부족, `ADVERTISEMENT`는 광고 보상 ID 필수/검증 실패를 확인한다.
+- 조회나 멱등 재응답 중에는 자원을 다시 차감하지 않는다.
+- 무료권 지급 방식, 자동 충전 주기, 최대 보유량, `nextFreeTicketAt` 계산은 후속 이슈에서 확정한다.
+- `adRewardId`는 광고 검증 Provider가 발급한 255자 이하 문자열로 저장한다. 실제 형식은 광고 검증 인터페이스 구현 시 확정한다.
+
+보상 규칙:
+
+- 후보 키캡은 `active=true` 키캡이다.
+- 시즌 필터와 등급별 가중치 컬럼은 현재 저장 원본이 없으므로 후속 결정 사항이다.
+- 기본 지급 조각 수는 1개다.
+- 사용자 보유 키캡이 없으면 `user_keycap`을 생성하고, 있으면 조각을 누적한다.
+- 조각 수는 `requiredShardCount`를 초과 저장하지 않는다.
+- 이번 개봉으로 `IN_PROGRESS`에서 `COMPLETED`가 되면 `completed=true`, `completedAt=now`를 기록한다.
+- 이미 완성된 키캡을 보상 후보에서 제외할지, 포함하되 초과 조각을 버릴지는 후속 보상 정책에서 결정한다.
+
+부스터 정책:
+
+- 현재 부스터는 포인트 적립 전용이다.
+- 키캡 상자 개봉 조각 수에는 적용하지 않는다.
+- 따라서 MVP 개봉 응답에는 `boostApplied`를 포함하지 않는다.
+
+멱등성 규칙:
+
+- `Idempotency-Key`는 UUID 문자열을 권장하며 최대 100자까지 허용한다.
+- 서버는 `openMethod`, `adRewardId`를 정규화해 `requestHash`를 만든다.
+- 같은 사용자, 같은 `Idempotency-Key`, 같은 `requestHash`는 기존 개봉 결과를 반환한다.
+- 같은 사용자, 같은 `Idempotency-Key`, 다른 `requestHash`는 `409 IDEMPOTENCY_KEY_REUSED`를 반환한다.
+- 동시 동일 요청의 Unique 충돌은 기존 row를 재조회해 같은 응답으로 복구한다.
+- PostgreSQL unique 제약을 멱등성 Source of Truth로 사용하고 Redis는 사용하지 않는다.
 
 #### Request Header
 
@@ -1264,7 +1308,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | name | type | required | description |
 |---|---|---:|---|
 | `openMethod` | String | O | `FREE` 또는 `ADVERTISEMENT` |
-| `adRewardId` | String | X | 광고 개봉인 경우 광고 보상 식별자 |
+| `adRewardId` | String | X | `ADVERTISEMENT`인 경우 필수. 광고 검증 Service 구현 전에는 미지원 |
 
 ```json
 {
@@ -1277,7 +1321,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+성공 Status: `200 OK`
 
 ##### Response Body
 
@@ -1287,7 +1331,6 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `data.boxOpenId` | UUID | 상자 개봉 식별자 |
 | `data.keycapId` | UUID | 지급된 키캡 식별자 |
 | `data.shardCount` | Number | 지급 조각 수 |
-| `data.boostApplied` | Boolean | 부스터 적용 여부 |
 | `data.completed` | Boolean | 이번 개봉으로 완성됐는지 |
 | `data.openedAt` | String | 개봉 시각 |
 
@@ -1298,7 +1341,6 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
     "boxOpenId": "4f00ec0c-91d7-41db-96b1-31a305d10ef3",
     "keycapId": "4e5d3a9b-02d0-4b45-b2bd-2bb30b01bb9f",
     "shardCount": 1,
-    "boostApplied": false,
     "completed": false,
     "openedAt": "2026-07-11T06:30:00Z"
   }
@@ -1306,6 +1348,48 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 ```
 
 #### Error Response
+
+##### `400 Bad Request`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "IDEMPOTENCY_KEY_REQUIRED",
+    "message": "Idempotency-Key가 필요합니다."
+  }
+}
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "KEYCAP_BOX_NOT_AVAILABLE",
+    "message": "개봉할 수 있는 키캡 상자가 없습니다."
+  }
+}
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "FREE_OPEN_TICKET_NOT_AVAILABLE",
+    "message": "사용 가능한 무료 개봉권이 없습니다."
+  }
+}
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ADVERTISEMENT_OPEN_NOT_SUPPORTED",
+    "message": "광고 개봉은 아직 지원하지 않습니다."
+  }
+}
+```
 
 ##### `409 Conflict`
 
@@ -1320,6 +1404,16 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 ```
 
 `IDEMPOTENCY_KEY_REUSED`는 계약상 예정이며 현재 `ErrorCode` 구현이 필요하다.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "AD_REWARD_ALREADY_USED",
+    "message": "이미 사용한 광고 보상입니다."
+  }
+}
+```
 
 ### 15. `GET /api/v1/keycap-boxes/history`
 
@@ -1374,7 +1468,6 @@ Query Parameter 초안:
         "openMethod": "FREE",
         "keycapId": "4e5d3a9b-02d0-4b45-b2bd-2bb30b01bb9f",
         "shardCount": 1,
-        "boostApplied": false,
         "completed": false,
         "openedAt": "2026-07-11T06:30:00Z"
       }

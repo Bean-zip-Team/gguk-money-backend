@@ -1,5 +1,14 @@
 # 수정 내역
 
+## 2026-07-14 키캡 상자 개봉 계약 확정
+
+- `POST /api/v1/keycap-boxes/open`의 문서 계약을 현재 코드 상태와 후속 구현 범위에 맞춰 정리했다.
+- 모든 성공 개봉은 상자 잔액을 1 차감하고, `FREE` 개봉은 추가로 무료 개봉권 1개를 차감하는 것으로 확정했다.
+- `ADVERTISEMENT` 개봉은 광고 검증 Service 구현 전에는 미지원 오류로 처리하며 자원을 차감하지 않는다. 구현 후에는 `adRewardId` 필수와 전역 중복 방지 제약을 사용하도록 정리했다.
+- 상자 개봉 멱등성은 PostgreSQL `(user_id, idempotency_key)` Unique와 `request_hash` 비교를 Source of Truth로 사용하도록 확정했다.
+- 보상은 활성 키캡 후보에서 기본 1조각을 지급하고, 초과 조각 저장 없이 완성 전환 시 `completed_at`을 기록하는 방향으로 정리했다.
+- 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에는 적용하지 않는 것으로 정리했다.
+
 ## 2026-07-14 키캡 상자 상태 조회 API 구현
 
 - `GET /api/v1/keycap-boxes/status`를 Access JWT 필수 구현 확인 API로 추가했다.

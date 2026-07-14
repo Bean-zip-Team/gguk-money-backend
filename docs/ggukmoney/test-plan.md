@@ -90,6 +90,12 @@
 - `user_keycap.equipped=true`와 `status=COMPLETED` 정합성은 Entity와 Service 테스트로 검증한다. 실제 DB CHECK 제약은 없으므로 서비스 검증을 유지한다.
 - 상자 개봉과 출금의 같은 `Idempotency-Key` 재요청 결과 복구
 - 같은 멱등 기준에 다른 Request Body가 들어왔을 때 `409 IDEMPOTENCY_KEY_REUSED` 처리
+- 상자 개봉 성공 시 모든 방식에서 상자 잔액을 1 차감함
+- 상자 개봉 `FREE`에서 상자 잔액과 무료권을 각각 1 차감함
+- 상자 개봉 `ADVERTISEMENT`가 광고 검증 Service 부재 시 미지원 오류를 반환하고 자원을 차감하지 않음
+- 상자 개봉 보상 조각 누적, 초과 조각 cap, `COMPLETED` 전환과 `completed_at` 기록
+- 상자 개봉 동시 동일 요청 Unique 충돌 후 기존 결과 재조회
+- 상자 개봉에서 부스터가 조각 수에 적용되지 않음
 
 ## 목표 테스트 시나리오
 
