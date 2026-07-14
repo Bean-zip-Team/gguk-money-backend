@@ -46,6 +46,18 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
             @Param("keycapPublicId") UUID keycapPublicId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select userKeycap
+            from UserKeycap userKeycap
+            where userKeycap.user.id = :userId
+              and userKeycap.keycap.id = :keycapId
+            """)
+    Optional<UserKeycap> findByUserIdAndKeycapIdForUpdate(
+            @Param("userId") UUID userId,
+            @Param("keycapId") Long keycapId
+    );
+
     @Query("""
             select userKeycap
             from UserKeycap userKeycap

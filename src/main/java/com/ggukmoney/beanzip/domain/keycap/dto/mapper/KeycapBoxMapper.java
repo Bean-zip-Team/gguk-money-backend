@@ -1,7 +1,9 @@
 package com.ggukmoney.beanzip.domain.keycap.dto.mapper;
 
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -15,4 +17,8 @@ public interface KeycapBoxMapper {
     @Mapping(target = "boxProgressTapCount", source = "progress.cumulativeValidTapCount")
     @Mapping(target = "nextBoxRequiredTapCount", source = "progress.nextBoxTarget")
     KeycapBoxStatusResponse mapToStatusResponse(KeycapBoxAccount account, BoxProgressSnapshot progress);
+
+    @Mapping(target = "boxOpenId", source = "publicId")
+    @Mapping(target = "keycapId", source = "keycap.publicId")
+    KeycapBoxOpenResponse mapToOpenResponse(KeycapBoxOpen boxOpen);
 }
