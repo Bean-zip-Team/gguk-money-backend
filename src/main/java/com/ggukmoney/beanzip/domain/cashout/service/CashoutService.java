@@ -125,6 +125,12 @@ public class CashoutService {
         return new CashoutListPageResponse(items, nextCursor, hasMore);
     }
 
+    public CashoutListItemResponse getDetail(UUID userId, UUID cashoutId) {
+        CashoutRequest request = cashoutRequestRepository.findByPublicIdAndUserId(cashoutId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CASHOUT_NOT_FOUND"));
+        return toListItem(request);
+    }
+
     private CashoutListItemResponse toListItem(CashoutRequest request) {
         Instant completedAt = TERMINAL_STATUSES.contains(request.getStatus()) ? request.getUpdatedAt() : null;
         return new CashoutListItemResponse(

@@ -13,4 +13,6 @@ public interface CashoutRequestRepository extends JpaRepository<CashoutRequest, 
     Optional<CashoutRequest> findByUserIdAndIdempotencyKey(UUID userId, UUID idempotencyKey);
 
     boolean existsByUserIdAndStatusIn(UUID userId, Collection<CashoutRequest.Status> statuses);
+
+    Optional<CashoutRequest> findByPublicIdAndUserId(UUID publicId, UUID userId);
 }
