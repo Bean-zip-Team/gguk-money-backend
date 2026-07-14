@@ -196,18 +196,51 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 
 Toss `appLogin()`으로 받은 일회성 `authorizationCode`를 서버에 전달해 꾹머니 사용자를 생성하거나 기존 사용자를 로그인시키고 Access/Refresh JWT를 발급한다.
 
-> 결정 필요: 기존 목표 계약에는 로그인 시 온보딩 정산 정보가 포함되어 있지만 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 존재한다. 로그인 DTO에 온보딩 필드를 추가할지, 온보딩 정산을 별도 API로 분리할지 결정해야 한다.
+> MVP 권장안 · 현재 미구현: 신규 사용자 온보딩 정산은 로그인 요청에 `onboardingAttemptId`를 포함하는 방향으로 설계한다. 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 존재하므로 구현 전 Request/Response 필드 확정이 필요하다.
 
-현재 DTO에 없는 기존 온보딩 계약:
+권장 Request 확장 예시:
 
 ```json
 {
-  "onboarding": {
-    "onboardingAttemptId": "9dc0c935-d9e2-4f96-a764-8de0b1232145",
-    "onboardingTapCount": 45
-  }
+  "authorizationCode": "...",
+  "referrer": "DEFAULT",
+  "onboardingAttemptId": "9dc0c935-d9e2-4f96-a764-8de0b1232145"
 }
 ```
+
+프론트는 서버가 발급했거나 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 보관해 로그인 요청에 전달한다. `keycapId`, `shardCount`, `completed`, `tapCount`, `rewardPoint`, 상자 개봉 결과 전체를 보상 원본으로 전달하지 않는다.
+
+온보딩 키캡 상자는 일반 키캡 상자와 다른 흐름이다.
+
+1. 회원가입 전 온보딩을 시작한다.
+2. 온보딩 45탭을 수행한다.
+3. 서버가 45탭 완료를 검증한다.
+4. 온보딩 키캡 상자 개봉 API를 호출한다.
+5. 서버가 온보딩 보상 결과를 생성하고 `onboardingAttemptId`에 연결해 저장한다.
+6. 프론트는 `onboardingAttemptId`만 보관한다.
+7. Toss 로그인 요청에 `onboardingAttemptId`를 포함한다.
+8. 신규 사용자 생성 시 서버가 해당 attempt를 재검증한다.
+9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
+10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
+
+온보딩 상자 개봉 API의 정확한 Path는 구현 전 계약이므로 아직 최종 확정하지 않는다. 권장 예시는 `POST /api/v1/onboarding/keycap-boxes/open` 또는 프로젝트 네이밍 규칙에 맞는 별도 온보딩 경로다. 이 API는 Access JWT, `boxBalance`, `freeOpenTicketCount`를 사용하는 로그인 사용자 전용 `POST /api/v1/keycap-boxes/open`과 구분한다.
+
+로그인 처리에서 신규 사용자 온보딩 정산을 구현할 때 서버가 담당할 역할:
+
+- Toss 사용자 인증
+- 기존 사용자 조회 또는 신규 사용자 생성
+- 기본 계정 생성
+- 신규 사용자인 경우 `onboardingAttemptId` 검증
+- 서버에 저장된 온보딩 개봉 결과 조회
+- 온보딩 포인트 일회성 지급
+- 고정 키캡 `COMPLETED` 지급
+- `onboardingRewardClaimed=true` 반영
+- `onboardingCompletedAt` 기록
+- `onboardingAttemptId` claimed 처리
+- Access/Refresh JWT 발급
+- Redis Session 저장
+
+기존 사용자의 일반 로그인에서는 온보딩 보상을 다시 지급하지 않는다. 같은 `onboardingAttemptId`는 한 사용자에게 한 번만 귀속할 수 있고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없다. 로그인 재시도와 동일 Toss 사용자의 동시 신규 가입 요청에서도 온보딩 포인트와 키캡은 한 번만 지급되어야 한다.
 
 #### Request Header
 
@@ -1272,13 +1305,18 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 보상 규칙:
 
-- 후보 키캡은 `active=true` 키캡이다.
+- 후보 키캡은 `active=true` 키캡 중 현재 사용자가 아직 완성하지 않은 키캡이다.
+- 해당 `UserKeycap`이 없거나 `status=IN_PROGRESS`이면 후보에 포함한다.
+- `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 후보에서 제외한다.
 - 시즌 필터와 등급별 가중치 컬럼은 현재 저장 원본이 없으므로 후속 결정 사항이다.
+- MVP에서는 후보 키캡 중 균등 랜덤으로 하나를 선택한다.
 - 기본 지급 조각 수는 1개다.
+- 후보가 없으면 `409 KEYCAP_REWARD_NOT_AVAILABLE`을 반환한다.
+- 후보가 없으면 `boxBalance`, `freeOpenTicketCount`, `adRewardId`를 소비하지 않고 `KeycapBoxOpen` 개봉 이력도 생성하지 않는다.
 - 사용자 보유 키캡이 없으면 `user_keycap`을 생성하고, 있으면 조각을 누적한다.
 - 조각 수는 `requiredShardCount`를 초과 저장하지 않는다.
 - 이번 개봉으로 `IN_PROGRESS`에서 `COMPLETED`가 되면 `completed=true`, `completedAt=now`를 기록한다.
-- 이미 완성된 키캡을 보상 후보에서 제외할지, 포함하되 초과 조각을 버릴지는 후속 보상 정책에서 결정한다.
+- 완성 키캡을 포인트나 다른 재화로 변환하는 중복 보상 정책은 MVP에서 제공하지 않는다.
 
 부스터 정책:
 
@@ -1294,6 +1332,22 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 - 같은 사용자, 같은 `Idempotency-Key`, 다른 `requestHash`는 `409 IDEMPOTENCY_KEY_REUSED`를 반환한다.
 - 동시 동일 요청의 Unique 충돌은 기존 row를 재조회해 같은 응답으로 복구한다.
 - PostgreSQL unique 제약을 멱등성 Source of Truth로 사용하고 Redis는 사용하지 않는다.
+
+트랜잭션 순서:
+
+1. `Idempotency-Key`와 `requestHash`를 확인한다.
+2. 같은 요청이면 기존 결과를 반환하고, 다른 요청이면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
+3. `keycap_box_account`를 잠근다.
+4. 개봉 방식별 자원 보유 여부를 검증한다.
+5. 미완성 활성 키캡 후보를 조회한다.
+6. 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환한다.
+7. 후보 중 하나를 균등 랜덤으로 선택한다.
+8. 상자, 무료권, 광고 보상 등 필요한 자원을 차감한다.
+9. `UserKeycap`을 생성하거나 조각을 증가시킨다.
+10. `requiredShardCount` 도달 시 `COMPLETED` 전환과 `completedAt`을 기록한다.
+11. `KeycapBoxOpen`을 저장한다.
+
+보상 후보 존재를 확인하기 전에 자원을 차감하지 않는다. 후보 없음 오류에서는 어떤 자원도 소비하지 않고 개봉 이력도 생성하지 않는다. 트랜잭션 전체 실패 시 부분 반영이 없어야 한다.
 
 #### Request Header
 
@@ -1411,6 +1465,16 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
   "error": {
     "code": "AD_REWARD_ALREADY_USED",
     "message": "이미 사용한 광고 보상입니다."
+  }
+}
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "KEYCAP_REWARD_NOT_AVAILABLE",
+    "message": "지급 가능한 키캡 보상이 없습니다."
   }
 }
 ```
@@ -2257,8 +2321,8 @@ Query Parameter 초안:
 
 ## 구현 전 정합화 필요 항목
 
-1. 현재 Toss 로그인 DTO에는 `authorizationCode`, `referrer`만 있으며 기존 온보딩 계약에는 `onboardingAttemptId`, `onboardingTapCount`가 있다.
-2. 로그인 온보딩 정산을 로그인 DTO에 포함할지 별도 API로 분리할지 결정해야 한다.
+1. 현재 Toss 로그인 DTO에는 `authorizationCode`, `referrer`만 있으며 MVP 권장안의 `onboardingAttemptId` 필드는 아직 없다.
+2. 온보딩 상자에서 지급되는 키캡이 완전 고정인지 서버 랜덤인지, 온보딩 attempt 생성 API가 별도로 필요한지, 45탭 제출과 검증 API의 정확한 형태, `onboardingAttemptId` 만료 시간, 기존 사용자 로그인에 `onboardingAttemptId`가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 수량, 지급 키캡 자동 장착 여부, 온보딩 상자 개봉 API 최종 Path, 로그인 Request/Response 최종 DTO 필드, 세부 ErrorCode와 HTTP Status는 팀 확인이 필요하다.
 3. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
 4. `IDEMPOTENCY_KEY_REUSED`는 계약 문서에는 있지만 현재 `ErrorCode`에는 없다.
 5. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.

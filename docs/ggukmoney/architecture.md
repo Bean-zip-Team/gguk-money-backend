@@ -105,16 +105,28 @@ erDiagram
 
 현재 구현에서는 Redis Session 저장이 `@Transactional` 로그인 메서드 안에서 수행된다. Redis 저장 실패 시 로그인 성공으로 응답하지 않지만, DB 커밋 이후 저장하는 구조는 아니다. 이미 생성된 DB 사용자와 Identity는 Unique 제약으로 보호되므로 재시도 시 중복 생성을 막는다.
 
-### 목표 온보딩 계약 · 정합화 필요
+### 온보딩 키캡 상자 계약 · MVP 권장안
 
-> 정합화 필요: 현재 `TossLoginRequest`에는 온보딩 정산 필드가 없다. 로그인 DTO에 온보딩 정보를 포함할지, 별도 온보딩 정산 API로 분리할지 결정하기 전까지 아래 온보딩 흐름은 목표 계약으로만 취급한다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없으므로 구현 전 DTO 확정이 필요하다. MVP 권장안은 회원가입 전 온보딩 키캡 상자를 개봉하고, Toss 로그인 요청에는 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
 
-로그인 요청에 온보딩 정산 정보를 포함하는 방식이 확정될 경우 다음 처리를 같은 PostgreSQL 트랜잭션에서 수행한다.
+온보딩 키캡 상자는 일반 키캡 상자와 다른 흐름이다.
 
-- 온보딩 45탭 검증
-- 신규 사용자 포인트 지급
-- 신규 사용자 고정 키캡 지급
-- `onboardingAttemptId` 기반 멱등 처리
+1. 회원가입 전 온보딩을 시작한다.
+2. 온보딩 45탭을 수행한다.
+3. 서버가 45탭 완료를 검증한다.
+4. 온보딩 키캡 상자 개봉 API를 호출한다.
+5. 서버가 온보딩 보상 결과를 생성하고 `onboardingAttemptId`에 연결해 임시 저장한다.
+6. 프론트는 `onboardingAttemptId`만 보관한다.
+7. Toss 로그인 요청에 `onboardingAttemptId`를 포함한다.
+8. 신규 사용자 생성 시 서버가 해당 attempt를 재검증한다.
+9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
+10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
+
+온보딩 결과는 사용자 생성 전에는 `UserKeycap`으로 바로 저장하지 않는다. 신규 회원가입이 성공할 때 고정 키캡을 `shard_count=required_shard_count`, `status=COMPLETED`, `completed_at=now` 상태로 지급한다. 기존 사용자의 일반 로그인에서는 온보딩 보상을 다시 지급하지 않는다.
+
+프론트가 `keycapId`, `shardCount`, `completed`, `tapCount=45`, `rewardPoint`, 상자 개봉 결과 전체를 보상의 Source of Truth로 전달하는 구조는 금지한다. 서버는 `onboardingAttemptId`를 통해 서버 기준 45탭 완료 여부, 서버가 결정한 키캡 보상 결과, attempt 만료 여부, claimed 여부, 신규 사용자 귀속 가능 상태를 확인한다.
+
+팀 확인이 필요한 항목은 온보딩 상자 지급 키캡의 고정/랜덤 여부, attempt 생성 API 필요 여부, 45탭 제출과 검증 API 형태, `onboardingAttemptId` 만료 시간, 기존 사용자 로그인에 attempt가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 수량, 지급 키캡 자동 장착 여부, 온보딩 상자 개봉 API 최종 Path, 로그인 Request/Response 최종 DTO, 세부 ErrorCode와 HTTP Status다.
 
 ## Refresh와 로그아웃
 
@@ -162,11 +174,16 @@ tap_batch
 1. `Idempotency-Key`를 검증하고 `openMethod`, `adRewardId` 기반 `request_hash`를 계산한다.
 2. `(user_id, idempotency_key)` 기존 개봉 이력이 있으면 `request_hash`를 비교한다. 같으면 기존 결과를 반환하고, 다르면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
 3. `keycap_box_account`를 잠근다.
-4. 모든 개봉은 `box_balance`를 1 차감한다. `FREE`는 추가로 `free_open_ticket_count`를 1 차감한다. `ADVERTISEMENT`는 검증된 `ad_reward_id`를 소비하며, 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다.
-5. 서버가 활성 키캡 후보에서 대상 키캡과 지급 조각 수를 결정한다. MVP 기본 지급 조각 수는 1개다.
-6. `user_keycap`이 없으면 생성하고, 있으면 `shard_count`를 증가시킨다. 조각 수는 `required_shard_count`를 초과 저장하지 않는다.
-7. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
-8. `keycap_box_open`에 개봉 방식, 멱등키, 요청 해시, 보상 결과를 한 행으로 저장한다.
+4. 개봉 방식별 자원 보유 여부를 검증한다.
+5. `keycap.active=true` 키캡 중 현재 사용자가 아직 완성하지 않은 키캡을 후보로 조회한다. `UserKeycap`이 없거나 `status=IN_PROGRESS`이면 후보에 포함하고, `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 제외한다.
+6. 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 어떤 자원도 차감하지 않으며 개봉 이력도 생성하지 않는다.
+7. 후보 중 하나를 균등 랜덤으로 선택한다. MVP 기본 지급 조각 수는 1개다.
+8. 성공 개봉으로 확정된 뒤 `box_balance`를 1 차감한다. `FREE`는 추가로 `free_open_ticket_count`를 1 차감한다. `ADVERTISEMENT`는 검증된 `ad_reward_id`를 소비하며, 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다.
+9. `user_keycap`이 없으면 생성하고, 있으면 `shard_count`를 증가시킨다. 조각 수는 `required_shard_count`를 초과 저장하지 않는다.
+10. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
+11. `keycap_box_open`에 개봉 방식, 멱등키, 요청 해시, 보상 결과를 한 행으로 저장한다.
+
+보상 후보 존재를 확인하기 전에 자원을 차감하지 않는다. 후보 없음 오류와 트랜잭션 전체 실패에서는 자원 차감, 조각 지급, 개봉 이력 생성의 부분 반영이 없어야 한다. 완성 키캡을 포인트나 다른 재화로 변환하는 중복 보상 정책은 MVP에서 제공하지 않는다.
 
 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
 
