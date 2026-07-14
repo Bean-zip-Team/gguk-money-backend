@@ -23,6 +23,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Check;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 @Getter
@@ -136,6 +137,23 @@ public class OnboardingRewardAttempt {
     @PreUpdate
     void preUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public void claim(AppUser user, Instant claimedAt) {
+        Objects.requireNonNull(user, "user must not be null.");
+        Objects.requireNonNull(claimedAt, "claimedAt must not be null.");
+        if (status != Status.OPENED) {
+            throw new IllegalStateException("Only opened onboarding reward attempts can be claimed.");
+        }
+        if (claimedUser != null || this.claimedAt != null) {
+            throw new IllegalStateException("Onboarding reward attempt is already claimed.");
+        }
+        if (!expiresAt.isAfter(claimedAt)) {
+            throw new IllegalStateException("Onboarding reward attempt is expired.");
+        }
+        status = Status.CLAIMED;
+        claimedUser = user;
+        this.claimedAt = claimedAt;
     }
 
     public enum Status {

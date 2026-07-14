@@ -32,7 +32,7 @@ public class AuthServiceLogoutAllTest {
                 eq(String.valueOf(Instant.parse("2026-07-02T00:15:00Z").toEpochMilli()))
         )).thenReturn(3L);
 
-        AuthService authService = new AuthService(null, redisService, null, null, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null, null);
 
         LogoutAllResponse response = authService.logoutAll(
                 userId,

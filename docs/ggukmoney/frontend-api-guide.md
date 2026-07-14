@@ -147,7 +147,7 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 탭 배치 | `tapSessionId + sequence` |
 | 부스터 활성화 | `adRewardId` 중복 사용 방지 |
 | 키캡 장착 | `PUT`의 동일 최종 상태 |
-| 로그인 온보딩 보상 | 계약상 `onboardingAttemptId`, 현재 로그인 DTO에는 미반영 |
+| 로그인 온보딩 보상 | 구현 확인: `onboardingAttemptId` 선택 필드 + `onboardingRewardApplied` 응답 |
 
 `IDEMPOTENCY_KEY_REUSED`는 현재 `ErrorCode`에 구현되어 있으며 같은 멱등키에 다른 요청 내용이 들어오면 `409`로 반환한다.
 
@@ -185,6 +185,11 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 409 | `AD_REWARD_ALREADY_USED` | 계약상 예정 · 구현 필요 | 새 광고 보상으로 재시도 |
 | 502 | `AD_REWARD_VERIFICATION_FAILED` | 계약상 예정 · 구현 필요 | 광고 검증 실패 안내 |
 | 409 | `KEYCAP_REWARD_NOT_AVAILABLE` | 구현 확인 | 보상 후보 없음 안내 |
+| 404 | `ONBOARDING_ATTEMPT_NOT_FOUND` | 구현 확인 | 신규 가입 온보딩 보상 기록 없음 |
+| 409 | `ONBOARDING_ATTEMPT_NOT_OPENED` | 구현 확인 | 신규 가입 온보딩 보상 기록 상태 비정상 |
+| 409 | `ONBOARDING_ATTEMPT_ALREADY_CLAIMED` | 구현 확인 | 신규 가입 온보딩 보상 이미 사용됨 |
+| 410 | `ONBOARDING_ATTEMPT_EXPIRED` | 구현 확인 | 신규 가입 온보딩 보상 만료 |
+| 409 | `ONBOARDING_REWARD_INVALID` | 구현 확인 | 신규 가입 온보딩 보상 스냅샷 비정상 |
 
 ## 인증과 회원
 
@@ -196,9 +201,9 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 
 Toss `appLogin()`으로 받은 일회성 `authorizationCode`를 서버에 전달해 꾹머니 사용자를 생성하거나 기존 사용자를 로그인시키고 Access/Refresh JWT를 발급한다.
 
-> MVP 권장안 · 현재 미구현: 신규 사용자 온보딩 정산은 로그인 요청에 `onboardingAttemptId`를 포함하는 방향으로 설계한다. 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 존재하므로 구현 전 Request/Response 필드 확정이 필요하다.
+> 구현 확인: 신규 사용자 온보딩 정산은 로그인 요청의 선택 필드 `onboardingAttemptId`로 처리한다. 기존 사용자는 잘못되거나 만료된 `onboardingAttemptId` 때문에 로그인에 실패하지 않는다.
 
-권장 Request 확장 예시:
+Request 예시:
 
 ```json
 {
@@ -272,7 +277,7 @@ Success `200 OK`:
 
 보상 키캡 코드, 포인트 수량, 만료 시간은 서버의 `app_config` 설정과 `keycap` 마스터 기준으로 결정한다. `tapSessionId`와 정규화된 탭 이벤트 hash가 같으면 기존 결과를 반환하고, 같은 `tapSessionId`에 다른 이벤트가 들어오면 `409 ONBOARDING_TAP_SESSION_REUSED`를 반환한다. 만료된 같은 요청 재조회는 `410 ONBOARDING_ATTEMPT_EXPIRED`다.
 
-로그인 처리에서 신규 사용자 온보딩 정산을 구현할 때 서버가 담당할 역할:
+로그인 처리에서 신규 사용자 온보딩 정산 시 서버가 담당하는 역할:
 
 - Toss 사용자 인증
 - 기존 사용자 조회 또는 신규 사용자 생성
@@ -287,7 +292,7 @@ Success `200 OK`:
 - Access/Refresh JWT 발급
 - Redis Session 저장
 
-기존 사용자의 일반 로그인에서는 온보딩 보상을 다시 지급하지 않는다. 같은 `onboardingAttemptId`는 한 사용자에게 한 번만 귀속할 수 있고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없다. 로그인 재시도와 동일 Toss 사용자의 동시 신규 가입 요청에서도 온보딩 포인트와 키캡은 한 번만 지급되어야 한다.
+기존 사용자의 일반 로그인에서는 온보딩 보상을 다시 지급하지 않는다. 같은 `onboardingAttemptId`는 한 사용자에게 한 번만 귀속할 수 있고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없다. 로그인 재시도와 동일 Toss 사용자의 동시 신규 가입 요청에서도 온보딩 포인트와 키캡은 한 번만 지급되어야 한다. Redis Session 저장 실패 후 재로그인에는 Toss 정책상 새로운 `authorizationCode`가 필요할 수 있다.
 
 #### Request Header
 
@@ -301,11 +306,13 @@ Success `200 OK`:
 |---|---|---:|---|
 | `authorizationCode` | String | O | Toss에서 발급한 일회성 인가 코드 |
 | `referrer` | String | X | Toss 진입 경로. 예: `DEFAULT` |
+| `onboardingAttemptId` | UUID | X | 온보딩 상자 개봉 API가 발급한 보상 귀속 식별자 |
 
 ```json
 {
   "authorizationCode": "one-time-code",
-  "referrer": "DEFAULT"
+  "referrer": "DEFAULT",
+  "onboardingAttemptId": "9dc0c935-d9e2-4f96-a764-8de0b1232145"
 }
 ```
 
@@ -327,6 +334,7 @@ Success `200 OK`:
 | `data.accessTokenExpiresAt` | String | Access Token 만료 시각 |
 | `data.refreshTokenExpiresAt` | String | Refresh Token 만료 시각 |
 | `data.newUser` | Boolean | 신규 사용자 여부 |
+| `data.onboardingRewardApplied` | Boolean | 이번 로그인 응답에서 온보딩 보상 귀속 결과를 표시 |
 
 ```json
 {
@@ -338,7 +346,8 @@ Success `200 OK`:
     "tokenType": "Bearer",
     "accessTokenExpiresAt": "2026-07-11T07:00:00Z",
     "refreshTokenExpiresAt": "2026-08-10T06:30:00Z",
-    "newUser": true
+    "newUser": true,
+    "onboardingRewardApplied": true
   }
 }
 ```
@@ -2388,12 +2397,9 @@ Query Parameter 초안:
 - Body에서 `requestId`, `traceId`를 찾지 않는다.
 - 필요 시 `X-Request-Id` Header를 저장한다.
 
-## 구현 전 정합화 필요 항목
+## 남은 정합화 필요 항목
 
-1. 현재 Toss 로그인 DTO에는 `authorizationCode`, `referrer`만 있으며 MVP 권장안의 `onboardingAttemptId` 필드는 아직 없다.
-2. 온보딩 상자에서 지급되는 키캡이 완전 고정인지 서버 랜덤인지, 온보딩 attempt 생성 API가 별도로 필요한지, 45탭 제출과 검증 API의 정확한 형태, `onboardingAttemptId` 만료 시간, 기존 사용자 로그인에 `onboardingAttemptId`가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 수량, 지급 키캡 자동 장착 여부, 온보딩 상자 개봉 API 최종 Path, 로그인 Request/Response 최종 DTO 필드, 세부 ErrorCode와 HTTP Status는 팀 확인이 필요하다.
-3. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
-4. 온보딩과 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
-5. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
-6. `keycaps` 목록 조회 API는 Access JWT 필수 API로 확정됐다.
-7. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.
+1. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
+2. 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
+3. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
+4. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.

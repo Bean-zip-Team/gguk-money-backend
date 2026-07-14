@@ -1,5 +1,12 @@
 # 수정 내역
 
+## 2026-07-15 Toss 회원가입 온보딩 보상 귀속 구현
+
+- `POST /api/v1/auth/toss/login` Request에 `onboardingAttemptId` 선택 필드를 추가하고 Response에 `onboardingRewardApplied`를 추가했다.
+- 신규 Toss 가입 시 `onboarding_reward_attempt`에 저장된 포인트와 완성 키캡을 한 번만 지급하고 attempt를 `CLAIMED`로 전환한다.
+- 기존 사용자는 잘못되거나 만료된 `onboardingAttemptId` 때문에 로그인에 실패하지 않으며 신규 온보딩 보상을 받지 않는다.
+- Redis Session 저장 실패 후 재로그인에는 Toss 정책상 새로운 `authorizationCode`가 필요할 수 있음을 문서화했다.
+
 ## 2026-07-15 회원가입 전 온보딩 키캡 상자 API 구현
 
 - `POST /api/v1/onboarding/keycap-boxes/open`을 인증 없는 공개 API로 추가했다.
@@ -7,7 +14,7 @@
 - `tapSessionId`와 정규화된 tap 이벤트 hash를 멱등성 기준으로 사용하고, 결과는 `onboarding_reward_attempt`에 저장한다.
 - 온보딩 보상 키캡 코드, 포인트 수량, attempt TTL은 `app_config`에서 조회하며 설정 오류는 `ONBOARDING_REWARD_NOT_AVAILABLE`로 처리한다.
 - 일반 상자 계정, `UserKeycap`, 포인트 원장, 일반 `keycap_box_open`은 변경하지 않는다.
-- Toss 로그인 DTO 변경, 실제 포인트·키캡 지급, attempt claimed 처리는 후속 작업으로 유지했다.
+- Toss 로그인 DTO 변경, 실제 포인트·키캡 지급, attempt claimed 처리는 별도 #35 작업에서 구현했다.
 
 ## 2026-07-15 키캡 상자 개봉 이력 API 구현
 

@@ -86,7 +86,6 @@
 
 아래 항목은 Entity와 Repository 또는 목표 계약은 있으나 Controller/Service 또는 외부 연동 흐름이 아직 없어 기능 테스트를 보류한다.
 
-- 온보딩 로그인 귀속: 로그인 DTO에 `onboardingAttemptId` 필드가 없고 포인트·키캡 실제 지급과 attempt claimed 처리는 후속 구현이다.
 - 출금 요청과 Toss 지급: 출금 Controller/Service와 외부 지급 복구 흐름이 없다.
 - 앱 설정 외의 운영 정책 API: 앱 버전, 점검 상태, 출금 정책 조회는 실제 설정 키와 서비스 구현이 없어 보류한다.
 
@@ -109,6 +108,8 @@
 - 온보딩 지급 키캡이 `COMPLETED` 상태인지 검증
 - 기존 사용자 로그인에서는 온보딩 보상 재지급 없음
 - 잘못되거나 만료된 `onboardingAttemptId` 처리
+- 기존 사용자는 잘못되거나 만료된 `onboardingAttemptId` 때문에 로그인에 실패하지 않음
+- Redis Session 저장 실패 후 재로그인에는 Toss 정책상 새로운 `authorizationCode`가 필요할 수 있음
 - 로그인 요청 실패 시 attempt 소비 여부 계약 검증
 
 ## 목표 테스트 시나리오

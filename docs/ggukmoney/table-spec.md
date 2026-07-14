@@ -221,7 +221,7 @@ Unique와 인덱스:
 
 ## 8. onboarding_reward_attempt
 
-회원가입 전 온보딩 키캡 상자 개봉 결과를 저장한다. Toss 로그인 귀속은 후속 이슈에서 `public_id`를 `onboardingAttemptId`로 조회해 처리한다.
+회원가입 전 온보딩 키캡 상자 개봉 결과를 저장한다. Toss 신규 가입 귀속은 `public_id`를 `onboardingAttemptId`로 조회해 처리한다.
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -235,8 +235,8 @@ Unique와 인덱스:
 | `status` | VARCHAR(20) | N | | `OPENED`, `CLAIMED` |
 | `expires_at` | TIMESTAMPTZ | N | | attempt 만료 시각 |
 | `opened_at` | TIMESTAMPTZ | N | | 온보딩 상자 개봉 시각 |
-| `claimed_user_id` | UUID | Y | | FK `app_user(id)`, 후속 로그인 귀속용 |
-| `claimed_at` | TIMESTAMPTZ | Y | | 후속 로그인 귀속 시각 |
+| `claimed_user_id` | UUID | Y | | FK `app_user(id)`, 로그인 귀속 사용자 |
+| `claimed_at` | TIMESTAMPTZ | Y | | 로그인 귀속 시각 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 

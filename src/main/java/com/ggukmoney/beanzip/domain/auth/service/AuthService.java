@@ -10,12 +10,8 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
-import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
-import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
-import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
@@ -65,10 +61,7 @@ public class AuthService {
     private final TossAuthClient tossAuthClient;
     private final AuthIdentityRepository authIdentityRepository;
     private final UserService userService;
-    private final PointAccountService pointAccountService;
-    private final KeycapBoxAccountService keycapBoxAccountService;
-    private final UserTapProgressService userTapProgressService;
-    private final TapPolicyConfig tapPolicyConfig;
+    private final AuthLoginTransactionService authLoginTransactionService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -95,7 +88,6 @@ public class AuthService {
         REUSED
     }
 
-    @Transactional
     public AuthTokenResponse loginWithToss(TossLoginRequest request) {
         TossAuthClient.TossToken tossToken = tossAuthClient.generateToken(
                 requireText(request.authorizationCode(), "TOSS_AUTHORIZATION_CODE_REQUIRED"),
@@ -104,28 +96,14 @@ public class AuthService {
         TossAuthClient.TossLoginMe loginMe = tossAuthClient.loginMe(requireText(tossToken.accessToken(), "TOSS_ACCESS_TOKEN_MISSING"));
         String userKey = requireText(loginMe.userKey(), "TOSS_USER_KEY_MISSING");
 
-        AuthIdentity identity = authIdentityRepository
-                .findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, userKey)
-                .orElse(null);
+        AuthLoginTransactionService.LoginTransactionResult result = authLoginTransactionService.loginWithTossUser(
+                userKey,
+                loginMe.nickname(),
+                loginMe.profileImageUrl(),
+                request.onboardingAttemptId()
+        );
 
-        boolean newUser = false;
-        AppUser user;
-        if (identity == null) {
-            user = userService.createActive(loginMe.nickname(), loginMe.profileImageUrl());
-            authIdentityRepository.save(AuthIdentity.toss(user, userKey));
-            pointAccountService.createFor(user);
-            keycapBoxAccountService.createFor(user);
-            userTapProgressService.createFor(user, tapPolicyConfig);
-            newUser = true;
-        } else {
-            user = identity.getUser();
-            if (user.isWithdrawn()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_WITHDRAWN");
-            }
-            user = userService.recordLogin(user, loginMe.nickname(), loginMe.profileImageUrl());
-        }
-
-        return issueSessionTokens(user.getId(), newUser);
+        return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());
     }
 
     public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -262,7 +240,7 @@ public class AuthService {
         return new TossUnlinkWebhookResponse(true, eventType);
     }
 
-    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser) {
+    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser, boolean onboardingRewardApplied) {
         UUID sessionId = UUID.randomUUID();
         String refreshJti = UUID.randomUUID().toString();
         String accessJti = UUID.randomUUID().toString();
@@ -284,7 +262,16 @@ public class AuthService {
                 "ACTIVE"
         );
         save(session);
-        return new AuthTokenResponse(userId, accessToken, refreshToken, TOKEN_TYPE, accessClaims.expiresAt(), refreshClaims.expiresAt(), newUser);
+        return new AuthTokenResponse(
+                userId,
+                accessToken,
+                refreshToken,
+                TOKEN_TYPE,
+                accessClaims.expiresAt(),
+                refreshClaims.expiresAt(),
+                newUser,
+                onboardingRewardApplied
+        );
     }
 
     private void validateWebhookSecret(String authorizationHeader) {
