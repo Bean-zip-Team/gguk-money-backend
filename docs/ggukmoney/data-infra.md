@@ -89,7 +89,7 @@ MVP 권장안의 신규 사용자 온보딩 정산을 로그인에 포함할 경
 
 현재 구현은 JWT 생성과 Redis Session 저장을 `@Transactional` 로그인 메서드 안에서 수행한다. Redis 실패 시 성공 응답을 반환하지 않지만, DB 커밋 뒤 Redis를 저장하는 구조는 아니다. Redis Session 저장 이후 트랜잭션 커밋 또는 응답 생성이 실패할 때의 정리 전략은 코드 검토 항목이다.
 
-현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없어 로그인 귀속은 후속 구현이다. 회원가입 전 온보딩 키캡 상자 개봉 결과는 `onboarding_reward_attempt`에 저장하며, Toss 로그인 요청에는 후속 구현에서 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 선택 필드가 있으며, 회원가입 전 온보딩 키캡 상자 개봉 결과는 `onboarding_reward_attempt`에 저장한 뒤 Toss 신규 가입 요청에서 이 값을 사용해 귀속한다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
 
 ### 탭 배치
 
@@ -159,7 +159,7 @@ app_user.withdrawn_at = now
 - `point_account`, `keycap_box_account`, `user_tap_daily`, `cashout_request`는 `@Version` 또는 명시적 행 잠금을 사용한다.
 - 키캡 장착은 같은 사용자의 `user_keycap` 행을 비관적 잠금으로 조회한 뒤 기존 장착 해제와 신규 장착을 같은 트랜잭션에서 수행한다.
 - 로그인 Identity 생성 경쟁은 `(provider, provider_user_id)` Unique로 해결한다.
-- 온보딩 상자 개봉은 `onboarding_reward_attempt.tap_session_id` Unique와 `request_hash` 비교를 멱등성 Source of Truth로 사용한다. 현재 로그인 DTO에 `onboardingAttemptId` 필드는 없다. 후속 로그인 귀속에서는 같은 `onboardingAttemptId`를 한 사용자에게 한 번만 귀속하고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없어야 한다.
+- 온보딩 상자 개봉은 `onboarding_reward_attempt.tap_session_id` Unique와 `request_hash` 비교를 멱등성 Source of Truth로 사용한다. 로그인 귀속에서는 같은 `onboardingAttemptId`를 한 사용자에게 한 번만 귀속하고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없다.
 - Refresh Rotation은 Redis Lua CAS를 사용한다.
 - logout-all은 사용자 revoke marker를 저장한다. 현재 Session 저장 경로가 revoke marker를 확인해 신규 Session 저장 경쟁을 차단하지는 않으므로 코드 검토가 필요하다.
 

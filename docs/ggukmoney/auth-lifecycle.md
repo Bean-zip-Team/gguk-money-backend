@@ -45,31 +45,26 @@ POST /api/v1/auth/toss/login
 }
 ```
 
-기존 온보딩 계약:
+온보딩 보상 귀속 계약:
 
 ```json
 {
   "authorizationCode": "one-time-code",
   "referrer": "DEFAULT",
-  "onboarding": {
-    "onboardingAttemptId": "uuid",
-    "onboardingTapCount": 45
-  }
+  "onboardingAttemptId": "uuid"
 }
 ```
 
-> 정합화 필요: 현재 구현 DTO와 기존 온보딩 계약이 다르다. 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 존재하고 `onboarding` 객체는 없다. 로그인 DTO에 온보딩 정산 필드를 포함할지, 온보딩 정산을 별도 API로 분리할지 결정해야 한다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 선택 필드가 있으며, 별도 로그인 후 Claim API 없이 신규 Toss 가입 트랜잭션에서 온보딩 보상을 귀속한다.
 
 ### 처리 순서
-
-> 정합화 필요: 현재 `TossLoginRequest`에는 온보딩 정산 필드가 없다. 로그인 DTO에 온보딩 정보를 포함할지, 별도 온보딩 정산 API로 분리할지 결정하기 전까지 아래 온보딩 흐름은 목표 계약으로만 취급한다.
 
 1. 입력 검증
 2. Toss `generate-token`
 3. Toss `login-me`
 4. `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))` 조회
 5. 신규 사용자 DB 생성 또는 기존 활성 사용자 갱신
-6. 온보딩 계약이 로그인 방식으로 확정된 경우 온보딩 보상 멱등 처리
+6. 신규 사용자이고 `onboardingAttemptId`가 있으면 온보딩 보상 멱등 처리
 7. 꾹머니 Access/Refresh JWT 발급
 8. Redis Auth Session 저장
 

@@ -93,6 +93,24 @@ public class UserKeycap {
         return userKeycap;
     }
 
+    public static UserKeycap createCompletedOnboardingReward(AppUser user, Keycap keycap, Instant completedAt) {
+        Objects.requireNonNull(user, "user must not be null.");
+        Objects.requireNonNull(keycap, "keycap must not be null.");
+        Objects.requireNonNull(completedAt, "completedAt must not be null.");
+        if (keycap.getRequiredShardCount() == null || keycap.getRequiredShardCount() < 0) {
+            throw new IllegalArgumentException("Required shard count must not be negative.");
+        }
+
+        UserKeycap userKeycap = new UserKeycap();
+        userKeycap.user = user;
+        userKeycap.keycap = keycap;
+        userKeycap.shardCount = keycap.getRequiredShardCount();
+        userKeycap.status = Status.COMPLETED;
+        userKeycap.completedAt = completedAt;
+        userKeycap.equipped = false;
+        return userKeycap;
+    }
+
     public boolean isCompleted() {
         return status == Status.COMPLETED;
     }

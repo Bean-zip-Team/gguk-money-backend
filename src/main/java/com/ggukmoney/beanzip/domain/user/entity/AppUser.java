@@ -97,9 +97,12 @@ public class AppUser {
         return normalizeNickname(nickname);
     }
 
-    public void claimOnboardingReward() {
+    public void claimOnboardingReward(Instant completedAt) {
+        if (onboardingRewardClaimed) {
+            return;
+        }
         this.onboardingRewardClaimed = true;
-        this.onboardingCompletedAt = Instant.now();
+        this.onboardingCompletedAt = completedAt;
     }
 
     public void withdraw() {

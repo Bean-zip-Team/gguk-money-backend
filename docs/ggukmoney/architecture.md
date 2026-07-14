@@ -107,7 +107,7 @@ erDiagram
 
 ### 온보딩 키캡 상자 계약 · MVP 권장안
 
-현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없으므로 로그인 귀속은 후속 구현이다. 회원가입 전 온보딩 키캡 상자 개봉 API는 구현됐고, Toss 로그인 요청에는 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 선택 필드가 있으며, Toss 신규 가입 시 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 전달해 온보딩 보상을 귀속한다. 회원가입 전 온보딩 키캡 상자 개봉 API와 로그인 귀속이 분리되어 있으며, 로그인 후 별도 Claim API는 사용하지 않는다.
 
 온보딩 키캡 상자는 일반 키캡 상자와 다른 흐름이다.
 
@@ -126,7 +126,7 @@ erDiagram
 
 프론트가 `keycapId`, `shardCount`, `completed`, `tapCount=45`, `rewardPoint`, 상자 개봉 결과 전체를 보상의 Source of Truth로 전달하는 구조는 금지한다. 서버는 `onboardingAttemptId`를 통해 서버 기준 45탭 완료 여부, 서버가 결정한 키캡 보상 결과, attempt 만료 여부, claimed 여부, 신규 사용자 귀속 가능 상태를 확인한다.
 
-현재 구현은 온보딩 상자 개봉과 attempt 저장까지만 포함한다. Toss 로그인 Request/Response, 기존 사용자 로그인에 attempt가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 실제 지급, 키캡 실제 지급과 자동 장착 여부, claimed 전환은 후속 이슈 범위다.
+현재 구현은 온보딩 상자 개봉과 attempt 저장, Toss 신규 가입 시 포인트와 완성 키캡 지급, attempt `CLAIMED` 전환을 포함한다. 기존 사용자는 잘못되거나 만료된 `onboardingAttemptId` 때문에 로그인에 실패하지 않으며 신규 보상을 받지 않는다. 온보딩 키캡 자동 장착과 로그인 후 별도 Claim API는 범위에 포함하지 않는다.
 
 ## Refresh와 로그아웃
 
