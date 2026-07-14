@@ -6,13 +6,13 @@ import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -111,17 +111,26 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
         String idempotencyKey = UUID.randomUUID().toString();
 
-        String firstCashoutId = mockMvc.perform(post("/api/v1/cashouts")
+        String firstBody = mockMvc.perform(post("/api/v1/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", idempotencyKey))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
+        String firstCashoutId = JsonPath.read(firstBody, "$.data.cashoutId");
 
         mockMvc.perform(post("/api/v1/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", idempotencyKey))
                 .andExpect(status().isAccepted())
-                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).isEqualTo(firstCashoutId));
+                .andExpect(jsonPath("$.data.cashoutId").value(firstCashoutId))
+                .andExpect(jsonPath("$.data.pointAmount").value(134))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
+                .andExpect(jsonPath("$.data.status").value("REQUESTED"));
+
+        mockMvc.perform(get("/api/v1/cashouts/quote")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pointBalance").value(0));
     }
 
     private AppUser registerUser(String nickname) {
