@@ -106,6 +106,14 @@ keycap_box_account
 + keycap_box_open
 ```
 
+### 키캡 장착
+
+```text
+user_keycap
+```
+
+현재 구현은 `KeycapService.equipKeycap(...)`의 단일 `@Transactional` 경계 안에서 처리한다. 현재 인증 사용자 UUID와 `Keycap.publicId`로 사용자 보유 키캡을 조회하고, 미완성 키캡은 차단한다. 같은 사용자의 기존 장착 키캡이 있으면 `equipped=false`로 해제한 뒤 요청 키캡을 `equipped=true`로 변경한다.
+
 ### 출금 요청
 
 ```text
@@ -130,6 +138,7 @@ app_user.withdrawn_at = now
 ## 동시성
 
 - `point_account`, `keycap_box_account`, `user_tap_daily`, `cashout_request`는 `@Version` 또는 명시적 행 잠금을 사용한다.
+- 키캡 장착은 같은 사용자의 `user_keycap` 행을 비관적 잠금으로 조회한 뒤 기존 장착 해제와 신규 장착을 같은 트랜잭션에서 수행한다.
 - 로그인 Identity 생성 경쟁은 `(provider, provider_user_id)` Unique로 해결한다.
 - 목표 온보딩 계약은 `onboarding_reward_claimed` 조건부 갱신과 `point_ledger` 멱등 제약을 함께 사용한다. 현재 로그인 DTO에 온보딩 정산 필드는 없다.
 - Refresh Rotation은 Redis Lua CAS를 사용한다.
@@ -159,6 +168,7 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 | MEDIUM | 원장 사용자 정합성 | `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 DB 제약으로 보장하지 않는다. | 서비스 검증 또는 복합 FK/제약 검토 |
 | MEDIUM | 활성 부스터 제한 | `booster_grant`에 사용자별 활성 부스터 1개 제한이 없다. | Partial Unique 또는 서비스 잠금 검토 |
 | MEDIUM | 키캡 장착 상태 | `user_keycap.equipped=true`가 `COMPLETED`일 때만 가능하다는 DB 제약이 없다. | CHECK/서비스 검증 검토 |
+| MEDIUM | 키캡 장착 유일성 | 문서 명세에는 `UNIQUE (user_id) WHERE equipped=true`가 있으나 현재 작업 환경에서는 실제 공유/개발 DB 제약 존재 여부를 확인하지 못했다. | merge 전 실제 DB partial unique index 확인 |
 | MEDIUM | app_config 공개 범위 | Repository에는 `config_key/effective_at` 기준 선택 메서드가 있고 앱 설정 조회 API는 `TapPolicyConfig`의 공개 typed DTO만 반환한다. 원본 JSON과 내부 검증값은 외부에 노출하지 않는다. | 신규 운영 정책 키 추가 시 공개 DTO 반영 여부를 별도 검토 |
 
 ## 민감정보 로그 정책

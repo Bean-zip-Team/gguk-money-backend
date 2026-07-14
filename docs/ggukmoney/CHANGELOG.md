@@ -1,5 +1,14 @@
 # 수정 내역
 
+## 2026-07-14 키캡 장착 API 구현
+
+- `PUT /api/v1/keycaps/{keycapId}/equip`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 장착 요청은 Request Body 없이 `Keycap.publicId`를 Path Variable로 사용하고, 응답은 `keycapId`, `equipped`만 반환하도록 정리했다.
+- 완성된 사용자 보유 키캡만 장착 가능하며, 기존 장착 키캡은 같은 트랜잭션에서 자동 해제한다.
+- 같은 키캡 재장착은 실패가 아니라 `200 OK` 멱등 성공으로 처리하도록 기록했다.
+- `USER_KEYCAP_NOT_FOUND`, `KEYCAP_NOT_COMPLETED` ErrorCode와 키캡 장착 targeted test 결과를 문서에 반영했다.
+- 실제 공유/개발 DB의 `UNIQUE (user_id) WHERE equipped=true` 제약 존재 여부는 merge 전 확인 필요 항목으로 기록했다.
+
 ## 2026-07-14 키캡 목록 조회 API 구현
 
 - `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`를 Access JWT 필수 구현 확인 API로 추가했다.

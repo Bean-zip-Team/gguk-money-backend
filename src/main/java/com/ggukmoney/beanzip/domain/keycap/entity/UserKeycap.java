@@ -82,6 +82,21 @@ public class UserKeycap {
         updatedAt = Instant.now();
     }
 
+    public boolean isCompleted() {
+        return status == Status.COMPLETED;
+    }
+
+    public void equip() {
+        if (!isCompleted()) {
+            throw new IllegalStateException("Only completed keycaps can be equipped.");
+        }
+        equipped = true;
+    }
+
+    public void unequip() {
+        equipped = false;
+    }
+
     public enum Status {
         IN_PROGRESS,
         COMPLETED

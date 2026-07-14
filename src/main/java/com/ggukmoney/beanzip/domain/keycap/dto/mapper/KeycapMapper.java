@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.dto.mapper;
 
 import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapEquipResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapItemResponse;
@@ -43,4 +44,7 @@ public interface KeycapMapper {
     @Mapping(target = "name", source = "keycap.name")
     @Mapping(target = "imageUrl", source = "keycap.imageUrl")
     EquippedKeycapResponse mapToEquippedKeycapResponse(UserKeycap userKeycap);
+
+    @Mapping(target = "keycapId", source = "keycap.publicId")
+    KeycapEquipResponse mapToKeycapEquipResponse(UserKeycap userKeycap);
 }

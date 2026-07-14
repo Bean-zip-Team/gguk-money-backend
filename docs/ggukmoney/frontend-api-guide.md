@@ -22,9 +22,9 @@
 
 | 상태 | API 수 |
 |---|---:|
-| 구현 확인 | 14 |
+| 구현 확인 | 15 |
 | 구현 확인 · 결정 필요 | 0 |
-| 계약 초안 | 11 |
+| 계약 초안 | 10 |
 | 전체 | 25 |
 
 > 탭과 부스터는 현재 Controller와 DTO가 존재하므로 집계에는 구현 확인으로 반영한다. 다만 세부 문서의 경로·상태 문구는 별도 문서 정리에서 계속 정합화가 필요하다.
@@ -174,6 +174,8 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 401 | `TOSS_INVALID_GRANT` | 구현 확인 | 새 authorizationCode 발급 |
 | 403 | `TOSS_USER_MISMATCH` | 구현 확인 | 탈퇴 중단 |
 | 403 | `ACCOUNT_WITHDRAWN` | 구현 확인 | 탈퇴 계정 안내 |
+| 404 | `USER_KEYCAP_NOT_FOUND` | 구현 확인 | 보유 키캡 목록 새로고침 |
+| 400 | `KEYCAP_NOT_COMPLETED` | 구현 확인 | 미완성 키캡 장착 차단 안내 |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 계약상 예정 · 구현 필요 | 변경된 작업은 새 키 생성 |
 
 ## 인증과 회원
@@ -1063,13 +1065,13 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 12. `PUT /api/v1/keycaps/{keycapId}/equip`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-완성한 키캡 하나를 장착한다. 사용자당 장착 키캡은 하나다.
+완성한 키캡 하나를 장착한다. 사용자당 장착 키캡은 하나이며, 새 키캡을 장착하면 기존 장착 키캡은 자동으로 해제된다. 이미 장착된 같은 키캡을 다시 요청하면 같은 성공 응답을 반환한다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
+`keycapId`는 `Keycap.publicId` UUID다. 내부 BIGINT `keycap.id`는 API 식별자로 사용하지 않는다. 미완성 키캡은 장착할 수 없고, 다른 사용자의 키캡 또는 존재하지 않는 보유 키캡은 동일하게 `USER_KEYCAP_NOT_FOUND`로 처리한다. 별도 `Idempotency-Key` Header는 사용하지 않는다.
 
 #### Request Header
 
@@ -1085,7 +1087,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+`200 OK`
 
 ##### Response Body
 
@@ -1109,12 +1111,40 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### `400 Bad Request`
 
+미완성 키캡 장착을 시도하면 `KEYCAP_NOT_COMPLETED`를 반환한다.
+
 ```json
 {
   "success": false,
   "error": {
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "요청 값이 올바르지 않습니다."
+    "code": "KEYCAP_NOT_COMPLETED",
+    "message": "완성한 키캡만 장착할 수 있습니다."
+  }
+}
+```
+
+##### `401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "인증이 필요합니다."
+  }
+}
+```
+
+##### `404 Not Found`
+
+요청한 `keycapId`가 현재 사용자의 보유 키캡으로 확인되지 않으면 `USER_KEYCAP_NOT_FOUND`를 반환한다.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "USER_KEYCAP_NOT_FOUND",
+    "message": "보유한 키캡을 찾을 수 없습니다."
   }
 }
 ```

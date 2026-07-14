@@ -11,6 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -58,6 +59,42 @@ class KeycapRepositoryTest {
                 .containsExactly("BASIC_001", "BASIC_002");
         assertThat(result).extracting(UserKeycap::getShardCount)
                 .containsExactly(10, 3);
+    }
+
+    @Test
+    void findsCurrentUsersKeycapByKeycapPublicIdWithJoinedKeycap() {
+        AppUser currentUser = appUserRepository.save(AppUser.createActive("current-user", null));
+        AppUser otherUser = appUserRepository.save(AppUser.createActive("other-user", null));
+        Keycap keycap = keycapRepository.save(keycap("BASIC_001", "First", true, 1));
+        keycapRepository.flush();
+
+        userKeycapRepository.save(userKeycap(currentUser, keycap, 10, UserKeycap.Status.COMPLETED, false));
+        userKeycapRepository.save(userKeycap(otherUser, keycap, 10, UserKeycap.Status.COMPLETED, true));
+
+        Optional<UserKeycap> result = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(
+                currentUser.getId(),
+                keycap.getPublicId()
+        );
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getUser().getId()).isEqualTo(currentUser.getId());
+        assertThat(result.get().getKeycap().getPublicId()).isEqualTo(keycap.getPublicId());
+    }
+
+    @Test
+    void doesNotFindOtherUsersKeycapByKeycapPublicId() {
+        AppUser currentUser = appUserRepository.save(AppUser.createActive("current-user", null));
+        AppUser otherUser = appUserRepository.save(AppUser.createActive("other-user", null));
+        Keycap keycap = keycapRepository.save(keycap("BASIC_001", "First", true, 1));
+        keycapRepository.flush();
+        userKeycapRepository.save(userKeycap(otherUser, keycap, 10, UserKeycap.Status.COMPLETED, true));
+
+        Optional<UserKeycap> result = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(
+                currentUser.getId(),
+                keycap.getPublicId()
+        );
+
+        assertThat(result).isEmpty();
     }
 
     private static Keycap keycap(String code, String name, boolean active, int sortOrder) {

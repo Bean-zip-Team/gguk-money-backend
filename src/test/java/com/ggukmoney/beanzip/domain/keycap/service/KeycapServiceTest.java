@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapMapper;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapEquipResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
@@ -12,6 +13,7 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
@@ -19,7 +21,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,6 +110,72 @@ class KeycapServiceTest {
         assertThat(response.code()).isEqualTo("BASIC_001");
         assertThat(response.name()).isEqualTo("Basic");
         assertThat(response.imageUrl()).isNull();
+    }
+
+    @Test
+    void equipsCompletedKeycapAndUnequipsPreviousKeycap() {
+        UUID userId = UUID.randomUUID();
+        UUID targetKeycapId = UUID.randomUUID();
+        UserKeycap current = userKeycap(userId, UUID.randomUUID(), "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+        UserKeycap target = userKeycap(userId, targetKeycapId, "RARE_001", "Rare", 20, UserKeycap.Status.COMPLETED, false);
+        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of(current, target));
+        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, targetKeycapId))
+                .thenReturn(Optional.of(target));
+        when(userKeycapRepository.findEquippedByUserIdForUpdate(userId)).thenReturn(Optional.of(current));
+
+        KeycapEquipResponse response = keycapService.equipKeycap(userId, targetKeycapId);
+
+        assertThat(current.isEquipped()).isFalse();
+        assertThat(target.isEquipped()).isTrue();
+        assertThat(response.keycapId()).isEqualTo(targetKeycapId);
+        assertThat(response.equipped()).isTrue();
+    }
+
+    @Test
+    void returnsSuccessWhenSameKeycapIsAlreadyEquipped() {
+        UUID userId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap target = userKeycap(userId, keycapId, "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of(target));
+        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId))
+                .thenReturn(Optional.of(target));
+        when(userKeycapRepository.findEquippedByUserIdForUpdate(userId)).thenReturn(Optional.of(target));
+
+        KeycapEquipResponse response = keycapService.equipKeycap(userId, keycapId);
+
+        assertThat(target.isEquipped()).isTrue();
+        assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.equipped()).isTrue();
+    }
+
+    @Test
+    void rejectsIncompleteKeycapEquip() {
+        UUID userId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap target = userKeycap(userId, keycapId, "BASIC_001", "Basic", 4, UserKeycap.Status.IN_PROGRESS, false);
+        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of(target));
+        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId))
+                .thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> keycapService.equipKeycap(userId, keycapId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("KEYCAP_NOT_COMPLETED");
+        verify(userKeycapRepository, never()).findEquippedByUserIdForUpdate(userId);
+    }
+
+    @Test
+    void rejectsMissingOrUnownedKeycapEquipAsNotFound() {
+        UUID userId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of());
+        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> keycapService.equipKeycap(userId, keycapId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("USER_KEYCAP_NOT_FOUND");
     }
 
     private static UserKeycap userKeycap(

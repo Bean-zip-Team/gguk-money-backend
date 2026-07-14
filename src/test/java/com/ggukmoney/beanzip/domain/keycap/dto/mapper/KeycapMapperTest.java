@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.dto.mapper;
 
 import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapEquipResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapItemResponse;
@@ -103,6 +104,18 @@ class KeycapMapperTest {
         assertThat(response.code()).isEqualTo("BASIC_001");
         assertThat(response.name()).isEqualTo("Basic");
         assertThat(response.imageUrl()).isNull();
+    }
+
+    @Test
+    void mapsUserKeycapToEquipResponseWithoutExposingInternalId() {
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap userKeycap =
+                userKeycap(UUID.randomUUID(), keycapId, "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+
+        KeycapEquipResponse response = keycapMapper.mapToKeycapEquipResponse(userKeycap);
+
+        assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.equipped()).isTrue();
     }
 
     private static UserKeycap userKeycap(

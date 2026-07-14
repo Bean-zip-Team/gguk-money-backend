@@ -163,6 +163,8 @@ Unique와 인덱스:
 
 온보딩 완성 키캡은 `shard_count=required_shard_count`, `status=COMPLETED`로 직접 지급한다.
 
+키캡 장착 API 구현은 `status=COMPLETED`인 사용자 보유 키캡만 `equipped=true`로 변경한다. 같은 사용자의 기존 장착 키캡은 같은 트랜잭션에서 `equipped=false`로 해제하며, 사용자당 `equipped=true` 최대 1개 정책은 위 partial unique index를 최종 DB 제약으로 사용한다.
+
 ## 6. keycap_box_account
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
@@ -358,4 +360,5 @@ Unique와 Check:
 - Migration 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
 - Migration 기준으로 `booster_grant`의 사용자별 활성 부스터 1개 제한은 없다.
 - Migration 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.
+- 키캡 장착 API는 서비스 레벨에서 완료 상태를 검증하고 사용자 키캡 행 잠금 후 상태를 변경한다. 실제 공유/개발 DB의 `UNIQUE (user_id) WHERE equipped=true` 존재 여부는 배포 전 확인이 필요하다.
 - `app_config`는 `(config_key, effective_at)` Unique와 인덱스를 갖고, 현재 Repository에는 유효 시각 기준 최신 설정을 조회하는 `findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(...)`가 있다.
