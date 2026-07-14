@@ -1,8 +1,8 @@
-# 꾹머니 13개 테이블 MVP 테스트 계획
+# 꾹머니 14개 테이블 MVP 테스트 계획
 
 ## 목표
 
-- 13개 테이블만 생성되는지 검증
+- 14개 테이블만 생성되는지 검증
 - `app_user.id UUID`와 모든 `user_id UUID` FK 정합성 검증
 - 현재 저장소의 Entity, Repository, Hibernate 생성 스키마와 공유/개발 DB 제약 적용 필요 사항 검증
 - Toss 로그인, Refresh, 로그아웃, logout-all, 탈퇴, Webhook 계약 검증
@@ -26,20 +26,21 @@
 - 결과: 실패
 - 원인: Docker/Testcontainers 환경 미탐지로 컨테이너 기반 테스트 초기화 실패
 - 영향 테스트: PostgreSQL/Redis Testcontainers를 사용하는 통합 테스트
-- 최근 실행 결과: `198 tests completed, 10 failed`
+- 최근 실행 결과: `218 tests completed, 10 failed`
 - `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 Docker/Testcontainers 초기화 실패로 실패했다.
 - 앱 설정 관련 `AppConfigServiceTest`, `AppConfigControllerTest`, `TapPolicyConfigTest`는 targeted test로 통과 확인했다.
 - 키캡 목록 및 장착 API 관련 `UserKeycapTest`, `KeycapRepositoryTest`, `KeycapMapperTest`, `KeycapServiceTest`, `KeycapControllerTest`는 targeted test로 통과 확인했다.
 - 키캡 상자 상태 API 관련 `UserTapProgressServiceTest`, `KeycapBoxMapperTest`, `KeycapBoxStatusServiceTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
 - 키캡 상자 개봉 API 관련 `KeycapBoxAccountTest`, `UserKeycapTest`, `KeycapBoxOpenRequestHasherTest`, `KeycapRewardSelectorTest`, `KeycapBoxOpenServiceTest`, `KeycapBoxOpenRepositoryTest`, `KeycapRepositoryTest`, `KeycapBoxMapperTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
 - 키캡 상자 개봉 이력 API 관련 `KeycapBoxHistoryCursorCodecTest`, `KeycapBoxHistoryServiceTest`, `KeycapBoxOpenRepositoryTest`, `KeycapBoxMapperTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
+- 회원가입 전 온보딩 키캡 상자 API 관련 `OnboardingTapValidatorTest`, `OnboardingKeycapBoxOpenRequestHasherTest`, `OnboardingKeycapBoxOpenServiceTest`, `OnboardingRewardAttemptMapperTest`, `OnboardingRewardAttemptRepositoryTest`, `OnboardingKeycapBoxControllerTest`, `OnboardingRewardConfigTest`는 targeted test로 통과 확인했다.
 - 기존 탭/부스터 회귀 테스트인 `TapBatchServiceTest`, `BoosterGrantServiceTest`는 targeted test로 통과 확인했다.
 
 ## 구현 및 통과 확인
 
 - `TestEnvironmentSmokeTest`: JUnit Platform과 Java 26 환경 확인
 - `GgukmoneyBackendApplicationTests`: Spring Context 로드
-- `ADomainPersistenceSmokeTest`: 13개 Entity 테이블명, PK 타입, `public_id` 보유 여부, Repository가 `JpaRepository`를 사용하는지 확인
+- `ADomainPersistenceSmokeTest`: 14개 Entity 테이블명, PK 타입, `public_id` 보유 여부, Repository가 `JpaRepository`를 사용하는지 확인
 - `RedisAuthSessionRepositoryTest`: Refresh Rotation Lua CAS 호출 구조, logout-all Lua script 구성, revoke marker 파싱 확인
 - `AuthServiceLogoutAllTest`: logout-all 응답과 revoke count 반환 확인
 - `AuthServiceTossLifecycleTest`: Toss 로그인 신규/기존/탈퇴 사용자, 사용자 요청 탈퇴, Toss unlink 실패, Webhook Secret, Webhook 멱등 처리 확인
@@ -71,7 +72,7 @@
 
 아래 테스트는 코드가 존재하지만 이번 `clean build`에서는 Docker 환경 부재로 초기화에 실패했다.
 
-- `FlywayMigrationIntegrationTest`: 빈 PostgreSQL에 Flyway 적용, 13개 테이블, UUID `user_id`, 주요 제약과 인덱스 확인
+- `FlywayMigrationIntegrationTest`: 빈 PostgreSQL에 Flyway 적용, 14개 테이블, UUID `user_id`, 주요 제약과 인덱스 확인
 - `AuthApiIntegrationTest`: Refresh, logout, logout-all API와 실제 Redis 상태 변화 확인
 - `RedisAuthSessionRepositoryIntegrationTest`: Redis Session 저장, 조회, 삭제, revoke marker 확인
 - `RefreshLuaCasIntegrationTest`: 실제 Redis Lua CAS, 동시 Refresh 충돌, 과거 Refresh 재사용 감지 확인
@@ -85,8 +86,7 @@
 
 아래 항목은 Entity와 Repository 또는 목표 계약은 있으나 Controller/Service 또는 외부 연동 흐름이 아직 없어 기능 테스트를 보류한다.
 
-- 온보딩 정산: 로그인 DTO에 `onboardingAttemptId` 필드가 없고 온보딩 attempt 저장 방식과 상자 개봉 API Path도 아직 확정되지 않았다.
-- 상자 개봉 이력 조회 API: Controller/Service가 없다.
+- 온보딩 로그인 귀속: 로그인 DTO에 `onboardingAttemptId` 필드가 없고 포인트·키캡 실제 지급과 attempt claimed 처리는 후속 구현이다.
 - 출금 요청과 Toss 지급: 출금 Controller/Service와 외부 지급 복구 흐름이 없다.
 - 앱 설정 외의 운영 정책 API: 앱 버전, 점검 상태, 출금 정책 조회는 실제 설정 키와 서비스 구현이 없어 보류한다.
 
@@ -100,10 +100,7 @@
 - `user_keycap.equipped=true`와 `status=COMPLETED` 정합성은 Entity와 Service 테스트로 검증한다. 실제 DB CHECK 제약은 없으므로 서비스 검증을 유지한다.
 - 상자 개봉 동시 동일 요청 Unique 충돌 후 기존 결과 재조회
 - 상자 개봉에서 부스터가 조각 수에 적용되지 않음
-- 회원가입 전 45탭 미완료 시 온보딩 상자 개봉 차단
-- 클라이언트가 전달한 `tapCount`를 보상 근거로 사용하지 않음
-- 서버가 온보딩 보상 결과를 결정함
-- 프론트가 전달한 `keycapId`를 신뢰하지 않음
+- 온보딩 상자 attempt 동시 동일 요청 Unique 충돌 후 기존 결과 재조회
 - 유효한 `onboardingAttemptId`로 신규 가입 시 온보딩 보상 지급
 - 같은 `onboardingAttemptId` 로그인 재요청 시 중복 지급 없음
 - 동일 `onboardingAttemptId`를 다른 사용자가 재사용할 수 없음

@@ -78,7 +78,8 @@ public class AuthInterceptor implements HandlerInterceptor {
                 && (ApiPaths.GUESTS.equals(path)
                 || (ApiPaths.AUTH + "/refresh").equals(path)
                 || (ApiPaths.AUTH + "/toss/login").equals(path)
-                || (ApiPaths.AUTH + "/toss/unlink-webhook").equals(path));
+                || (ApiPaths.AUTH + "/toss/unlink-webhook").equals(path)
+                || (ApiPaths.ONBOARDING_KEYCAP_BOXES + "/open").equals(path));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {
