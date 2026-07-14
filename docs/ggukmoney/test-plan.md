@@ -26,10 +26,10 @@
 - 결과: 실패
 - 원인: Docker/Testcontainers 환경 미탐지로 컨테이너 기반 테스트 초기화 실패
 - 영향 테스트: PostgreSQL/Redis Testcontainers를 사용하는 통합 테스트
-- 최근 실행 결과: `104 tests completed, 8 failed`
+- 최근 실행 결과: `130 tests completed, 9 failed`
 - `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 Docker/Testcontainers 초기화 실패로 실패했다.
 - 앱 설정 관련 `AppConfigServiceTest`, `AppConfigControllerTest`, `TapPolicyConfigTest`는 targeted test로 통과 확인했다.
-- 키캡 목록 API 관련 `KeycapRepositoryTest`, `KeycapMapperTest`, `KeycapServiceTest`, `KeycapControllerTest`는 targeted test로 통과 확인했다.
+- 키캡 목록 및 장착 API 관련 `UserKeycapTest`, `KeycapRepositoryTest`, `KeycapMapperTest`, `KeycapServiceTest`, `KeycapControllerTest`는 targeted test로 통과 확인했다.
 - 기존 탭/부스터 회귀 테스트인 `TapBatchServiceTest`, `BoosterGrantServiceTest`는 targeted test로 통과 확인했다.
 
 ## 구현 및 통과 확인
@@ -45,10 +45,11 @@
 - `MemberMapperTest`: 회원 조회·수정 응답 변환, 장착 키캡 없음, nullable 프로필 이미지 확인
 - `UserServiceTest`: 회원 조회, 포인트 잔액 0, 장착 키캡 없음, 프로필 부분 수정, 공백 닉네임, 닉네임 중복, 탈퇴 사용자 차단 확인
 - `MemberControllerTest`: 인증 사용자 UUID 전달, 회원 조회·수정 성공 응답 `success/data`, Validation 실패 확인
-- `KeycapRepositoryTest`: `active=true` 키캡 목록 정렬, 현재 사용자 보유 키캡 조건, `Keycap` join fetch 조회 확인
-- `KeycapMapperTest`: 키캡 목록과 내 키캡 목록 DTO 변환, `publicId` → `keycapId`, 내부 BIGINT ID 미노출 확인
-- `KeycapServiceTest`: 키캡 목록, 내 키캡 목록, 빈 배열 응답, 회원 조회에 필요한 최소 장착 키캡 요약 조회 확인
-- `KeycapControllerTest`: `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me` Access JWT 필수 정책과 `success/data` 응답 확인
+- `UserKeycapTest`: 완료 키캡 장착, 미완성 키캡 장착 거부, 장착 해제 상태 전환 확인
+- `KeycapRepositoryTest`: `active=true` 키캡 목록 정렬, 현재 사용자 보유 키캡 조건, `Keycap` join fetch 조회, 사용자 UUID와 `Keycap.publicId` 기준 보유 키캡 조회 확인
+- `KeycapMapperTest`: 키캡 목록과 내 키캡 목록 DTO 변환, 장착 응답 변환, `publicId` → `keycapId`, 내부 BIGINT ID 미노출 확인
+- `KeycapServiceTest`: 키캡 목록, 내 키캡 목록, 빈 배열 응답, 회원 조회에 필요한 최소 장착 키캡 요약 조회, 완료 키캡 장착, 기존 장착 자동 해제, 같은 키캡 재장착 멱등 성공, 미완성·미보유 키캡 차단 확인
+- `KeycapControllerTest`: `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip` Access JWT 필수 정책과 `success/data` 응답 확인
 - `TapBatchServiceTest`: 탭 배치 처리, 포인트 적립, 상자 지급, 부스터 배율 적용, 중복 요청 재처리 방지 확인
 - `BoosterGrantServiceTest`: 부스터 활성화, 중복 활성화 차단, 일일 제한, 현재 상태, 활성 배율 조회 확인
 - `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인
@@ -66,7 +67,7 @@
 - `AuthServiceLogoutAllIntegrationTest`: 실제 Redis에서 logout-all 삭제와 revoke marker 확인
 - `GlobalExceptionHandlerTest`: Testcontainers 기반 FullStack 지원 클래스에 의존해 환경 문제로 실행 미확인
 - 회원 API 통합 회귀 테스트: 현재 Docker/Testcontainers 환경 부재로 전체 `clean test`, `clean build`에서 확인 필요
-- 탭/부스터 통합 테스트: `TapApiIntegrationTest`, `BoosterApiIntegrationTest`, `TapBatchServiceRateLimitIntegrationTest`는 Docker/Testcontainers 초기화 실패로 이번 전체 검증에서 실행 결과를 확인하지 못했다.
+- 포인트/탭/부스터 통합 테스트: `PointApiIntegrationTest`, `TapApiIntegrationTest`, `BoosterApiIntegrationTest`, `TapBatchServiceRateLimitIntegrationTest`는 Docker/Testcontainers 초기화 실패로 이번 전체 검증에서 실행 결과를 확인하지 못했다.
 
 ## 기능 미구현으로 보류
 
@@ -84,7 +85,7 @@
 - 사용자 요청 탈퇴와 Toss unlink Webhook 동시 처리 시 상태 변경, 개인정보 익명화, Redis Session 폐기의 멱등 수렴
 - `point_ledger.user_id`와 `point_account_id`의 사용자 불일치 방지
 - `booster_grant` 활성 부스터 중복 생성 방지
-- `user_keycap.equipped=true`와 `status=COMPLETED` 정합성
+- `user_keycap.equipped=true`와 `status=COMPLETED` 정합성은 Entity와 Service 테스트로 검증한다. 실제 DB CHECK 제약은 없으므로 서비스 검증을 유지한다.
 - 상자 개봉과 출금의 같은 `Idempotency-Key` 재요청 결과 복구
 - 같은 멱등 기준에 다른 Request Body가 들어왔을 때 `409 IDEMPOTENCY_KEY_REUSED` 처리
 

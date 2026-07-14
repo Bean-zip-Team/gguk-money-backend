@@ -61,6 +61,10 @@ public enum ErrorCode {
 
     POINT_ACCOUNT_NOT_FOUND("POINT_ACCOUNT_NOT_FOUND", "포인트 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
+    KEYCAP_NOT_FOUND("KEYCAP_NOT_FOUND", "키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    USER_KEYCAP_NOT_FOUND("USER_KEYCAP_NOT_FOUND", "보유한 키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    KEYCAP_NOT_COMPLETED("KEYCAP_NOT_COMPLETED", "완성한 키캡만 장착할 수 있습니다.", HttpStatus.BAD_REQUEST),
+
     AD_VIEW_ID_REQUIRED("AD_VIEW_ID_REQUIRED", "adViewId가 필요합니다.", HttpStatus.BAD_REQUEST),
     BOOSTER_ALREADY_ACTIVE("BOOSTER_ALREADY_ACTIVE", "이미 부스터가 활성화되어 있습니다.", HttpStatus.CONFLICT),
     BOOSTER_DAILY_LIMIT_EXCEEDED("BOOSTER_DAILY_LIMIT_EXCEEDED", "오늘 부스터 사용 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS);

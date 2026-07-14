@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.keycap.controller;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapEquipResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapItemResponse;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -64,6 +66,22 @@ class KeycapControllerTest {
         assertThat(result.getBody()).isNotNull();
         assertThat(result.getBody().data()).isEqualTo(response);
         verify(keycapService).getMyKeycaps(userId);
+    }
+
+    @Test
+    void equipKeycapPassesAuthenticatedUserIdAndKeycapIdToService() {
+        UUID userId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        KeycapEquipResponse response = new KeycapEquipResponse(keycapId, true);
+        when(keycapService.equipKeycap(userId, keycapId)).thenReturn(response);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AuthRequestAttributes.USER_ID, userId);
+
+        var result = keycapController.equipKeycap(request, keycapId);
+
+        assertThat(result.getBody()).isNotNull();
+        assertThat(result.getBody().data()).isEqualTo(response);
+        verify(keycapService).equipKeycap(userId, keycapId);
     }
 
     @Test
@@ -109,6 +127,23 @@ class KeycapControllerTest {
     }
 
     @Test
+    void authenticatedEquipKeycapReturnsSuccessDataShape() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        UUID keycapId = UUID.randomUUID();
+        when(keycapService.equipKeycap(authenticatedUserId(), keycapId))
+                .thenReturn(new KeycapEquipResponse(keycapId, true));
+
+        mockMvc.perform(put("/api/v1/keycaps/{keycapId}/equip", keycapId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
+                .andExpect(jsonPath("$.data.equipped").value(true))
+                .andExpect(jsonPath("$.data.id").doesNotExist())
+                .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
+    @Test
     void unauthenticatedGetKeycapsIsRejectedByExistingAuthPolicy() throws Exception {
         mockMvc.perform(get("/api/v1/keycaps"))
                 .andExpect(status().isUnauthorized())
@@ -119,6 +154,14 @@ class KeycapControllerTest {
     @Test
     void unauthenticatedGetMyKeycapsIsRejectedByExistingAuthPolicy() throws Exception {
         mockMvc.perform(get("/api/v1/keycaps/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void unauthenticatedEquipKeycapIsRejectedByExistingAuthPolicy() throws Exception {
+        mockMvc.perform(put("/api/v1/keycaps/{keycapId}/equip", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
