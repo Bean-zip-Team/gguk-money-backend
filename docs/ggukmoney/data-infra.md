@@ -78,7 +78,7 @@ app_user
 + user_tap_progress
 ```
 
-목표 온보딩 계약이 로그인에 포함될 경우 같은 PostgreSQL 트랜잭션에 추가할 항목:
+MVP 권장안의 신규 사용자 온보딩 정산을 로그인에 포함할 경우 같은 PostgreSQL 트랜잭션에 추가할 항목:
 
 ```text
 + point_ledger 온보딩 보상
@@ -87,7 +87,7 @@ app_user
 
 현재 구현은 JWT 생성과 Redis Session 저장을 `@Transactional` 로그인 메서드 안에서 수행한다. Redis 실패 시 성공 응답을 반환하지 않지만, DB 커밋 뒤 Redis를 저장하는 구조는 아니다. Redis Session 저장 이후 트랜잭션 커밋 또는 응답 생성이 실패할 때의 정리 전략은 코드 검토 항목이다.
 
-> 정합화 필요: 현재 `TossLoginRequest`에는 온보딩 정산 필드가 없다. 온보딩 정산을 로그인 API에 포함하면 포인트 원장과 고정 키캡 지급까지 로그인 트랜잭션에 포함한다. 별도 API로 분리하면 로그인 트랜잭션과 온보딩 정산 트랜잭션의 경계를 별도로 정의해야 한다. 어느 방식을 사용할지는 아직 확정되지 않았고, `onboardingAttemptId`는 목표 계약의 멱등 기준이다.
+> 구현 전 계약 확정 필요: 현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없다. MVP 권장안은 회원가입 전 온보딩 키캡 상자 개봉 결과를 서버 저장 기록에 연결하고, Toss 로그인 요청에 `onboardingAttemptId`만 전달해 신규 사용자 생성 트랜잭션에서 포인트 원장과 고정 키캡 지급을 함께 처리하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
 
 ### 탭 배치
 
@@ -109,6 +109,17 @@ keycap_box_account
 + user_keycap
 + keycap_box_open
 ```
+
+상자 개봉은 후속 구현 대상이다. 확정 계약은 PostgreSQL을 멱등성 Source of Truth로 사용한다.
+
+- 모든 성공 개봉은 `keycap_box_account.box_balance`를 1 차감한다.
+- `FREE`는 추가로 `keycap_box_account.free_open_ticket_count`를 1 차감한다.
+- `ADVERTISEMENT`는 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다. 검증 구현 후에는 `ad_reward_id`를 필수로 받고 전역 중복 사용을 금지한다.
+- 보상 후보는 `keycap.active=true` 키캡 중 현재 사용자가 아직 완성하지 않은 키캡이다. `UserKeycap`이 없거나 `status=IN_PROGRESS`이면 후보에 포함하고, `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 제외한다.
+- MVP에서는 후보 중 하나를 균등 랜덤으로 선택한다. 시즌 필터와 가중치는 저장 원본이 없어 후속 결정 사항이다.
+- 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 `box_balance`, `free_open_ticket_count`, `ad_reward_id`를 소비하지 않으며 `keycap_box_open`도 생성하지 않는다.
+- 기본 지급 조각 수는 1개이며, `user_keycap.shard_count`는 `required_shard_count`를 초과 저장하지 않는다.
+- 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
 
 ### 키캡 장착
 
@@ -144,7 +155,7 @@ app_user.withdrawn_at = now
 - `point_account`, `keycap_box_account`, `user_tap_daily`, `cashout_request`는 `@Version` 또는 명시적 행 잠금을 사용한다.
 - 키캡 장착은 같은 사용자의 `user_keycap` 행을 비관적 잠금으로 조회한 뒤 기존 장착 해제와 신규 장착을 같은 트랜잭션에서 수행한다.
 - 로그인 Identity 생성 경쟁은 `(provider, provider_user_id)` Unique로 해결한다.
-- 목표 온보딩 계약은 `onboarding_reward_claimed` 조건부 갱신과 `point_ledger` 멱등 제약을 함께 사용한다. 현재 로그인 DTO에 온보딩 정산 필드는 없다.
+- 목표 온보딩 계약은 `onboarding_reward_claimed` 조건부 갱신과 `point_ledger` 멱등 제약을 함께 사용한다. 현재 로그인 DTO에 `onboardingAttemptId` 필드는 없다. 같은 `onboardingAttemptId`는 한 사용자에게 한 번만 귀속하고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없어야 한다. 동일 Toss 사용자의 동시 신규 가입 요청에서도 온보딩 포인트와 고정 키캡은 한 번만 지급해야 한다.
 - Refresh Rotation은 Redis Lua CAS를 사용한다.
 - logout-all은 사용자 revoke marker를 저장한다. 현재 Session 저장 경로가 revoke marker를 확인해 신규 Session 저장 경쟁을 차단하지는 않으므로 코드 검토가 필요하다.
 
@@ -159,6 +170,8 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 - 같은 멱등 기준과 같은 Request Body 또는 같은 `request_hash`는 상태를 다시 변경하지 않고 기존 결과를 반환한다.
 - 같은 멱등 기준에 다른 Request Body 또는 다른 `request_hash`가 들어오면 계약상 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다.
 - `IDEMPOTENCY_KEY_REUSED`는 현재 공통 `ErrorCode` 구현이 필요하다.
+
+상자 개봉의 `request_hash`는 `openMethod`, `adRewardId`를 정규화한 값의 SHA-256 Base64URL이다. 같은 `(user_id, idempotency_key)`와 같은 `request_hash`는 기존 결과를 반환하고, 다른 `request_hash`는 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다. 동시 동일 요청으로 Unique 충돌이 발생하면 기존 row를 재조회해 같은 응답으로 복구한다.
 
 ## 코드 검토 필요 항목
 

@@ -75,7 +75,7 @@
 
 아래 항목은 Entity와 Repository 또는 목표 계약은 있으나 Controller/Service 또는 외부 연동 흐름이 아직 없어 기능 테스트를 보류한다.
 
-- 온보딩 정산: 로그인 DTO에 온보딩 필드가 없고 별도 API도 아직 없다.
+- 온보딩 정산: 로그인 DTO에 `onboardingAttemptId` 필드가 없고 온보딩 attempt 저장 방식과 상자 개봉 API Path도 아직 확정되지 않았다.
 - 상자 개봉 API: 상자 개봉 Controller/Service가 없다.
 - 출금 요청과 Toss 지급: 출금 Controller/Service와 외부 지급 복구 흐름이 없다.
 - 앱 설정 외의 운영 정책 API: 앱 버전, 점검 상태, 출금 정책 조회는 실제 설정 키와 서비스 구현이 없어 보류한다.
@@ -90,6 +90,34 @@
 - `user_keycap.equipped=true`와 `status=COMPLETED` 정합성은 Entity와 Service 테스트로 검증한다. 실제 DB CHECK 제약은 없으므로 서비스 검증을 유지한다.
 - 상자 개봉과 출금의 같은 `Idempotency-Key` 재요청 결과 복구
 - 같은 멱등 기준에 다른 Request Body가 들어왔을 때 `409 IDEMPOTENCY_KEY_REUSED` 처리
+- 상자 개봉 성공 시 모든 방식에서 상자 잔액을 1 차감함
+- 상자 개봉 `FREE`에서 상자 잔액과 무료권을 각각 1 차감함
+- 상자 개봉 `ADVERTISEMENT`가 광고 검증 Service 부재 시 미지원 오류를 반환하고 자원을 차감하지 않음
+- 상자 개봉 후보 조회에서 UserKeycap 미보유 키캡을 후보에 포함함
+- 상자 개봉 후보 조회에서 `IN_PROGRESS` 키캡을 후보에 포함함
+- 상자 개봉 후보 조회에서 `COMPLETED` 키캡을 후보에서 제외함
+- 온보딩으로 완성 지급된 키캡을 일반 상자 후보에서 제외함
+- 후보 중 균등 랜덤 선택 정책 경계
+- 후보 없음 시 `KEYCAP_REWARD_NOT_AVAILABLE` 반환
+- 후보 없음 시 `boxBalance` 미차감
+- 후보 없음 시 `freeOpenTicketCount` 미차감
+- 후보 없음 시 `KeycapBoxOpen` 미생성
+- 상자 개봉 보상 조각 누적, 초과 조각 cap, `COMPLETED` 전환과 `completed_at` 기록
+- 상자 개봉 동시 동일 요청 Unique 충돌 후 기존 결과 재조회
+- 상자 개봉에서 부스터가 조각 수에 적용되지 않음
+- 회원가입 전 45탭 미완료 시 온보딩 상자 개봉 차단
+- 클라이언트가 전달한 `tapCount`를 보상 근거로 사용하지 않음
+- 서버가 온보딩 보상 결과를 결정함
+- 프론트가 전달한 `keycapId`를 신뢰하지 않음
+- 유효한 `onboardingAttemptId`로 신규 가입 시 온보딩 보상 지급
+- 같은 `onboardingAttemptId` 로그인 재요청 시 중복 지급 없음
+- 동일 `onboardingAttemptId`를 다른 사용자가 재사용할 수 없음
+- 동시 로그인 요청에서도 온보딩 포인트 중복 지급 없음
+- 온보딩 고정 키캡 `UserKeycap` 중복 없음
+- 온보딩 지급 키캡이 `COMPLETED` 상태인지 검증
+- 기존 사용자 로그인에서는 온보딩 보상 재지급 없음
+- 잘못되거나 만료된 `onboardingAttemptId` 처리
+- 로그인 요청 실패 시 attempt 소비 여부 계약 검증
 
 ## 목표 테스트 시나리오
 

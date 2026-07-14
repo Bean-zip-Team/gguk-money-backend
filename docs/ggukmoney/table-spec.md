@@ -161,7 +161,9 @@ Unique와 인덱스:
 - `UNIQUE (user_id) WHERE equipped=true`
 - `ix_user_keycap_user_status(user_id, status)`
 
-온보딩 완성 키캡은 `shard_count=required_shard_count`, `status=COMPLETED`로 직접 지급한다.
+온보딩 완성 키캡은 `shard_count=required_shard_count`, `status=COMPLETED`, `completed_at=now`로 직접 지급한다.
+
+일반 키캡 상자 보상 후보는 `keycap.active=true` 중 현재 사용자의 `user_keycap`이 없거나 `status=IN_PROGRESS`인 키캡으로 제한한다. `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 일반 상자 후보에서 제외한다. 일반 상자 조각 누적 시 `shard_count`는 `required_shard_count`를 초과 저장하지 않는다.
 
 키캡 장착 API 구현은 `status=COMPLETED`인 사용자 보유 키캡만 `equipped=true`로 변경한다. 같은 사용자의 기존 장착 키캡은 같은 트랜잭션에서 `equipped=false`로 해제하며, 사용자당 `equipped=true` 최대 1개 정책은 위 partial unique index를 최종 DB 제약으로 사용한다.
 
@@ -198,13 +200,13 @@ Unique와 인덱스:
 | `public_id` | UUID | N | Java 생성 | UNIQUE |
 | `user_id` | UUID | N | | FK `app_user(id)` |
 | `open_method` | VARCHAR(20) | N | | CHECK `FREE`, `ADVERTISEMENT` |
-| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지 |
-| `ad_reward_id` | VARCHAR(255) | Y | | 광고 보상 식별자 |
+| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지. 현재 Entity는 nullable이므로 구현 이슈에서 NOT NULL 정합화 필요 |
+| `request_hash` | VARCHAR(255) | N | | 같은 멱등키의 요청 내용 일치 확인. 구현 이슈에서 추가 필요 |
+| `ad_reward_id` | VARCHAR(255) | Y | | 광고 보상 식별자. 광고 검증 Service 구현 전에는 저장하지 않음 |
 | `keycap_id` | BIGINT | N | | FK `keycap(id)` |
 | `shard_count` | INTEGER | N | | CHECK `> 0` |
-| `boost_applied` | BOOLEAN | N | false | 부스터 적용 여부 |
-| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지 |
-| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각 |
+| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지. 구현 이슈에서 추가 필요 |
+| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각. 구현 이슈에서 추가 필요 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
@@ -213,6 +215,10 @@ Unique와 인덱스:
 - `(user_id, idempotency_key)`
 - `UNIQUE (ad_reward_id) WHERE ad_reward_id IS NOT NULL`
 - `ix_keycap_box_open_user_time(user_id, opened_at DESC)`
+
+현재 부스터는 포인트 적립 전용이므로 상자 개봉 MVP 명세에는 `boost_applied`를 포함하지 않는다. 키캡 조각 부스터가 도입되면 별도 설계와 Migration으로 추가한다.
+
+온보딩 키캡 상자 결과를 `onboardingAttemptId`에 연결해 저장할 실제 테이블은 현재 13개 테이블 명세에 없다. 저장 테이블과 컬럼이 확정되기 전까지 새 테이블이나 컬럼을 확정 명세로 추가하지 않는다.
 
 ## 8. tap_batch
 
