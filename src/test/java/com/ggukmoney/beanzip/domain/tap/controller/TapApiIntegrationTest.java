@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -94,6 +95,35 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .content(batchJson(UUID.randomUUID(), 99, 1)))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error.code").value("TAP_RATE_LIMITED"));
+    }
+
+    @Test
+    void returnsZeroedStatusRightAfterRegistration() throws Exception {
+        TestTokens tokens = registerUserWithSession("tester-4");
+
+        mockMvc.perform(get("/api/v1/tap/today")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.validTapCount").value(0))
+                .andExpect(jsonPath("$.data.pointEarnedToday").value(0))
+                .andExpect(jsonPath("$.data.remainingTapsToNextPoint").isNumber())
+                .andExpect(jsonPath("$.data.remainingTapsToNextBox").isNumber());
+    }
+
+    @Test
+    void reflectsAcceptedTapsAfterBatchSubmission() throws Exception {
+        TestTokens tokens = registerUserWithSession("tester-5");
+
+        mockMvc.perform(post("/api/v1/tap/batches")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(batchJson(UUID.randomUUID(), 1, 50)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/tap/today")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.validTapCount").value(50));
     }
 
     private TestTokens registerUserWithSession(String nickname) {
