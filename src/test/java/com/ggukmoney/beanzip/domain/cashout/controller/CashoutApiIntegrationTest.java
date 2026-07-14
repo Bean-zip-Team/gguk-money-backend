@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.cashout.controller;
 
+import com.ggukmoney.beanzip.domain.cashout.entity.CashoutRequest;
+import com.ggukmoney.beanzip.domain.cashout.repository.CashoutRequestRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.repository.PointAccountRepository;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
@@ -10,6 +12,7 @@ import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
 
@@ -28,6 +31,9 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private PointAccountService pointAccountService;
+
+    @Autowired
+    private CashoutRequestRepository cashoutRequestRepository;
 
     @Test
     void returnsEligibleQuoteWhenBalanceMeetsMinimum() throws Exception {
@@ -131,6 +137,50 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(0));
+    }
+
+    @Test
+    void listsCashoutHistoryWithCursorPagination() throws Exception {
+        AppUser user = registerUser("cashout-tester-7");
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+        for (int i = 0; i < 3; i++) {
+            cashoutRequestRepository.save(CashoutRequest.createFor(user, 10, 7, UUID.randomUUID()));
+        }
+
+        String firstPageBody = mockMvc.perform(get("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.hasMore").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String nextCursor = JsonPath.read(firstPageBody, "$.data.nextCursor");
+
+        mockMvc.perform(get("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .param("size", "2")
+                        .param("cursor", nextCursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.hasMore").value(false));
+    }
+
+    @Test
+    void filtersCashoutHistoryByStatus() throws Exception {
+        AppUser user = registerUser("cashout-tester-8");
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+        cashoutRequestRepository.save(CashoutRequest.createFor(user, 10, 7, UUID.randomUUID()));
+        CashoutRequest succeeded = cashoutRequestRepository.save(CashoutRequest.createFor(user, 20, 14, UUID.randomUUID()));
+        ReflectionTestUtils.setField(succeeded, "status", CashoutRequest.Status.SUCCEEDED);
+        cashoutRequestRepository.save(succeeded);
+
+        mockMvc.perform(get("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .param("status", "SUCCEEDED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.items[0].completedAt").exists());
     }
 
     private AppUser registerUser(String nickname) {
