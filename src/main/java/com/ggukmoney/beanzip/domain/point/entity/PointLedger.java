@@ -76,6 +76,17 @@ public class PointLedger {
         return ledger;
     }
 
+    public static PointLedger createDebit(PointAccount pointAccount, AppUser user, long amount, String reason, UUID idempotencyKey) {
+        PointLedger ledger = new PointLedger();
+        ledger.pointAccount = pointAccount;
+        ledger.user = user;
+        ledger.entryType = EntryType.DEBIT;
+        ledger.amount = amount;
+        ledger.reason = reason;
+        ledger.idempotencyKey = idempotencyKey;
+        return ledger;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

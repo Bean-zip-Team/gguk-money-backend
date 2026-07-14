@@ -69,7 +69,10 @@ public enum ErrorCode {
 
     AD_VIEW_ID_REQUIRED("AD_VIEW_ID_REQUIRED", "adViewId가 필요합니다.", HttpStatus.BAD_REQUEST),
     BOOSTER_ALREADY_ACTIVE("BOOSTER_ALREADY_ACTIVE", "이미 부스터가 활성화되어 있습니다.", HttpStatus.CONFLICT),
-    BOOSTER_DAILY_LIMIT_EXCEEDED("BOOSTER_DAILY_LIMIT_EXCEEDED", "오늘 부스터 사용 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS);
+    BOOSTER_DAILY_LIMIT_EXCEEDED("BOOSTER_DAILY_LIMIT_EXCEEDED", "오늘 부스터 사용 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS),
+
+    CASHOUT_MINIMUM_NOT_MET("CASHOUT_MINIMUM_NOT_MET", "최소 출금 포인트 미달", HttpStatus.BAD_REQUEST),
+    CASHOUT_ALREADY_PROCESSING("CASHOUT_ALREADY_PROCESSING", "처리 중인 출금 존재", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;

@@ -31,6 +31,17 @@ class PointLedgerServiceTest {
     }
 
     @Test
+    void recordDebitSavesDebitEntry() {
+        PointAccount account = PointAccount.createFor(mock(AppUser.class));
+        AppUser user = mock(AppUser.class);
+        UUID idempotencyKey = UUID.randomUUID();
+
+        pointLedgerService.recordDebit(account, user, 1, "CASHOUT", idempotencyKey);
+
+        verify(pointLedgerRepository).save(any(PointLedger.class));
+    }
+
+    @Test
     void isAlreadyRecordedDelegatesToRepository() {
         UUID userId = UUID.randomUUID();
         UUID idempotencyKey = UUID.randomUUID();

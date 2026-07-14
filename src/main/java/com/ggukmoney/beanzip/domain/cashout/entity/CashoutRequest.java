@@ -61,6 +61,15 @@ public class CashoutRequest {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    public static CashoutRequest createFor(AppUser user, long pointAmount, long tossPointAmount, UUID idempotencyKey) {
+        CashoutRequest request = new CashoutRequest();
+        request.user = user;
+        request.pointAmount = pointAmount;
+        request.tossPointAmount = tossPointAmount;
+        request.idempotencyKey = idempotencyKey;
+        return request;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

@@ -35,6 +35,21 @@ class PointAccountServiceTest {
     }
 
     @Test
+    void debitsBalanceAndSavesAccount() {
+        UUID userId = UUID.randomUUID();
+        PointAccount account = PointAccount.createFor(mock(AppUser.class));
+        account.credit(10);
+        when(pointAccountRepository.findByUserId(userId)).thenReturn(Optional.of(account));
+        when(pointAccountRepository.save(account)).thenReturn(account);
+
+        PointAccount result = pointAccountService.debit(userId, 7);
+
+        assertThat(result.getBalance()).isEqualTo(3L);
+        assertThat(result.getLifetimeSpent()).isEqualTo(7L);
+        verify(pointAccountRepository).save(account);
+    }
+
+    @Test
     void throwsNotFoundWhenAccountMissing() {
         UUID userId = UUID.randomUUID();
         when(pointAccountRepository.findByUserId(userId)).thenReturn(Optional.empty());
