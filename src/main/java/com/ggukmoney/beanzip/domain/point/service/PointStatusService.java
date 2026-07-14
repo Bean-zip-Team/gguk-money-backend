@@ -6,6 +6,7 @@ import com.ggukmoney.beanzip.domain.point.dto.response.PointMeResponse;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.entity.PointLedger;
 import com.ggukmoney.beanzip.domain.point.repository.PointLedgerRepository;
+import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -28,26 +29,26 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PointStatusService {
 
-    private static final int MINIMUM_CASHOUT_POINT = 10;
-    private static final double CASHOUT_KRW_RATE = 0.7;
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
     private final PointAccountService pointAccountService;
     private final PointLedgerRepository pointLedgerRepository;
+    private final CashoutPolicyConfig cashoutPolicyConfig;
 
     public PointMeResponse getMyPoints(UUID userId) {
         PointAccount account = pointAccountService.getForUser(userId);
         long balance = account.getBalance();
-        boolean cashoutEligible = balance >= MINIMUM_CASHOUT_POINT;
-        long estimatedKrw = (long) Math.floor(balance * CASHOUT_KRW_RATE);
+        int minimumPoint = cashoutPolicyConfig.minimumPoint();
+        boolean cashoutEligible = balance >= minimumPoint;
+        long estimatedKrw = (long) Math.floor(balance * cashoutPolicyConfig.pointToKrwRate());
 
         return new PointMeResponse(
                 balance,
                 account.getLifetimeEarned(),
                 account.getLifetimeSpent(),
                 cashoutEligible,
-                MINIMUM_CASHOUT_POINT,
+                minimumPoint,
                 estimatedKrw
         );
     }

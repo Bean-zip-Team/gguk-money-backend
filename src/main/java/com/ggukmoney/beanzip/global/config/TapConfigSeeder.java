@@ -9,6 +9,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -22,13 +23,18 @@ public class TapConfigSeeder implements CommandLineRunner {
     public void run(String... args) {
         try {
             Instant now = Instant.now();
-            TapPolicyConfig.DEFAULT_VALUES.forEach((key, value) -> {
-                if (!appConfigRepository.existsByConfigKey(key)) {
-                    appConfigRepository.save(AppConfig.createFor(key, value, now));
-                }
-            });
+            seedDefaults(TapPolicyConfig.DEFAULT_VALUES, now);
+            seedDefaults(CashoutPolicyConfig.DEFAULT_VALUES, now);
         } catch (RuntimeException exception) {
-            log.warn("Failed to seed default tap policy AppConfig rows; defaults will be used until this succeeds", exception);
+            log.warn("Failed to seed default policy AppConfig rows; defaults will be used until this succeeds", exception);
         }
+    }
+
+    private void seedDefaults(Map<String, String> defaultValues, Instant now) {
+        defaultValues.forEach((key, value) -> {
+            if (!appConfigRepository.existsByConfigKey(key)) {
+                appConfigRepository.save(AppConfig.createFor(key, value, now));
+            }
+        });
     }
 }

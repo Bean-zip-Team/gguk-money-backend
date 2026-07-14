@@ -10,6 +10,7 @@ public final class ApiPaths {
     public static final String TAP = API_V1 + "/tap";
     public static final String BOOSTERS = API_V1 + "/boosters";
     public static final String POINTS = API_V1 + "/points";
+    public static final String CASHOUTS = API_V1 + "/cashouts";
 
     private ApiPaths() {
     }
