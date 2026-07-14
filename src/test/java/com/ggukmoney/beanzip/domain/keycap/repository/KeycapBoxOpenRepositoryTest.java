@@ -7,10 +7,12 @@ import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,7 +49,57 @@ class KeycapBoxOpenRepositoryTest {
         assertThat(result.get().getRequestHash()).isEqualTo("hash-1");
     }
 
+    @Test
+    void findsHistoryForCurrentUserOrderedByOpenedAtAndIdDescWithCursor() {
+        AppUser currentUser = appUserRepository.save(AppUser.createActive("current", null));
+        AppUser otherUser = appUserRepository.save(AppUser.createActive("other", null));
+        Keycap keycap = keycapRepository.save(keycap("HISTORY_001"));
+        Instant latest = Instant.parse("2026-07-15T02:00:00Z");
+        Instant tied = Instant.parse("2026-07-15T01:00:00Z");
+        Instant oldest = Instant.parse("2026-07-15T00:00:00Z");
+        KeycapBoxOpen currentOldest = keycapBoxOpenRepository.save(open(currentUser, keycap, "current-1", "hash-1", oldest));
+        KeycapBoxOpen currentTieLowId = keycapBoxOpenRepository.save(open(currentUser, keycap, "current-2", "hash-2", tied));
+        KeycapBoxOpen currentTieHighId = keycapBoxOpenRepository.save(open(currentUser, keycap, "current-3", "hash-3", tied));
+        KeycapBoxOpen currentLatest = keycapBoxOpenRepository.save(open(currentUser, keycap, "current-4", "hash-4", latest));
+        keycapBoxOpenRepository.save(open(otherUser, keycap, "other-1", "hash-5", latest));
+
+        List<KeycapBoxOpen> firstPage = keycapBoxOpenRepository.findHistoryByUserId(
+                currentUser.getId(),
+                null,
+                null,
+                PageRequest.of(0, 3)
+        );
+        List<KeycapBoxOpen> secondPage = keycapBoxOpenRepository.findHistoryByUserId(
+                currentUser.getId(),
+                currentTieHighId.getOpenedAt(),
+                currentTieHighId.getId(),
+                PageRequest.of(0, 3)
+        );
+
+        assertThat(firstPage)
+                .extracting(KeycapBoxOpen::getId)
+                .containsExactly(currentLatest.getId(), currentTieHighId.getId(), currentTieLowId.getId());
+        assertThat(secondPage)
+                .extracting(KeycapBoxOpen::getId)
+                .containsExactly(currentTieLowId.getId(), currentOldest.getId());
+        assertThat(firstPage)
+                .allSatisfy(open -> {
+                    assertThat(open.getUser().getId()).isEqualTo(currentUser.getId());
+                    assertThat(open.getKeycap().getCode()).isEqualTo("HISTORY_001");
+                });
+    }
+
     private static KeycapBoxOpen open(AppUser user, Keycap keycap, String idempotencyKey, String requestHash) {
+        return open(user, keycap, idempotencyKey, requestHash, Instant.now());
+    }
+
+    private static KeycapBoxOpen open(
+            AppUser user,
+            Keycap keycap,
+            String idempotencyKey,
+            String requestHash,
+            Instant openedAt
+    ) {
         return KeycapBoxOpen.createFor(
                 user,
                 KeycapBoxOpen.OpenMethod.FREE,
@@ -57,7 +109,7 @@ class KeycapBoxOpenRepositoryTest {
                 requestHash,
                 null,
                 false,
-                Instant.now()
+                openedAt
         );
     }
 

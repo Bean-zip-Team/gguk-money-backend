@@ -1481,14 +1481,13 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 15. `GET /api/v1/keycap-boxes/history`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-상자 개봉 히스토리를 조회한다.
+상자 개봉 히스토리를 조회한다. 로그인 사용자의 이력만 반환하며 내부 BIGINT ID, 사용자 ID, 멱등키, 요청 해시, 광고 보상 ID는 노출하지 않는다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
-> 페이지 방식은 계약 초안이며 `page/size`와 cursor 방식 중 최종 확정이 필요하다.
+정렬은 `openedAt DESC`, 같은 시각에서는 서버 내부 PK DESC 순서다. `cursor`는 서버가 발급한 opaque 문자열이므로 프론트는 값을 해석하지 않고 다음 요청에 그대로 전달한다.
 
 #### Request Header
 
@@ -1500,17 +1499,22 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 없음.
 
-Query Parameter 초안:
+#### Query Parameter
+
+| name | type | required | description |
+|---|---|---:|---|
+| `cursor` | String | X | 이전 응답의 `nextCursor`. 첫 페이지는 생략 |
+| `size` | Number | X | 기본 20, 최소 1, 최대 100 |
 
 ```http
-?page=0&size=20
+?cursor={nextCursor}&size=20
 ```
 
 #### Response
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+성공 Status: `200 OK`
 
 ##### Response Body
 
@@ -1518,9 +1522,14 @@ Query Parameter 초안:
 |---|---|---|
 | `success` | Boolean | 요청 성공 여부 |
 | `data.content` | Array | 상자 개봉 목록 |
-| `data.page` | Number | 페이지 번호 |
-| `data.size` | Number | 페이지 크기 |
+| `data.nextCursor` | String \| null | 다음 페이지 cursor. 다음 페이지가 없으면 `null` |
 | `data.hasNext` | Boolean | 다음 페이지 존재 여부 |
+| `data.content[].boxOpenId` | String | `KeycapBoxOpen.publicId` UUID |
+| `data.content[].openMethod` | String | `FREE` 또는 `ADVERTISEMENT` |
+| `data.content[].keycapId` | String | `Keycap.publicId` UUID |
+| `data.content[].shardCount` | Number | 지급 조각 수 |
+| `data.content[].completed` | Boolean | 해당 개봉으로 완성 전환됐는지 여부 |
+| `data.content[].openedAt` | String | 저장된 개봉 시각 |
 
 ```json
 {
@@ -1536,14 +1545,27 @@ Query Parameter 초안:
         "openedAt": "2026-07-11T06:30:00Z"
       }
     ],
-    "page": 0,
-    "size": 20,
+    "nextCursor": null,
     "hasNext": false
   }
 }
 ```
 
 #### Error Response
+
+##### `400 Bad Request`
+
+`cursor` 형식이 올바르지 않거나 `size`가 1~100 범위를 벗어난 경우다.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "요청 값이 올바르지 않습니다."
+  }
+}
+```
 
 ##### `401 Unauthorized`
 

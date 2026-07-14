@@ -1,5 +1,13 @@
 # 수정 내역
 
+## 2026-07-15 키캡 상자 개봉 이력 API 구현
+
+- `GET /api/v1/keycap-boxes/history`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 이력 목록은 `cursor`/`size` 기반으로 조회하며 `openedAt DESC`, 내부 PK DESC 순서로 안정 정렬한다.
+- 응답은 `content`, `nextCursor`, `hasNext`와 각 항목의 `boxOpenId`, `openMethod`, `keycapId`, `shardCount`, `completed`, `openedAt`만 노출한다.
+- 내부 BIGINT ID, 사용자 ID, 멱등키, 요청 해시, 광고 보상 ID, `boostApplied`는 이력 응답에 포함하지 않는다.
+- Entity와 DB 컬럼은 변경하지 않고 기존 `keycap_box_open`을 조회 원본으로 사용한다.
+
 ## 2026-07-14 멱등 키캡 상자 개봉 API 구현
 
 - `POST /api/v1/keycap-boxes/open`을 Access JWT와 `Idempotency-Key` 필수 API로 구현했다.

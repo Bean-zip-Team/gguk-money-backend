@@ -26,12 +26,13 @@
 - 결과: 실패
 - 원인: Docker/Testcontainers 환경 미탐지로 컨테이너 기반 테스트 초기화 실패
 - 영향 테스트: PostgreSQL/Redis Testcontainers를 사용하는 통합 테스트
-- 최근 실행 결과: `185 tests completed, 10 failed`
+- 최근 실행 결과: `198 tests completed, 10 failed`
 - `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 Docker/Testcontainers 초기화 실패로 실패했다.
 - 앱 설정 관련 `AppConfigServiceTest`, `AppConfigControllerTest`, `TapPolicyConfigTest`는 targeted test로 통과 확인했다.
 - 키캡 목록 및 장착 API 관련 `UserKeycapTest`, `KeycapRepositoryTest`, `KeycapMapperTest`, `KeycapServiceTest`, `KeycapControllerTest`는 targeted test로 통과 확인했다.
 - 키캡 상자 상태 API 관련 `UserTapProgressServiceTest`, `KeycapBoxMapperTest`, `KeycapBoxStatusServiceTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
 - 키캡 상자 개봉 API 관련 `KeycapBoxAccountTest`, `UserKeycapTest`, `KeycapBoxOpenRequestHasherTest`, `KeycapRewardSelectorTest`, `KeycapBoxOpenServiceTest`, `KeycapBoxOpenRepositoryTest`, `KeycapRepositoryTest`, `KeycapBoxMapperTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
+- 키캡 상자 개봉 이력 API 관련 `KeycapBoxHistoryCursorCodecTest`, `KeycapBoxHistoryServiceTest`, `KeycapBoxOpenRepositoryTest`, `KeycapBoxMapperTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
 - 기존 탭/부스터 회귀 테스트인 `TapBatchServiceTest`, `BoosterGrantServiceTest`는 targeted test로 통과 확인했다.
 
 ## 구현 및 통과 확인
@@ -49,15 +50,17 @@
 - `MemberControllerTest`: 인증 사용자 UUID 전달, 회원 조회·수정 성공 응답 `success/data`, Validation 실패 확인
 - `UserKeycapTest`: 완료 키캡 장착, 미완성 키캡 장착 거부, 장착 해제 상태 전환 확인
 - `KeycapRepositoryTest`: `active=true` 키캡 목록 정렬, 현재 사용자 보유 키캡 조건, `Keycap` join fetch 조회, 사용자 UUID와 `Keycap.publicId` 기준 보유 키캡 조회 확인
-- `KeycapBoxOpenRepositoryTest`: 사용자 UUID와 `Idempotency-Key` 기준 개봉 이력 조회, 사용자별 동일 멱등키 분리 확인
+- `KeycapBoxOpenRepositoryTest`: 사용자 UUID와 `Idempotency-Key` 기준 개봉 이력 조회, 사용자별 동일 멱등키 분리, 현재 사용자 기준 `openedAt DESC, id DESC` cursor 이력 조회 확인
 - `KeycapMapperTest`: 키캡 목록과 내 키캡 목록 DTO 변환, 장착 응답 변환, `publicId` → `keycapId`, 내부 BIGINT ID 미노출 확인
-- `KeycapBoxMapperTest`: 상자 상태 응답과 상자 개봉 응답 변환, 내부 BIGINT ID와 `boostApplied` 미노출 확인
+- `KeycapBoxMapperTest`: 상자 상태 응답, 상자 개봉 응답, 상자 개봉 이력 항목 변환, 내부 BIGINT ID와 `boostApplied` 미노출 확인
 - `KeycapServiceTest`: 키캡 목록, 내 키캡 목록, 빈 배열 응답, 회원 조회에 필요한 최소 장착 키캡 요약 조회, 완료 키캡 장착, 기존 장착 자동 해제, 같은 키캡 재장착 멱등 성공, 미완성·미보유 키캡 차단 확인
 - `KeycapBoxOpenServiceTest`: FREE 개봉, 자원 차감, 미보유 키캡 지급, 완성 전환, 멱등 재응답, 다른 요청 hash 차단, 광고 미지원, 후보 없음과 자원 미차감 확인
 - `KeycapBoxOpenRequestHasherTest`: `openMethod`, 정규화된 `adRewardId` 기반 SHA-256 Base64URL requestHash 확인
 - `KeycapRewardSelectorTest`: 후보 중 인덱스 기반 균등 랜덤 선택과 빈 후보 차단 확인
 - `KeycapControllerTest`: `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip` Access JWT 필수 정책과 `success/data` 응답 확인
-- `KeycapBoxControllerTest`: `GET /api/v1/keycap-boxes/status`, `POST /api/v1/keycap-boxes/open` Access JWT 필수 정책, `Idempotency-Key` 누락, Validation 실패, FREE 성공 응답, `ADVERTISEMENT_OPEN_NOT_SUPPORTED` 확인
+- `KeycapBoxHistoryCursorCodecTest`: 상자 개봉 이력 cursor의 Base64URL 인코딩/디코딩, 빈 cursor, 잘못된 cursor의 `COMMON_VALIDATION_ERROR` 확인
+- `KeycapBoxHistoryServiceTest`: 빈 이력, 기본 size, `size + 1` 기반 `hasNext`, `nextCursor`, cursor 디코딩 전달, invalid size 차단, 조회 중 저장 미호출 확인
+- `KeycapBoxControllerTest`: `GET /api/v1/keycap-boxes/status`, `POST /api/v1/keycap-boxes/open`, `GET /api/v1/keycap-boxes/history` Access JWT 필수 정책, `Idempotency-Key` 누락, Validation 실패, FREE 성공 응답, `ADVERTISEMENT_OPEN_NOT_SUPPORTED`, 이력 응답 구조와 내부 필드 미노출 확인
 - `TapBatchServiceTest`: 탭 배치 처리, 포인트 적립, 상자 지급, 부스터 배율 적용, 중복 요청 재처리 방지 확인
 - `BoosterGrantServiceTest`: 부스터 활성화, 중복 활성화 차단, 일일 제한, 현재 상태, 활성 배율 조회 확인
 - `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인

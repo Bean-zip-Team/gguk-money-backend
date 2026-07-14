@@ -62,6 +62,7 @@ private UUID id;
 - 나머지 도메인 테이블은 BIGINT PK와 `public_id UUID UNIQUE`를 사용한다.
 - `keycap_box_open.request_hash`, `completed`, `opened_at`, `idempotency_key NOT NULL`과 관련 unique/index는 Entity에 정합화됐다.
 - 공유/개발 DB에는 `(user_id, idempotency_key)` unique, `ad_reward_id` partial unique, `opened_at` 조회 index, 음수 방지 CHECK 등 실제 제약 적용 여부를 merge 전 확인해야 한다.
+- 키캡 상자 개봉 이력 조회는 추가 Entity 컬럼 없이 `keycap_box_open.user_id`, `opened_at`, 내부 PK 정렬과 `keycap_id` join을 사용한다.
 
 ## 트랜잭션 경계
 
@@ -173,6 +174,8 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 - `IDEMPOTENCY_KEY_REUSED`는 공통 `ErrorCode`에 구현되어 있으며 `409`로 반환한다.
 
 상자 개봉의 `request_hash`는 `openMethod`, `adRewardId`를 정규화한 값의 SHA-256 Base64URL이다. 같은 `(user_id, idempotency_key)`와 같은 `request_hash`는 기존 결과를 반환하고, 다른 `request_hash`는 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다. 동시 동일 요청으로 Unique 충돌이 발생하면 기존 row를 재조회해 같은 응답으로 복구한다.
+
+상자 개봉 이력 조회는 상태 변경 API가 아니므로 `Idempotency-Key` Header를 사용하지 않는다. cursor는 `opened_at DESC, id DESC` 위치를 Base64URL opaque 문자열로 인코딩하며 전체 개수 조회 없이 `size + 1` 방식으로 `hasNext`를 판단한다.
 
 ## 코드 검토 필요 항목
 
