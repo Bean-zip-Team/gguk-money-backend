@@ -58,12 +58,14 @@ public enum ErrorCode {
 
     TAP_RATE_LIMITED("TAP_RATE_LIMITED", "잠시 후 다시 시도해주세요.", HttpStatus.TOO_MANY_REQUESTS),
     TAP_REDIS_UNAVAILABLE("TAP_REDIS_UNAVAILABLE", "탭 처리 서버가 일시적으로 불안정합니다.", HttpStatus.SERVICE_UNAVAILABLE),
+    TAP_PROGRESS_NOT_FOUND("TAP_PROGRESS_NOT_FOUND", "탭 진행도를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     POINT_ACCOUNT_NOT_FOUND("POINT_ACCOUNT_NOT_FOUND", "포인트 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     KEYCAP_NOT_FOUND("KEYCAP_NOT_FOUND", "키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     USER_KEYCAP_NOT_FOUND("USER_KEYCAP_NOT_FOUND", "보유한 키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     KEYCAP_NOT_COMPLETED("KEYCAP_NOT_COMPLETED", "완성한 키캡만 장착할 수 있습니다.", HttpStatus.BAD_REQUEST),
+    KEYCAP_BOX_ACCOUNT_NOT_FOUND("KEYCAP_BOX_ACCOUNT_NOT_FOUND", "키캡 상자 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     AD_VIEW_ID_REQUIRED("AD_VIEW_ID_REQUIRED", "adViewId가 필요합니다.", HttpStatus.BAD_REQUEST),
     BOOSTER_ALREADY_ACTIVE("BOOSTER_ALREADY_ACTIVE", "이미 부스터가 활성화되어 있습니다.", HttpStatus.CONFLICT),

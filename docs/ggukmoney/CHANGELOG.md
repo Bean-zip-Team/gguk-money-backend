@@ -1,5 +1,15 @@
 # 수정 내역
 
+## 2026-07-14 키캡 상자 상태 조회 API 구현
+
+- `GET /api/v1/keycap-boxes/status`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 응답은 현재 저장 원본이 확인되는 `boxBalance`, `freeOpenTicketCount`, `boxProgressTapCount`, `nextBoxRequiredTapCount` 4개 필드만 반환한다.
+- 상자 잔액과 무료권 수량은 `KeycapBoxAccount`, 상자 진행도는 `UserTapProgress`를 원본으로 사용하도록 정리했다.
+- `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값으로 기록했다.
+- 무료권 충전 시각과 광고 개봉 카운트는 저장 원본과 정책이 없어 후속 이슈로 분리했다.
+- `KEYCAP_BOX_ACCOUNT_NOT_FOUND` ErrorCode를 추가하고, 기존 `TAP_PROGRESS_NOT_FOUND` 진행도 없음 정책을 API 오류 응답으로 재사용하도록 정리했다.
+- 키캡 상자 상태 targeted test 결과를 문서에 반영했다.
+
 ## 2026-07-14 키캡 장착 API 구현
 
 - `PUT /api/v1/keycaps/{keycapId}/equip`를 Access JWT 필수 구현 확인 API로 추가했다.

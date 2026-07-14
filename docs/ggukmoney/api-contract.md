@@ -18,13 +18,14 @@
 
 | 상태 | API |
 |---|---|
-| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
+| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip`, `GET /api/v1/keycap-boxes/status`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
 | 계약 초안 | 위 구현 확인 API를 제외한 MVP API |
 
 - Toss 로그인 API 자체는 구현 확인 상태다. 다만 현재 `TossLoginRequest`에는 `authorizationCode`, `referrer`만 있고 기존 온보딩 객체 계약은 별도 결정이 필요하다.
 - 탭 배치 API는 현재 코드에서 `/api/v1/tap/batches`로 구현되어 있다. 기존 문서의 `/api/v1/taps/batches` 표기는 후속 정합화가 필요하다.
 - 앱 설정 API는 Access JWT 필수이며 원본 `app_config` JSON이 아니라 공개 typed DTO만 반환한다.
 - 키캡 장착 API는 Access JWT 필수이며 Request Body 없이 `Keycap.publicId`를 Path Variable로 사용한다. 완성 키캡만 장착 가능하고 기존 장착 키캡은 같은 트랜잭션에서 해제한다.
+- 키캡 상자 상태 API는 Access JWT 필수이며 `boxBalance`, `freeOpenTicketCount`, `boxProgressTapCount`, `nextBoxRequiredTapCount` 4개 필드만 반환한다. 상자 잔액과 무료권 수량은 `keycap_box_account`, 상자 진행도는 `user_tap_progress`를 원본으로 사용한다.
 - `IDEMPOTENCY_KEY_REUSED`는 계약상 예정된 `409` 에러지만 현재 공통 `ErrorCode` 구현이 필요하다.
 - 목록 API의 `page/size` 방식은 프론트 Mock과 타입 설계를 위한 초안이며 cursor 방식과 최종 선택이 필요하다.
 
@@ -49,7 +50,7 @@
 | 키캡 | GET | `/api/v1/keycaps` | `keycap` |
 | 키캡 | GET | `/api/v1/keycaps/me` | `user_keycap`, `keycap` |
 | 키캡 | PUT | `/api/v1/keycaps/{keycapId}/equip` | `user_keycap` |
-| 상자 | GET | `/api/v1/keycap-boxes/status` | `keycap_box_account` |
+| 상자 | GET | `/api/v1/keycap-boxes/status` | `keycap_box_account`, `user_tap_progress` |
 | 상자 | POST | `/api/v1/keycap-boxes/open` | `keycap_box_account`, `keycap_box_open`, `user_keycap`, `keycap` |
 | 상자 | GET | `/api/v1/keycap-boxes/history` | `keycap_box_open`, `keycap` |
 | 탭 | POST | `/api/v1/taps/batches` | `tap_batch`, `user_tap_daily`, `point_account`, `point_ledger`, `keycap_box_account`, `booster_grant` |
