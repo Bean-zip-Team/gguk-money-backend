@@ -2,7 +2,9 @@ package com.ggukmoney.beanzip.domain.keycap.controller;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxStatusService;
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
 import com.ggukmoney.beanzip.global.interceptor.AuthInterceptor;
@@ -20,10 +22,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,7 +37,9 @@ class KeycapBoxControllerTest {
 
     private final AuthService authService = mock(AuthService.class);
     private final KeycapBoxStatusService keycapBoxStatusService = mock(KeycapBoxStatusService.class);
-    private final KeycapBoxController keycapBoxController = new KeycapBoxController(keycapBoxStatusService);
+    private final KeycapBoxOpenService keycapBoxOpenService = mock(KeycapBoxOpenService.class);
+    private final KeycapBoxController keycapBoxController =
+            new KeycapBoxController(keycapBoxStatusService, keycapBoxOpenService);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapBoxController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -92,6 +100,105 @@ class KeycapBoxControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("TAP_PROGRESS_NOT_FOUND"));
+    }
+
+    @Test
+    void authenticatedOpenReturnsBoxOpenResponse() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        UUID boxOpenId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        Instant openedAt = Instant.parse("2026-07-14T00:00:00Z");
+        when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
+                .thenReturn(new KeycapBoxOpenResponse(boxOpenId, keycapId, 1, false, openedAt));
+
+        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "openMethod": "FREE"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.boxOpenId").value(boxOpenId.toString()))
+                .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
+                .andExpect(jsonPath("$.data.shardCount").value(1))
+                .andExpect(jsonPath("$.data.completed").value(false))
+                .andExpect(jsonPath("$.data.openedAt").value("2026-07-14T00:00:00Z"))
+                .andExpect(jsonPath("$.data.id").doesNotExist())
+                .andExpect(jsonPath("$.data.boostApplied").doesNotExist())
+                .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
+    @Test
+    void openRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "openMethod": "FREE"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void openRequiresIdempotencyKey() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        when(keycapBoxOpenService.open(eq(authenticatedUserId()), isNull(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "openMethod": "FREE"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("IDEMPOTENCY_KEY_REQUIRED"));
+    }
+
+    @Test
+    void openRejectsInvalidRequestBody() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+
+        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+    }
+
+    @Test
+    void openAdvertisementUnsupportedResponse() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
+
+        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "openMethod": "ADVERTISEMENT",
+                                  "adRewardId": "ad-1"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
     }
 
     private UUID authenticatedUserId() {

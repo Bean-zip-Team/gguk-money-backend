@@ -2,7 +2,7 @@
 
 > 사용자 PK 기준: `app_user.id UUID`, 모든 `user_id UUID`
 
-이 문서는 1차 Persistence MVP의 테이블, 컬럼, 제약, 인덱스 Source of Truth다. 실제 DB 구조는 Flyway Migration 기준으로 문서화한다.
+이 문서는 1차 Persistence MVP의 테이블, 컬럼, 제약, 인덱스 Source of Truth다. 현재 저장소에는 Flyway/Liquibase Migration 파일이 없으므로 Entity와 Repository 구현, 문서 계약, 공유/개발 DB 확인 결과를 함께 대조해야 한다.
 
 ## 공통 규칙
 
@@ -200,13 +200,13 @@ Unique와 인덱스:
 | `public_id` | UUID | N | Java 생성 | UNIQUE |
 | `user_id` | UUID | N | | FK `app_user(id)` |
 | `open_method` | VARCHAR(20) | N | | CHECK `FREE`, `ADVERTISEMENT` |
-| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지. 현재 Entity는 nullable이므로 구현 이슈에서 NOT NULL 정합화 필요 |
-| `request_hash` | VARCHAR(255) | N | | 같은 멱등키의 요청 내용 일치 확인. 구현 이슈에서 추가 필요 |
+| `idempotency_key` | VARCHAR(100) | N | | 중복 개봉 방지. 현재 Entity는 `nullable=false`로 정합화됨 |
+| `request_hash` | VARCHAR(255) | N | | 같은 멱등키의 요청 내용 일치 확인. 현재 Entity에 구현됨 |
 | `ad_reward_id` | VARCHAR(255) | Y | | 광고 보상 식별자. 광고 검증 Service 구현 전에는 저장하지 않음 |
 | `keycap_id` | BIGINT | N | | FK `keycap(id)` |
 | `shard_count` | INTEGER | N | | CHECK `> 0` |
-| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지. 구현 이슈에서 추가 필요 |
-| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각. 구현 이슈에서 추가 필요 |
+| `completed` | BOOLEAN | N | false | 이 개봉으로 키캡이 완성됐는지. 현재 Entity에 구현됨 |
+| `opened_at` | TIMESTAMPTZ | N | now() | 개봉 시각. 현재 Entity에 구현됨 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
@@ -368,10 +368,10 @@ Unique와 Check:
 
 ## Migration과 Entity 정합성 검토
 
-- 현재 문서의 컬럼, 제약, 인덱스는 `V1010__create_a_domain_schema.sql`과 `V1020__drop_auth_session_log.sql` 기준이다.
-- Entity는 13개 테이블명, PK 타입, 주요 FK 타입, `public_id` 보유 여부에서 Migration과 맞는다.
-- Migration 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
-- Migration 기준으로 `booster_grant`의 사용자별 활성 부스터 1개 제한은 없다.
-- Migration 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.
+- 현재 저장소 소스에는 `V1010__create_a_domain_schema.sql`, `V1020__drop_auth_session_log.sql` 파일이 없다.
+- Entity는 13개 테이블명, PK 타입, 주요 FK 타입, `public_id` 보유 여부를 코드 기준으로 정의한다.
+- 현재 Entity 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
+- 현재 Entity 기준으로 `booster_grant`의 사용자별 활성 부스터 1개 제한은 없다.
+- 현재 Entity 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.
 - 키캡 장착 API는 서비스 레벨에서 완료 상태를 검증하고 사용자 키캡 행 잠금 후 상태를 변경한다. 실제 공유/개발 DB의 `UNIQUE (user_id) WHERE equipped=true` 존재 여부는 배포 전 확인이 필요하다.
 - `app_config`는 `(config_key, effective_at)` Unique와 인덱스를 갖고, 현재 Repository에는 유효 시각 기준 최신 설정을 조회하는 `findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(...)`가 있다.

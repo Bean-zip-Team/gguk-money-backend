@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 @Getter
@@ -82,6 +83,16 @@ public class UserKeycap {
         updatedAt = Instant.now();
     }
 
+    public static UserKeycap createInProgress(AppUser user, Keycap keycap) {
+        UserKeycap userKeycap = new UserKeycap();
+        userKeycap.user = user;
+        userKeycap.keycap = keycap;
+        userKeycap.shardCount = 0;
+        userKeycap.status = Status.IN_PROGRESS;
+        userKeycap.equipped = false;
+        return userKeycap;
+    }
+
     public boolean isCompleted() {
         return status == Status.COMPLETED;
     }
@@ -95,6 +106,25 @@ public class UserKeycap {
 
     public void unequip() {
         equipped = false;
+    }
+
+    public boolean addShard(int count, Instant completedAt) {
+        if (isCompleted()) {
+            throw new IllegalStateException("Completed keycaps cannot receive more shards.");
+        }
+        if (count <= 0) {
+            throw new IllegalArgumentException("Shard count must be positive.");
+        }
+        Objects.requireNonNull(completedAt, "completedAt must not be null.");
+
+        int requiredShardCount = keycap.getRequiredShardCount();
+        shardCount = Math.min(shardCount + count, requiredShardCount);
+        if (shardCount < requiredShardCount) {
+            return false;
+        }
+        status = Status.COMPLETED;
+        this.completedAt = completedAt;
+        return true;
     }
 
     public enum Status {

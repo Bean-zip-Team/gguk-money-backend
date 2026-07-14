@@ -2,6 +2,8 @@ package com.ggukmoney.beanzip.domain.keycap.repository;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,4 +16,16 @@ public interface KeycapRepository extends JpaRepository<Keycap, Long> {
     Optional<Keycap> findByCode(String code);
 
     List<Keycap> findByActiveTrueOrderBySortOrderAscCodeAsc();
+
+    @Query("""
+            select keycap
+            from Keycap keycap
+            left join UserKeycap userKeycap
+              on userKeycap.keycap = keycap
+             and userKeycap.user.id = :userId
+            where keycap.active = true
+              and (userKeycap.id is null or userKeycap.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS)
+            order by keycap.sortOrder asc, keycap.code asc
+            """)
+    List<Keycap> findIncompleteActiveRewardCandidates(@Param("userId") UUID userId);
 }

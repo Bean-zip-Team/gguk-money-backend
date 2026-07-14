@@ -97,6 +97,28 @@ class KeycapRepositoryTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void findsActiveIncompleteRewardCandidatesForCurrentUserOnly() {
+        AppUser currentUser = appUserRepository.save(AppUser.createActive("current-user", null));
+        AppUser otherUser = appUserRepository.save(AppUser.createActive("other-user", null));
+        Keycap notOwned = keycapRepository.save(keycap("NOT_OWNED", "Not Owned", true, 1));
+        Keycap inProgress = keycapRepository.save(keycap("IN_PROGRESS", "In Progress", true, 2));
+        Keycap completed = keycapRepository.save(keycap("COMPLETED", "Completed", true, 3));
+        Keycap inactive = keycapRepository.save(keycap("INACTIVE", "Inactive", false, 4));
+        Keycap completedByOtherUser = keycapRepository.save(keycap("OTHER_COMPLETED", "Other Completed", true, 5));
+        keycapRepository.flush();
+
+        userKeycapRepository.save(userKeycap(currentUser, inProgress, 3, UserKeycap.Status.IN_PROGRESS, false));
+        userKeycapRepository.save(userKeycap(currentUser, completed, 10, UserKeycap.Status.COMPLETED, false));
+        userKeycapRepository.save(userKeycap(currentUser, inactive, 3, UserKeycap.Status.IN_PROGRESS, false));
+        userKeycapRepository.save(userKeycap(otherUser, completedByOtherUser, 10, UserKeycap.Status.COMPLETED, false));
+
+        List<Keycap> result = keycapRepository.findIncompleteActiveRewardCandidates(currentUser.getId());
+
+        assertThat(result).extracting(Keycap::getCode)
+                .containsExactly("NOT_OWNED", "IN_PROGRESS", "OTHER_COMPLETED");
+    }
+
     private static Keycap keycap(String code, String name, boolean active, int sortOrder) {
         Keycap keycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(keycap, "code", code);

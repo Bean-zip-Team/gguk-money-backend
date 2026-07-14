@@ -169,7 +169,7 @@ tap_batch
 
 ## 상자 개봉과 키캡 조각
 
-상자 개봉 API는 후속 구현 대상이다. 최종 트랜잭션 계약은 아래 순서다.
+상자 개봉 API는 구현됐으며 현재 트랜잭션 계약은 아래 순서다.
 
 1. `Idempotency-Key`를 검증하고 `openMethod`, `adRewardId` 기반 `request_hash`를 계산한다.
 2. `(user_id, idempotency_key)` 기존 개봉 이력이 있으면 `request_hash`를 비교한다. 같으면 기존 결과를 반환하고, 다르면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
@@ -186,6 +186,8 @@ tap_batch
 보상 후보 존재를 확인하기 전에 자원을 차감하지 않는다. 후보 없음 오류와 트랜잭션 전체 실패에서는 자원 차감, 조각 지급, 개봉 이력 생성의 부분 반영이 없어야 한다. 완성 키캡을 포인트나 다른 재화로 변환하는 중복 보상 정책은 MVP에서 제공하지 않는다.
 
 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
+
+현재 구현은 광고 검증 Service가 없으므로 `ADVERTISEMENT`를 `ADVERTISEMENT_OPEN_NOT_SUPPORTED`로 차단한다. 무료권 자동 충전과 온보딩 상자 개봉은 이 API 범위에 포함하지 않는다.
 
 ## 포인트 출금
 

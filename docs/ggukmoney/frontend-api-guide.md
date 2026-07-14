@@ -149,7 +149,7 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 키캡 장착 | `PUT`의 동일 최종 상태 |
 | 로그인 온보딩 보상 | 계약상 `onboardingAttemptId`, 현재 로그인 DTO에는 미반영 |
 
-`IDEMPOTENCY_KEY_REUSED`는 현재 `ErrorCode`에 없으므로 `계약상 예정 · 구현 필요` 상태다.
+`IDEMPOTENCY_KEY_REUSED`는 현재 `ErrorCode`에 구현되어 있으며 같은 멱등키에 다른 요청 내용이 들어오면 `409`로 반환한다.
 
 ### 프론트 재시도 규칙
 
@@ -176,15 +176,15 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 403 | `ACCOUNT_WITHDRAWN` | 구현 확인 | 탈퇴 계정 안내 |
 | 404 | `USER_KEYCAP_NOT_FOUND` | 구현 확인 | 보유 키캡 목록 새로고침 |
 | 400 | `KEYCAP_NOT_COMPLETED` | 구현 확인 | 미완성 키캡 장착 차단 안내 |
-| 409 | `IDEMPOTENCY_KEY_REUSED` | 계약상 예정 · 구현 필요 | 변경된 작업은 새 키 생성 |
-| 400 | `IDEMPOTENCY_KEY_REQUIRED` | 계약상 예정 · 구현 필요 | 같은 작업 재시도에는 기존 키 유지 |
-| 400 | `KEYCAP_BOX_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 상자 잔액 부족 안내 |
-| 400 | `FREE_OPEN_TICKET_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 무료권 부족 안내 |
-| 400 | `ADVERTISEMENT_OPEN_NOT_SUPPORTED` | 계약상 예정 · 구현 필요 | 광고 개봉 미지원 안내 |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | 구현 확인 | 변경된 작업은 새 키 생성 |
+| 400 | `IDEMPOTENCY_KEY_REQUIRED` | 구현 확인 | 같은 작업 재시도에는 기존 키 유지 |
+| 400 | `KEYCAP_BOX_NOT_AVAILABLE` | 구현 확인 | 상자 잔액 부족 안내 |
+| 400 | `FREE_OPEN_TICKET_NOT_AVAILABLE` | 구현 확인 | 무료권 부족 안내 |
+| 400 | `ADVERTISEMENT_OPEN_NOT_SUPPORTED` | 구현 확인 | 광고 개봉 미지원 안내 |
 | 400 | `AD_REWARD_ID_REQUIRED` | 계약상 예정 · 구현 필요 | 광고 보상 식별자 확인 |
 | 409 | `AD_REWARD_ALREADY_USED` | 계약상 예정 · 구현 필요 | 새 광고 보상으로 재시도 |
 | 502 | `AD_REWARD_VERIFICATION_FAILED` | 계약상 예정 · 구현 필요 | 광고 검증 실패 안내 |
-| 409 | `KEYCAP_REWARD_NOT_AVAILABLE` | 계약상 예정 · 구현 필요 | 보상 후보 없음 안내 |
+| 409 | `KEYCAP_REWARD_NOT_AVAILABLE` | 구현 확인 | 보상 후보 없음 안내 |
 
 ## 인증과 회원
 
@@ -1284,20 +1284,20 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 14. `POST /api/v1/keycap-boxes/open`
 
-상태: 계약 확정 · 구현 필요
+상태: 구현 확인
 
 #### Description
 
 상자를 개봉하고 키캡 조각을 지급한다. 이 API는 `Idempotency-Key` Header가 필수다.
 
-현재 Controller와 Service는 아직 없다. 이 섹션은 후속 구현 이슈의 기준 계약이다.
+현재 Controller와 Service가 구현되어 있다. 이 섹션은 프론트 연동 기준 계약이다.
 
 자원 소비 규칙:
 
 - 모든 성공 개봉은 `boxBalance`를 1 차감한다.
 - `FREE`: `boxBalance` 1개와 `freeOpenTicketCount` 1개를 차감한다.
 - `ADVERTISEMENT`: `boxBalance` 1개를 차감하고 검증된 `adRewardId`를 소비한다. `freeOpenTicketCount`는 차감하지 않는다.
-- 광고 검증 Service가 구현되기 전의 `ADVERTISEMENT` 요청은 미지원 오류로 처리하며 어떤 자원도 차감하지 않는다.
+- 현재 구현에서 `ADVERTISEMENT` 요청은 미지원 오류로 처리하며 어떤 자원도 차감하지 않는다.
 - 부족 오류 우선순위는 `boxBalance` 부족을 먼저 확인한 뒤, `FREE`는 무료권 부족, `ADVERTISEMENT`는 광고 보상 ID 필수/검증 실패를 확인한다.
 - 조회나 멱등 재응답 중에는 자원을 다시 차감하지 않는다.
 - 무료권 지급 방식, 자동 충전 주기, 최대 보유량, `nextFreeTicketAt` 계산은 후속 이슈에서 확정한다.
@@ -1457,7 +1457,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-`IDEMPOTENCY_KEY_REUSED`는 계약상 예정이며 현재 `ErrorCode` 구현이 필요하다.
+`IDEMPOTENCY_KEY_REUSED`는 구현되어 있으며 `409 Conflict`로 반환한다.
 
 ```json
 {
@@ -2324,7 +2324,7 @@ Query Parameter 초안:
 1. 현재 Toss 로그인 DTO에는 `authorizationCode`, `referrer`만 있으며 MVP 권장안의 `onboardingAttemptId` 필드는 아직 없다.
 2. 온보딩 상자에서 지급되는 키캡이 완전 고정인지 서버 랜덤인지, 온보딩 attempt 생성 API가 별도로 필요한지, 45탭 제출과 검증 API의 정확한 형태, `onboardingAttemptId` 만료 시간, 기존 사용자 로그인에 `onboardingAttemptId`가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 수량, 지급 키캡 자동 장착 여부, 온보딩 상자 개봉 API 최종 Path, 로그인 Request/Response 최종 DTO 필드, 세부 ErrorCode와 HTTP Status는 팀 확인이 필요하다.
 3. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
-4. `IDEMPOTENCY_KEY_REUSED`는 계약 문서에는 있지만 현재 `ErrorCode`에는 없다.
+4. 온보딩과 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
 5. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
 6. `keycaps` 목록 조회 API는 Access JWT 필수 API로 확정됐다.
 7. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.

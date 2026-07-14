@@ -55,14 +55,13 @@ private UUID id;
 
 ## Migration 기준
 
-현재 브랜치의 실제 DB 구조는 Flyway Migration을 기준으로 문서화한다.
+현재 저장소에는 Flyway 또는 Liquibase 적용 체계와 `src/main/resources/db/migration` 파일이 없다. 현재 테스트 환경은 Hibernate `create-drop`으로 Entity 정합성을 검증한다.
 
-- `V1010__create_a_domain_schema.sql`은 13개 MVP 테이블을 생성한다.
-- `V1020__drop_auth_session_log.sql`은 이전 인증 로그 테이블 `auth_session_log`를 제거한다.
+- 과거 문서의 `V1010__create_a_domain_schema.sql`, `V1020__drop_auth_session_log.sql` 기준 설명은 현재 저장소 소스에는 존재하지 않는다.
 - `app_user.id`는 UUID PK이며 `app_user.public_id`는 없다.
 - 나머지 도메인 테이블은 BIGINT PK와 `public_id UUID UNIQUE`를 사용한다.
-- Flyway Migration과 Entity가 어긋나는 경우 문서를 임의로 Entity에 맞추지 않고 코드 검토 항목으로 보고한다.
-- 테스트 DB는 PostgreSQL Testcontainers로 빈 DB부터 전체 Migration을 검증한다.
+- `keycap_box_open.request_hash`, `completed`, `opened_at`, `idempotency_key NOT NULL`과 관련 unique/index는 Entity에 정합화됐다.
+- 공유/개발 DB에는 `(user_id, idempotency_key)` unique, `ad_reward_id` partial unique, `opened_at` 조회 index, 음수 방지 CHECK 등 실제 제약 적용 여부를 merge 전 확인해야 한다.
 
 ## 트랜잭션 경계
 
@@ -110,7 +109,7 @@ keycap_box_account
 + keycap_box_open
 ```
 
-상자 개봉은 후속 구현 대상이다. 확정 계약은 PostgreSQL을 멱등성 Source of Truth로 사용한다.
+상자 개봉은 구현됐으며 PostgreSQL `keycap_box_open`을 멱등성 Source of Truth로 사용한다.
 
 - 모든 성공 개봉은 `keycap_box_account.box_balance`를 1 차감한다.
 - `FREE`는 추가로 `keycap_box_account.free_open_ticket_count`를 1 차감한다.
@@ -120,6 +119,8 @@ keycap_box_account
 - 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 `box_balance`, `free_open_ticket_count`, `ad_reward_id`를 소비하지 않으며 `keycap_box_open`도 생성하지 않는다.
 - 기본 지급 조각 수는 1개이며, `user_keycap.shard_count`는 `required_shard_count`를 초과 저장하지 않는다.
 - 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
+- 현재 구현은 `TransactionTemplate` 경계 안에서 상자 계정을 비관적 쓰기 잠금으로 조회하고, 잠금 후 같은 멱등키를 재조회한다.
+- `DataIntegrityViolationException`이 발생하면 롤백된 뒤 기존 row를 재조회해 같은 요청이면 기존 응답으로 복구한다.
 
 ### 키캡 장착
 
@@ -169,7 +170,7 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 - 부스터 활성화는 `ad_reward_id`와 `(user_id, grant_date, daily_sequence)`로 중복 사용을 막는다.
 - 같은 멱등 기준과 같은 Request Body 또는 같은 `request_hash`는 상태를 다시 변경하지 않고 기존 결과를 반환한다.
 - 같은 멱등 기준에 다른 Request Body 또는 다른 `request_hash`가 들어오면 계약상 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다.
-- `IDEMPOTENCY_KEY_REUSED`는 현재 공통 `ErrorCode` 구현이 필요하다.
+- `IDEMPOTENCY_KEY_REUSED`는 공통 `ErrorCode`에 구현되어 있으며 `409`로 반환한다.
 
 상자 개봉의 `request_hash`는 `openMethod`, `adRewardId`를 정규화한 값의 SHA-256 Base64URL이다. 같은 `(user_id, idempotency_key)`와 같은 `request_hash`는 기존 결과를 반환하고, 다른 `request_hash`는 `409 IDEMPOTENCY_KEY_REUSED`로 처리한다. 동시 동일 요청으로 Unique 충돌이 발생하면 기존 row를 재조회해 같은 응답으로 복구한다.
 

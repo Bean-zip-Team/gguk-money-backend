@@ -63,6 +63,25 @@ public class KeycapBoxAccount {
         this.boxBalance += count;
     }
 
+    public boolean hasBox() {
+        return boxBalance > 0;
+    }
+
+    public boolean hasFreeOpenTicket() {
+        return freeOpenTicketCount > 0;
+    }
+
+    public void consumeFreeOpen() {
+        if (!hasBox()) {
+            throw new IllegalStateException("Keycap box balance is insufficient.");
+        }
+        if (!hasFreeOpenTicket()) {
+            throw new IllegalStateException("Free open ticket is insufficient.");
+        }
+        boxBalance -= 1;
+        freeOpenTicketCount -= 1;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

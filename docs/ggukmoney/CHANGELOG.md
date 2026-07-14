@@ -1,5 +1,14 @@
 # 수정 내역
 
+## 2026-07-14 멱등 키캡 상자 개봉 API 구현
+
+- `POST /api/v1/keycap-boxes/open`을 Access JWT와 `Idempotency-Key` 필수 API로 구현했다.
+- `FREE` 개봉은 상자 잔액과 무료권을 각각 1개 차감하고, 미완성 활성 키캡 후보 중 균등 랜덤으로 1조각을 지급하도록 정리했다.
+- 같은 사용자와 같은 멱등키의 같은 요청은 기존 결과를 반환하고, 다른 요청 hash는 `IDEMPOTENCY_KEY_REUSED`로 차단하도록 반영했다.
+- `ADVERTISEMENT`는 광고 검증 Service 부재로 `ADVERTISEMENT_OPEN_NOT_SUPPORTED`를 반환하며 자원을 차감하지 않는 상태를 유지했다.
+- `keycap_box_open` Entity에 `requestHash`, `adRewardId`, `completed`, `openedAt`을 정합화했다.
+- 현재 저장소에는 Flyway/Liquibase Migration 파일이 없어 실제 공유/개발 DB 제약 적용은 merge 전 확인 필요로 기록했다.
+
 ## 2026-07-14 키캡 상자 개봉 계약 확정
 
 - `POST /api/v1/keycap-boxes/open`의 문서 계약을 현재 코드 상태와 후속 구현 범위에 맞춰 정리했다.
