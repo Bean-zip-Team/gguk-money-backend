@@ -1,4 +1,4 @@
-# 꾹머니 13개 테이블 MVP 아키텍처
+# 꾹머니 14개 테이블 MVP 아키텍처
 
 ## 구조 원칙
 
@@ -8,7 +8,7 @@
 - Redis는 꾹머니 Refresh Session, 사용자별 Session 목록, Access denylist, 사용자 revoke 시각에 사용한다.
 - `app_user.id`는 UUID PK이며 API, JWT, Redis, FK에서 같은 값을 사용한다.
 - 핵심 잔액 변경은 동일 PostgreSQL 트랜잭션 안에서 처리한다.
-- 이번 13개 테이블 범위에서는 Event Inbox와 Event Outbox를 사용하지 않는다.
+- 이번 14개 테이블 범위에서는 Event Inbox와 Event Outbox를 사용하지 않는다.
 - 외부 Toss 포인트 지급 결과는 `cashout_request`에 함께 저장한다.
 - 개별 탭은 저장하지 않고 `tap_batch`와 `user_tap_daily`에 집계한다.
 - Toss OAuth Token은 로그인과 탈퇴 요청 처리 중에만 사용하고 PostgreSQL과 Redis에 장기 저장하지 않는다.
@@ -65,7 +65,7 @@ flowchart LR
     Point --> Toss
 ```
 
-## 13개 테이블 ERD
+## 14개 테이블 ERD
 
 ```mermaid
 erDiagram
@@ -107,15 +107,15 @@ erDiagram
 
 ### 온보딩 키캡 상자 계약 · MVP 권장안
 
-현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없으므로 구현 전 DTO 확정이 필요하다. MVP 권장안은 회원가입 전 온보딩 키캡 상자를 개봉하고, Toss 로그인 요청에는 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없으므로 로그인 귀속은 후속 구현이다. 회원가입 전 온보딩 키캡 상자 개봉 API는 구현됐고, Toss 로그인 요청에는 서버 저장 기록과 연결된 불투명한 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
 
 온보딩 키캡 상자는 일반 키캡 상자와 다른 흐름이다.
 
 1. 회원가입 전 온보딩을 시작한다.
 2. 온보딩 45탭을 수행한다.
-3. 서버가 45탭 완료를 검증한다.
-4. 온보딩 키캡 상자 개봉 API를 호출한다.
-5. 서버가 온보딩 보상 결과를 생성하고 `onboardingAttemptId`에 연결해 임시 저장한다.
+3. 프론트가 `POST /api/v1/onboarding/keycap-boxes/open`에 `tapSessionId`와 45개 `tapEvents`를 제출한다.
+4. 서버가 45탭 완료, sequence 연속성, 발생 시각 순서를 검증한다.
+5. 서버가 `app_config` 기준 보상 설정을 조회하고 보상 결과를 `onboarding_reward_attempt`에 저장한 뒤 `onboardingAttemptId`를 반환한다.
 6. 프론트는 `onboardingAttemptId`만 보관한다.
 7. Toss 로그인 요청에 `onboardingAttemptId`를 포함한다.
 8. 신규 사용자 생성 시 서버가 해당 attempt를 재검증한다.
@@ -126,7 +126,7 @@ erDiagram
 
 프론트가 `keycapId`, `shardCount`, `completed`, `tapCount=45`, `rewardPoint`, 상자 개봉 결과 전체를 보상의 Source of Truth로 전달하는 구조는 금지한다. 서버는 `onboardingAttemptId`를 통해 서버 기준 45탭 완료 여부, 서버가 결정한 키캡 보상 결과, attempt 만료 여부, claimed 여부, 신규 사용자 귀속 가능 상태를 확인한다.
 
-팀 확인이 필요한 항목은 온보딩 상자 지급 키캡의 고정/랜덤 여부, attempt 생성 API 필요 여부, 45탭 제출과 검증 API 형태, `onboardingAttemptId` 만료 시간, 기존 사용자 로그인에 attempt가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 수량, 지급 키캡 자동 장착 여부, 온보딩 상자 개봉 API 최종 Path, 로그인 Request/Response 최종 DTO, 세부 ErrorCode와 HTTP Status다.
+현재 구현은 온보딩 상자 개봉과 attempt 저장까지만 포함한다. Toss 로그인 Request/Response, 기존 사용자 로그인에 attempt가 전달된 경우 처리, 유효하지 않은 attempt의 신규 가입 허용 여부, 온보딩 포인트 실제 지급, 키캡 실제 지급과 자동 장착 여부, claimed 전환은 후속 이슈 범위다.
 
 ## Refresh와 로그아웃
 

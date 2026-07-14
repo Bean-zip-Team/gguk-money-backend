@@ -1,4 +1,4 @@
-# 꾹머니 13개 테이블 데이터와 인프라 원칙
+# 꾹머니 14개 테이블 데이터와 인프라 원칙
 
 ## 저장소 역할
 
@@ -17,7 +17,7 @@
 
 ### Redis
 
-13개 PostgreSQL 테이블과 별개로 꾹머니 인증 세션에 사용한다.
+14개 PostgreSQL 테이블과 별개로 꾹머니 인증 세션에 사용한다.
 
 - `auth:refresh:{sessionId}`: Refresh Session hash
 - `auth:user-sessions:{userId}`: 사용자 UUID별 활성 Session 목록
@@ -47,7 +47,7 @@ private UUID id;
 
 빵도감은 사용자 요청 탈퇴를 위해 Toss Access/Refresh Token을 사용자 테이블에 저장하는 구현을 보유한다. 꾹머니는 다음 이유로 저장하지 않는다.
 
-- 현재 13개 테이블에 Provider Token 암호화와 Rotation 저장 구조가 없음
+- 현재 14개 테이블에 Provider Token 암호화와 Rotation 저장 구조가 없음
 - 토큰 유출 시 영향 범위가 큼
 - 탈퇴 화면에서 `appLogin()`을 다시 호출해 새 authorizationCode를 받을 수 있음
 
@@ -61,7 +61,9 @@ private UUID id;
 - `app_user.id`는 UUID PK이며 `app_user.public_id`는 없다.
 - 나머지 도메인 테이블은 BIGINT PK와 `public_id UUID UNIQUE`를 사용한다.
 - `keycap_box_open.request_hash`, `completed`, `opened_at`, `idempotency_key NOT NULL`과 관련 unique/index는 Entity에 정합화됐다.
+- `onboarding_reward_attempt` Entity는 회원가입 전 온보딩 보상 attempt 저장을 위해 추가됐다.
 - 공유/개발 DB에는 `(user_id, idempotency_key)` unique, `ad_reward_id` partial unique, `opened_at` 조회 index, 음수 방지 CHECK 등 실제 제약 적용 여부를 merge 전 확인해야 한다.
+- 현재 저장소에 Migration 적용 체계가 없으므로 `onboarding_reward_attempt` 실제 공유/개발 DB 생성과 제약 적용은 merge/deploy 전 별도 확인이 필요하다.
 - 키캡 상자 개봉 이력 조회는 추가 Entity 컬럼 없이 `keycap_box_open.user_id`, `opened_at`, 내부 PK 정렬과 `keycap_id` join을 사용한다.
 
 ## 트랜잭션 경계
@@ -87,7 +89,7 @@ MVP 권장안의 신규 사용자 온보딩 정산을 로그인에 포함할 경
 
 현재 구현은 JWT 생성과 Redis Session 저장을 `@Transactional` 로그인 메서드 안에서 수행한다. Redis 실패 시 성공 응답을 반환하지 않지만, DB 커밋 뒤 Redis를 저장하는 구조는 아니다. Redis Session 저장 이후 트랜잭션 커밋 또는 응답 생성이 실패할 때의 정리 전략은 코드 검토 항목이다.
 
-> 구현 전 계약 확정 필요: 현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없다. MVP 권장안은 회원가입 전 온보딩 키캡 상자 개봉 결과를 서버 저장 기록에 연결하고, Toss 로그인 요청에 `onboardingAttemptId`만 전달해 신규 사용자 생성 트랜잭션에서 포인트 원장과 고정 키캡 지급을 함께 처리하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
+현재 `TossLoginRequest`에는 `onboardingAttemptId` 필드가 없어 로그인 귀속은 후속 구현이다. 회원가입 전 온보딩 키캡 상자 개봉 결과는 `onboarding_reward_attempt`에 저장하며, Toss 로그인 요청에는 후속 구현에서 `onboardingAttemptId`만 전달하는 방식이다. 로그인 후 별도 Claim API 권장안은 사용하지 않는다.
 
 ### 탭 배치
 
@@ -157,7 +159,7 @@ app_user.withdrawn_at = now
 - `point_account`, `keycap_box_account`, `user_tap_daily`, `cashout_request`는 `@Version` 또는 명시적 행 잠금을 사용한다.
 - 키캡 장착은 같은 사용자의 `user_keycap` 행을 비관적 잠금으로 조회한 뒤 기존 장착 해제와 신규 장착을 같은 트랜잭션에서 수행한다.
 - 로그인 Identity 생성 경쟁은 `(provider, provider_user_id)` Unique로 해결한다.
-- 목표 온보딩 계약은 `onboarding_reward_claimed` 조건부 갱신과 `point_ledger` 멱등 제약을 함께 사용한다. 현재 로그인 DTO에 `onboardingAttemptId` 필드는 없다. 같은 `onboardingAttemptId`는 한 사용자에게 한 번만 귀속하고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없어야 한다. 동일 Toss 사용자의 동시 신규 가입 요청에서도 온보딩 포인트와 고정 키캡은 한 번만 지급해야 한다.
+- 온보딩 상자 개봉은 `onboarding_reward_attempt.tap_session_id` Unique와 `request_hash` 비교를 멱등성 Source of Truth로 사용한다. 현재 로그인 DTO에 `onboardingAttemptId` 필드는 없다. 후속 로그인 귀속에서는 같은 `onboardingAttemptId`를 한 사용자에게 한 번만 귀속하고, claimed된 attempt는 다른 신규 사용자가 재사용할 수 없어야 한다.
 - Refresh Rotation은 Redis Lua CAS를 사용한다.
 - logout-all은 사용자 revoke marker를 저장한다. 현재 Session 저장 경로가 revoke marker를 확인해 신규 Session 저장 경쟁을 차단하지는 않으므로 코드 검토가 필요하다.
 

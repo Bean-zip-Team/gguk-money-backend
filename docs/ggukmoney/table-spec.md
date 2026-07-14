@@ -1,4 +1,4 @@
-# 꾹머니 13개 테이블 PostgreSQL 명세
+# 꾹머니 14개 테이블 PostgreSQL 명세
 
 > 사용자 PK 기준: `app_user.id UUID`, 모든 `user_id UUID`
 
@@ -29,12 +29,13 @@
 | 5 | `user_keycap` | 사용자 키캡 조각, 완성, 장착 상태 |
 | 6 | `keycap_box_account` | 사용자 상자 잔액과 개봉 제한 |
 | 7 | `keycap_box_open` | 상자 개봉 이력과 결과 |
-| 8 | `tap_batch` | 탭 배치와 검증 결과 |
-| 9 | `user_tap_daily` | 사용자 일일 탭과 보상 집계 |
-| 10 | `point_account` | 포인트 현재 잔액 |
-| 11 | `point_ledger` | 포인트 증감 원장 |
-| 12 | `cashout_request` | 포인트 출금과 Toss 지급 결과 |
-| 13 | `booster_grant` | 광고 기반 2배 부스터 이력 |
+| 8 | `onboarding_reward_attempt` | 회원가입 전 온보딩 탭 검증과 보상 결과 |
+| 9 | `tap_batch` | 탭 배치와 검증 결과 |
+| 10 | `user_tap_daily` | 사용자 일일 탭과 보상 집계 |
+| 11 | `point_account` | 포인트 현재 잔액 |
+| 12 | `point_ledger` | 포인트 증감 원장 |
+| 13 | `cashout_request` | 포인트 출금과 Toss 지급 결과 |
+| 14 | `booster_grant` | 광고 기반 2배 부스터 이력 |
 
 ## 1. app_user
 
@@ -218,9 +219,40 @@ Unique와 인덱스:
 
 현재 부스터는 포인트 적립 전용이므로 상자 개봉 MVP 명세에는 `boost_applied`를 포함하지 않는다. 키캡 조각 부스터가 도입되면 별도 설계와 Migration으로 추가한다.
 
-온보딩 키캡 상자 결과를 `onboardingAttemptId`에 연결해 저장할 실제 테이블은 현재 13개 테이블 명세에 없다. 저장 테이블과 컬럼이 확정되기 전까지 새 테이블이나 컬럼을 확정 명세로 추가하지 않는다.
+## 8. onboarding_reward_attempt
 
-## 8. tap_batch
+회원가입 전 온보딩 키캡 상자 개봉 결과를 저장한다. Toss 로그인 귀속은 후속 이슈에서 `public_id`를 `onboardingAttemptId`로 조회해 처리한다.
+
+| 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
+|---|---|---:|---|---|
+| `id` | BIGINT | N | identity | 내부 PK |
+| `public_id` | UUID | N | Java 생성 | UNIQUE, API `onboardingAttemptId` |
+| `tap_session_id` | UUID | N | | UNIQUE, 회원가입 전 업무 멱등키 |
+| `request_hash` | VARCHAR(255) | N | | 정규화된 `tapSessionId + tapEvents` hash |
+| `accepted_tap_count` | INTEGER | N | | CHECK `>= 0`, 구현 성공값은 45 |
+| `reward_keycap_id` | BIGINT | N | | FK `keycap(id)` |
+| `reward_point_amount` | INTEGER | N | | CHECK `>= 0` |
+| `status` | VARCHAR(20) | N | | `OPENED`, `CLAIMED` |
+| `expires_at` | TIMESTAMPTZ | N | | attempt 만료 시각 |
+| `opened_at` | TIMESTAMPTZ | N | | 온보딩 상자 개봉 시각 |
+| `claimed_user_id` | UUID | Y | | FK `app_user(id)`, 후속 로그인 귀속용 |
+| `claimed_at` | TIMESTAMPTZ | Y | | 후속 로그인 귀속 시각 |
+| `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
+| `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
+
+제약과 인덱스:
+
+- `public_id` Unique
+- `tap_session_id` Unique
+- `accepted_tap_count >= 0`
+- `reward_point_amount >= 0`
+- `status=OPENED`이면 `claimed_user_id`, `claimed_at`은 NULL
+- `status=CLAIMED`이면 `claimed_user_id`, `claimed_at`은 NOT NULL
+- `ix_onboarding_reward_attempt_expires_at(expires_at)`
+- `ix_onboarding_reward_attempt_reward_keycap(reward_keycap_id)`
+- `ix_onboarding_reward_attempt_claimed_user(claimed_user_id)`
+
+## 9. tap_batch
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -252,7 +284,7 @@ Unique와 Check:
 - `accepted_count + rejected_count <= submitted_count`
 - `ended_at >= started_at`
 
-## 9. user_tap_daily
+## 10. user_tap_daily
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -276,7 +308,7 @@ Unique:
 
 - `(user_id, tap_date)`
 
-## 10. point_account
+## 11. point_account
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -290,7 +322,7 @@ Unique:
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
-## 11. point_ledger
+## 12. point_ledger
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -314,7 +346,7 @@ Unique:
 - `idempotency_key` 값이 존재할 때 UNIQUE
 - `(user_id, reference_type, reference_id, reason)`
 
-## 12. cashout_request
+## 13. cashout_request
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -342,7 +374,7 @@ Unique와 인덱스:
 - `ix_cashout_request_user_time(user_id, requested_at DESC)`
 - `ix_cashout_request_status(status, requested_at)`
 
-## 13. booster_grant
+## 14. booster_grant
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
 |---|---|---:|---|---|
@@ -369,7 +401,7 @@ Unique와 Check:
 ## Migration과 Entity 정합성 검토
 
 - 현재 저장소 소스에는 `V1010__create_a_domain_schema.sql`, `V1020__drop_auth_session_log.sql` 파일이 없다.
-- Entity는 13개 테이블명, PK 타입, 주요 FK 타입, `public_id` 보유 여부를 코드 기준으로 정의한다.
+- Entity는 14개 테이블명, PK 타입, 주요 FK 타입, `public_id` 보유 여부를 코드 기준으로 정의한다.
 - 현재 Entity 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
 - 현재 Entity 기준으로 `booster_grant`의 사용자별 활성 부스터 1개 제한은 없다.
 - 현재 Entity 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.

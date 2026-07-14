@@ -1,5 +1,14 @@
 # 수정 내역
 
+## 2026-07-15 회원가입 전 온보딩 키캡 상자 API 구현
+
+- `POST /api/v1/onboarding/keycap-boxes/open`을 인증 없는 공개 API로 추가했다.
+- Request는 `tapSessionId`와 45개 `tapEvents`만 사용하며, 서버가 sequence 연속성, 중복·누락, `occurredAt` 순서를 검증한다.
+- `tapSessionId`와 정규화된 tap 이벤트 hash를 멱등성 기준으로 사용하고, 결과는 `onboarding_reward_attempt`에 저장한다.
+- 온보딩 보상 키캡 코드, 포인트 수량, attempt TTL은 `app_config`에서 조회하며 설정 오류는 `ONBOARDING_REWARD_NOT_AVAILABLE`로 처리한다.
+- 일반 상자 계정, `UserKeycap`, 포인트 원장, 일반 `keycap_box_open`은 변경하지 않는다.
+- Toss 로그인 DTO 변경, 실제 포인트·키캡 지급, attempt claimed 처리는 후속 작업으로 유지했다.
+
 ## 2026-07-15 키캡 상자 개봉 이력 API 구현
 
 - `GET /api/v1/keycap-boxes/history`를 Access JWT 필수 구현 확인 API로 추가했다.

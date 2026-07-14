@@ -223,7 +223,54 @@ Toss `appLogin()`으로 받은 일회성 `authorizationCode`를 서버에 전달
 9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
 10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
 
-온보딩 상자 개봉 API의 정확한 Path는 구현 전 계약이므로 아직 최종 확정하지 않는다. 권장 예시는 `POST /api/v1/onboarding/keycap-boxes/open` 또는 프로젝트 네이밍 규칙에 맞는 별도 온보딩 경로다. 이 API는 Access JWT, `boxBalance`, `freeOpenTicketCount`를 사용하는 로그인 사용자 전용 `POST /api/v1/keycap-boxes/open`과 구분한다.
+온보딩 상자 개봉 API는 `POST /api/v1/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT, `boxBalance`, `freeOpenTicketCount`를 사용하는 로그인 사용자 전용 `POST /api/v1/keycap-boxes/open`과 구분한다.
+
+### 회원가입 전 온보딩 키캡 상자 개봉
+
+상태: 구현 확인
+
+Endpoint: `POST /api/v1/onboarding/keycap-boxes/open`
+
+인증: 없음. `Authorization` Header를 요구하지 않는다.
+
+Request Body:
+
+```json
+{
+  "tapSessionId": "57ba7793-8a9b-4c65-8d91-94dc47ce0642",
+  "tapEvents": [
+    {
+      "sequence": 1,
+      "occurredAt": "2026-07-15T01:00:00Z"
+    }
+  ]
+}
+```
+
+`tapEvents`는 정확히 45개여야 한다. sequence는 1부터 45까지 중복과 누락 없이 연속이어야 하며, `occurredAt`은 sequence 순서에서 감소하면 안 된다. 프론트가 `tapCount`, `keycapId`, `code`, `rewardPoint`, `completed`, `onboardingAttemptId`를 Request로 보내도 서버는 보상 원본으로 사용하지 않는다.
+
+Success `200 OK`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "onboardingAttemptId": "9dc0c935-d9e2-4f96-a764-8de0b1232145",
+    "keycapId": "4e5d3a9b-02d0-4b45-b2bd-2bb30b01bb9f",
+    "code": "ONBOARDING_BASIC",
+    "name": "온보딩 키캡",
+    "grade": "COMMON",
+    "imageUrl": "https://example.com/keycaps/onboarding-basic.png",
+    "soundUrl": "https://example.com/keycaps/onboarding-basic.mp3",
+    "completed": true,
+    "rewardPoint": 100,
+    "openedAt": "2026-07-15T01:00:05Z",
+    "expiresAt": "2026-07-16T01:00:05Z"
+  }
+}
+```
+
+보상 키캡 코드, 포인트 수량, 만료 시간은 서버의 `app_config` 설정과 `keycap` 마스터 기준으로 결정한다. `tapSessionId`와 정규화된 탭 이벤트 hash가 같으면 기존 결과를 반환하고, 같은 `tapSessionId`에 다른 이벤트가 들어오면 `409 ONBOARDING_TAP_SESSION_REUSED`를 반환한다. 만료된 같은 요청 재조회는 `410 ONBOARDING_ATTEMPT_EXPIRED`다.
 
 로그인 처리에서 신규 사용자 온보딩 정산을 구현할 때 서버가 담당할 역할:
 
