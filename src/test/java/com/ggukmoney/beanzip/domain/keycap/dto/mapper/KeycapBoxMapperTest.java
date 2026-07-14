@@ -68,6 +68,38 @@ class KeycapBoxMapperTest {
                 .containsExactly("boxOpenId", "keycapId", "shardCount", "completed", "openedAt");
     }
 
+    @Test
+    void mapsBoxOpenToHistoryItemResponse() {
+        UUID boxOpenId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        Instant openedAt = Instant.parse("2026-07-15T00:00:00Z");
+        KeycapBoxOpen open = boxOpen(boxOpenId, keycapId, openedAt, false);
+        ReflectionTestUtils.setField(open, "openMethod", KeycapBoxOpen.OpenMethod.FREE);
+
+        var response = keycapBoxMapper.mapToHistoryItemResponse(open);
+
+        assertThat(response.boxOpenId()).isEqualTo(boxOpenId);
+        assertThat(response.openMethod()).isEqualTo("FREE");
+        assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.shardCount()).isEqualTo(1);
+        assertThat(response.completed()).isFalse();
+        assertThat(response.openedAt()).isEqualTo(openedAt);
+    }
+
+    @Test
+    void historyItemResponseDoesNotExposeInternalOrIdempotencyFields() {
+        assertThat(com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse.class.getRecordComponents())
+                .extracting(component -> component.getName())
+                .containsExactly("boxOpenId", "openMethod", "keycapId", "shardCount", "completed", "openedAt");
+    }
+
+    @Test
+    void historyPageResponseUsesContentNextCursorAndHasNext() {
+        assertThat(com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse.class.getRecordComponents())
+                .extracting(component -> component.getName())
+                .containsExactly("content", "nextCursor", "hasNext");
+    }
+
     private static KeycapBoxAccount keycapBoxAccount(UUID userId, int boxBalance, int freeOpenTicketCount) {
         AppUser user = AppUser.createActive("Bean", null);
         ReflectionTestUtils.setField(user, "id", userId);

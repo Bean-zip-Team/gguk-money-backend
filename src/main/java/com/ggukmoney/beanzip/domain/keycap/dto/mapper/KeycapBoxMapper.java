@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.dto.mapper;
 
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
@@ -21,4 +22,9 @@ public interface KeycapBoxMapper {
     @Mapping(target = "boxOpenId", source = "publicId")
     @Mapping(target = "keycapId", source = "keycap.publicId")
     KeycapBoxOpenResponse mapToOpenResponse(KeycapBoxOpen boxOpen);
+
+    @Mapping(target = "boxOpenId", source = "publicId")
+    @Mapping(target = "openMethod", expression = "java(boxOpen.getOpenMethod().name())")
+    @Mapping(target = "keycapId", source = "keycap.publicId")
+    KeycapBoxHistoryItemResponse mapToHistoryItemResponse(KeycapBoxOpen boxOpen);
 }

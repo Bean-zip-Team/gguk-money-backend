@@ -2,8 +2,11 @@ package com.ggukmoney.beanzip.domain.keycap.controller;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxHistoryService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxStatusService;
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
@@ -18,6 +21,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,8 +42,9 @@ class KeycapBoxControllerTest {
     private final AuthService authService = mock(AuthService.class);
     private final KeycapBoxStatusService keycapBoxStatusService = mock(KeycapBoxStatusService.class);
     private final KeycapBoxOpenService keycapBoxOpenService = mock(KeycapBoxOpenService.class);
+    private final KeycapBoxHistoryService keycapBoxHistoryService = mock(KeycapBoxHistoryService.class);
     private final KeycapBoxController keycapBoxController =
-            new KeycapBoxController(keycapBoxStatusService, keycapBoxOpenService);
+            new KeycapBoxController(keycapBoxStatusService, keycapBoxOpenService, keycapBoxHistoryService);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapBoxController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -199,6 +204,50 @@ class KeycapBoxControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
+    }
+
+    @Test
+    void authenticatedHistoryReturnsCursorPageWithoutInternalFields() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        UUID boxOpenId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        Instant openedAt = Instant.parse("2026-07-15T00:00:00Z");
+        KeycapBoxHistoryResponse response = new KeycapBoxHistoryResponse(
+                List.of(new KeycapBoxHistoryItemResponse(boxOpenId, "FREE", keycapId, 1, false, openedAt)),
+                "next-cursor",
+                true
+        );
+        when(keycapBoxHistoryService.getHistory(authenticatedUserId(), "cursor-1", 10)).thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/keycap-boxes/history")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .param("cursor", "cursor-1")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content[0].boxOpenId").value(boxOpenId.toString()))
+                .andExpect(jsonPath("$.data.content[0].openMethod").value("FREE"))
+                .andExpect(jsonPath("$.data.content[0].keycapId").value(keycapId.toString()))
+                .andExpect(jsonPath("$.data.content[0].shardCount").value(1))
+                .andExpect(jsonPath("$.data.content[0].completed").value(false))
+                .andExpect(jsonPath("$.data.content[0].openedAt").value("2026-07-15T00:00:00Z"))
+                .andExpect(jsonPath("$.data.nextCursor").value("next-cursor"))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.content[0].id").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].userId").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].requestHash").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].adRewardId").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].boostApplied").doesNotExist())
+                .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
+    @Test
+    void historyRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/v1/keycap-boxes/history"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
     }
 
     private UUID authenticatedUserId() {

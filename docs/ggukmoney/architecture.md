@@ -189,6 +189,8 @@ tap_batch
 
 현재 구현은 광고 검증 Service가 없으므로 `ADVERTISEMENT`를 `ADVERTISEMENT_OPEN_NOT_SUPPORTED`로 차단한다. 무료권 자동 충전과 온보딩 상자 개봉은 이 API 범위에 포함하지 않는다.
 
+상자 개봉 이력 조회는 `keycap_box_open`을 읽기 전용으로 조회한다. `KeycapBoxHistoryService`는 `cursor`와 `size`를 검증하고, `KeycapBoxOpenRepository`가 현재 사용자 UUID 조건과 `opened_at DESC, id DESC` cursor 조건을 DB 쿼리에 포함한다. 응답 조립은 `KeycapBoxMapper`가 담당하며 Controller와 Service는 내부 BIGINT ID, 멱등키, 요청 해시, 광고 보상 ID를 직접 노출하지 않는다.
+
 ## 포인트 출금
 
 1. `point_account`를 잠근다.
