@@ -6,6 +6,8 @@ import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.entity.PointLedger;
 import com.ggukmoney.beanzip.domain.point.repository.PointLedgerRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Page;
@@ -29,10 +31,17 @@ class PointStatusServiceTest {
 
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerRepository pointLedgerRepository = mock(PointLedgerRepository.class);
+    private final CashoutPolicyConfig cashoutPolicyConfig = mock(CashoutPolicyConfig.class);
     private final PointStatusService pointStatusService =
-            new PointStatusService(pointAccountService, pointLedgerRepository);
+            new PointStatusService(pointAccountService, pointLedgerRepository, cashoutPolicyConfig);
 
     private final UUID userId = UUID.randomUUID();
+
+    @BeforeEach
+    void stubCashoutPolicyDefaults() {
+        when(cashoutPolicyConfig.minimumPoint()).thenReturn(10);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(0.7);
+    }
 
     @Test
     void marksCashoutEligibleAtExactlyMinimumBalance() {
