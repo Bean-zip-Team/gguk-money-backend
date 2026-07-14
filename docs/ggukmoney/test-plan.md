@@ -26,10 +26,11 @@
 - 결과: 실패
 - 원인: Docker/Testcontainers 환경 미탐지로 컨테이너 기반 테스트 초기화 실패
 - 영향 테스트: PostgreSQL/Redis Testcontainers를 사용하는 통합 테스트
-- 최근 실행 결과: `130 tests completed, 9 failed`
+- 최근 실행 결과: `147 tests completed, 10 failed`
 - `compileJava`, `compileTestJava`, `bootJar`, `jar`, `assemble` 단계는 통과했고 `:test`에서 Docker/Testcontainers 초기화 실패로 실패했다.
 - 앱 설정 관련 `AppConfigServiceTest`, `AppConfigControllerTest`, `TapPolicyConfigTest`는 targeted test로 통과 확인했다.
 - 키캡 목록 및 장착 API 관련 `UserKeycapTest`, `KeycapRepositoryTest`, `KeycapMapperTest`, `KeycapServiceTest`, `KeycapControllerTest`는 targeted test로 통과 확인했다.
+- 키캡 상자 상태 API 관련 `UserTapProgressServiceTest`, `KeycapBoxMapperTest`, `KeycapBoxStatusServiceTest`, `KeycapBoxControllerTest`는 targeted test로 통과 확인했다.
 - 기존 탭/부스터 회귀 테스트인 `TapBatchServiceTest`, `BoosterGrantServiceTest`는 targeted test로 통과 확인했다.
 
 ## 구현 및 통과 확인
@@ -68,6 +69,7 @@
 - `GlobalExceptionHandlerTest`: Testcontainers 기반 FullStack 지원 클래스에 의존해 환경 문제로 실행 미확인
 - 회원 API 통합 회귀 테스트: 현재 Docker/Testcontainers 환경 부재로 전체 `clean test`, `clean build`에서 확인 필요
 - 포인트/탭/부스터 통합 테스트: `PointApiIntegrationTest`, `TapApiIntegrationTest`, `BoosterApiIntegrationTest`, `TapBatchServiceRateLimitIntegrationTest`는 Docker/Testcontainers 초기화 실패로 이번 전체 검증에서 실행 결과를 확인하지 못했다.
+- 출금 통합 테스트: `CashoutApiIntegrationTest`는 Docker/Testcontainers 초기화 실패로 이번 전체 검증에서 실행 결과를 확인하지 못했다.
 
 ## 기능 미구현으로 보류
 
@@ -96,6 +98,7 @@
 - `generate-token → login-me` 호출
 - UUID 사용자와 Identity 생성
 - `point_account`, `keycap_box_account` 생성
+- `user_tap_progress` 생성
 - Redis Session 생성과 JWT 발급
 - Toss Token 미저장
 - 같은 `(TOSS, userKey)`로 기존 UUID 사용자 재사용

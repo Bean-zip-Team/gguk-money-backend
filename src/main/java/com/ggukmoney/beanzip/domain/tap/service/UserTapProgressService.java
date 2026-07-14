@@ -1,9 +1,10 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
-import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
+import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
 import com.ggukmoney.beanzip.domain.tap.repository.UserTapProgressRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,11 @@ public class UserTapProgressService {
     public UserTapProgress getForUser(UUID userId) {
         return userTapProgressRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "TAP_PROGRESS_NOT_FOUND"));
+    }
+
+    public BoxProgressSnapshot getBoxProgress(UUID userId) {
+        UserTapProgress progress = getForUser(userId);
+        return new BoxProgressSnapshot(progress.getCumulativeValidTapCount(), progress.getNextBoxTarget());
     }
 
     public UserTapProgress save(UserTapProgress progress) {

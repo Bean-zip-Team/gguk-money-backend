@@ -99,7 +99,7 @@ erDiagram
 3. 발급된 Toss Access Token으로 `login-me`를 호출한다.
 4. `login-me.userKey`를 문자열로 변환해 `auth_identity(provider=TOSS, provider_user_id)`를 조회한다.
 5. 기존 Identity가 연결된 `app_user.status=WITHDRAWN`이면 자동 재가입하지 않고 `ACCOUNT_WITHDRAWN`을 반환한다.
-6. 신규 사용자면 UUID `app_user`, `auth_identity`, `point_account`, `keycap_box_account`를 생성한다.
+6. 신규 사용자면 UUID `app_user`, `auth_identity`, `point_account`, `keycap_box_account`, `user_tap_progress`를 생성한다.
 7. 꾹머니 Access/Refresh JWT를 생성하고 Redis Session을 저장한다.
 8. Toss Access/Refresh Token은 저장하지 않는다.
 
@@ -143,6 +143,7 @@ erDiagram
 ```text
 tap_batch
 + user_tap_daily
++ user_tap_progress
 + point_account
 + point_ledger
 + keycap_box_account
@@ -151,6 +152,7 @@ tap_batch
 - `(user_id, tap_session_id, sequence)`로 중복을 차단한다.
 - `request_hash`가 다르면 동일 순번 재사용으로 판단한다.
 - 유효 탭만 포인트와 상자 진행도에 반영한다.
+- 상자 진행도는 `user_tap_progress.cumulative_valid_tap_count`와 `user_tap_progress.next_box_target`을 원본으로 사용하고, 목표 도달 시 `keycap_box_account.box_balance`만 증가시킨다.
 - 개별 탭 간격 원문은 기본 저장하지 않고 `interval_stats` JSONB에 통계만 저장한다.
 
 ## 상자 개봉과 키캡 조각

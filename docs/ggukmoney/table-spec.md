@@ -174,14 +174,21 @@ Unique와 인덱스:
 | `user_id` | UUID | N | | FK, UNIQUE `app_user(id)` |
 | `box_balance` | INTEGER | N | 0 | CHECK `>= 0` |
 | `free_open_ticket_count` | INTEGER | N | 0 | CHECK `>= 0` |
-| `next_free_ticket_at` | TIMESTAMPTZ | Y | | 다음 무료권 충전 시각 |
-| `ad_open_date` | DATE | Y | | 광고 개봉 카운트 기준일 |
-| `ad_open_count` | INTEGER | N | 0 | CHECK `>= 0` |
-| `box_progress_tap_count` | INTEGER | N | 0 | 다음 상자까지 누적 탭 |
-| `next_box_required_tap_count` | INTEGER | Y | | 다음 상자 목표 탭 수 |
 | `version` | BIGINT | N | 0 | 동시성 제어 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
+
+현재 구현에서 상자 진행도는 `keycap_box_account`가 아니라 `user_tap_progress.cumulative_valid_tap_count`, `user_tap_progress.next_box_target`을 원본으로 사용한다.
+
+아래 컬럼은 무료권 충전과 광고 개봉 정책이 확정될 때 후속 설계로 분리한다. 현재 Entity와 조회 API 구현 완료 컬럼으로 보지 않는다.
+
+| 후속 설계 후보 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `next_free_ticket_at` | TIMESTAMPTZ | 다음 무료권 충전 시각 |
+| `ad_open_date` | DATE | 광고 개봉 카운트 기준일 |
+| `ad_open_count` | INTEGER | 광고 개봉 횟수 |
+| `box_progress_tap_count` | INTEGER | `user_tap_progress`와 중복 저장 여부 결정 필요 |
+| `next_box_required_tap_count` | INTEGER | `user_tap_progress.next_box_target`과 중복 저장 여부 결정 필요 |
 
 ## 7. keycap_box_open
 

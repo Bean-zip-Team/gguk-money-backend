@@ -75,6 +75,7 @@ app_user
 + auth_identity
 + point_account
 + keycap_box_account
++ user_tap_progress
 ```
 
 목표 온보딩 계약이 로그인에 포함될 경우 같은 PostgreSQL 트랜잭션에 추가할 항목:
@@ -96,7 +97,10 @@ tap_batch
 + point_account
 + point_ledger
 + keycap_box_account
++ user_tap_progress
 ```
+
+상자 상태 조회의 잔액과 무료권 수량은 `keycap_box_account`를 읽고, 상자 진행도는 `user_tap_progress`를 읽어 조합한다. 조회 API는 두 Entity를 생성하거나 저장하지 않는다.
 
 ### 상자 개봉
 

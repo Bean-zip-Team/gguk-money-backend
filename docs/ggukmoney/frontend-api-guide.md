@@ -1153,13 +1153,15 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ### 13. `GET /api/v1/keycap-boxes/status`
 
-상태: 계약 초안
+상태: 구현 확인
 
 #### Description
 
-내 키캡 상자 잔액, 무료 개봉권, 광고 개봉 카운트, 다음 상자 진행도를 조회한다.
+내 키캡 상자 잔액, 무료 개봉권, 다음 상자 진행도를 조회한다.
 
-> 계약 초안: 현재 Controller와 DTO가 없으므로 필드명과 에러 코드는 구현 과정에서 변경될 수 있다.
+상자 잔액과 무료권 수량은 `KeycapBoxAccount`를 원본으로 사용한다. 상자 진행도는 `UserTapProgress`를 원본으로 사용하며, `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값이다.
+
+무료권 충전 시각(`nextFreeTicketAt`)과 광고 개봉 카운트(`adOpenCount`)는 현재 저장 원본과 정책이 확정되지 않아 이번 응답에서 제외한다.
 
 #### Request Header
 
@@ -1175,7 +1177,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Code
 
-성공 Status는 구현 시 최종 확정.
+성공 Status: `200 OK`
 
 ##### Response Body
 
@@ -1184,10 +1186,8 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `success` | Boolean | 요청 성공 여부 |
 | `data.boxBalance` | Number | 보유 상자 수 |
 | `data.freeOpenTicketCount` | Number | 무료 개봉권 수 |
-| `data.nextFreeTicketAt` | String | 다음 무료권 충전 시각 |
-| `data.adOpenCount` | Number | 오늘 광고 개봉 횟수 |
-| `data.boxProgressTapCount` | Number | 다음 상자까지 누적 탭 |
-| `data.nextBoxRequiredTapCount` | Number | 다음 상자에 필요한 탭 수 |
+| `data.boxProgressTapCount` | Number | 현재 누적 유효 탭 수 |
+| `data.nextBoxRequiredTapCount` | Number | 누적 유효 탭 기준 다음 상자 목표값 |
 
 ```json
 {
@@ -1195,8 +1195,6 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
   "data": {
     "boxBalance": 2,
     "freeOpenTicketCount": 1,
-    "nextFreeTicketAt": "2026-07-11T09:00:00Z",
-    "adOpenCount": 0,
     "boxProgressTapCount": 45,
     "nextBoxRequiredTapCount": 100
   }
@@ -1213,6 +1211,32 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
   "error": {
     "code": "AUTH_REQUIRED",
     "message": "인증이 필요합니다."
+  }
+}
+```
+
+##### `404 Not Found`
+
+상자 계정이 없으면 다음 오류를 반환한다.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "KEYCAP_BOX_ACCOUNT_NOT_FOUND",
+    "message": "키캡 상자 계정을 찾을 수 없습니다."
+  }
+}
+```
+
+탭 진행도가 없으면 기존 탭 진행도 조회 정책을 재사용한다.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TAP_PROGRESS_NOT_FOUND",
+    "message": "탭 진행도를 찾을 수 없습니다."
   }
 }
 ```
