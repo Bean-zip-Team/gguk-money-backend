@@ -40,7 +40,7 @@ class AppConfigControllerTest {
                 new AppConfigResponse.BoosterPolicy(300, 3)
         ));
 
-        mockMvc.perform(get("/api/v1/app-config")
+        mockMvc.perform(get("/api/app-config")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -59,7 +59,7 @@ class AppConfigControllerTest {
 
     @Test
     void unauthenticatedRequestIsRejectedByExistingAuthPolicy() throws Exception {
-        mockMvc.perform(get("/api/v1/app-config"))
+        mockMvc.perform(get("/api/app-config"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));

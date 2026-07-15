@@ -2,7 +2,6 @@ package com.ggukmoney.beanzip.global.interceptor;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -75,11 +74,11 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
 
         return "POST".equalsIgnoreCase(method)
-                && (ApiPaths.GUESTS.equals(path)
-                || (ApiPaths.AUTH + "/refresh").equals(path)
-                || (ApiPaths.AUTH + "/toss/login").equals(path)
-                || (ApiPaths.AUTH + "/toss/unlink-webhook").equals(path)
-                || (ApiPaths.ONBOARDING_KEYCAP_BOXES + "/open").equals(path));
+                && ("/api/guests".equals(path)
+                || "/api/auth/refresh".equals(path)
+                || "/api/auth/toss/login".equals(path)
+                || "/api/auth/toss/unlink-webhook".equals(path)
+                || "/api/onboarding/keycap-boxes/open".equals(path));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

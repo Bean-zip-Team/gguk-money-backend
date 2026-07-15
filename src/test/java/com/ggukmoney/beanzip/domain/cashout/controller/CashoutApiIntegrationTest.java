@@ -66,7 +66,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(get("/api/v1/cashouts/quote")
+        mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(134))
@@ -83,7 +83,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(get("/api/v1/cashouts/quote")
+        mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.tossPointAmount").value(4))
@@ -96,7 +96,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         pointAccountService.credit(user.getId(), 134);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/cashouts")
+        mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
@@ -104,7 +104,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.tossPointAmount").value(93))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
-        mockMvc.perform(get("/api/v1/cashouts/quote")
+        mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(0));
@@ -116,7 +116,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         pointAccountService.credit(user.getId(), 134);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/cashouts")
+        mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isBadRequest());
     }
@@ -127,7 +127,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         pointAccountService.credit(user.getId(), 9);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/cashouts")
+        mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isBadRequest())
@@ -141,14 +141,14 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
         String idempotencyKey = UUID.randomUUID().toString();
 
-        String firstBody = mockMvc.perform(post("/api/v1/cashouts")
+        String firstBody = mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", idempotencyKey))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         String firstCashoutId = JsonPath.read(firstBody, "$.data.cashoutId");
 
-        mockMvc.perform(post("/api/v1/cashouts")
+        mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", idempotencyKey))
                 .andExpect(status().isAccepted())
@@ -157,7 +157,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.tossPointAmount").value(93))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
-        mockMvc.perform(get("/api/v1/cashouts/quote")
+        mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(0));
@@ -171,7 +171,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
             cashoutRequestRepository.save(CashoutRequest.createFor(user, 10, 7, UUID.randomUUID()));
         }
 
-        String firstPageBody = mockMvc.perform(get("/api/v1/cashouts")
+        String firstPageBody = mockMvc.perform(get("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .param("size", "2"))
                 .andExpect(status().isOk())
@@ -180,7 +180,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andReturn().getResponse().getContentAsString();
         String nextCursor = JsonPath.read(firstPageBody, "$.data.nextCursor");
 
-        mockMvc.perform(get("/api/v1/cashouts")
+        mockMvc.perform(get("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .param("size", "2")
                         .param("cursor", nextCursor))
@@ -198,7 +198,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         ReflectionTestUtils.setField(succeeded, "status", CashoutRequest.Status.SUCCEEDED);
         cashoutRequestRepository.save(succeeded);
 
-        mockMvc.perform(get("/api/v1/cashouts")
+        mockMvc.perform(get("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .param("status", "SUCCEEDED"))
                 .andExpect(status().isOk())
@@ -213,14 +213,14 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         pointAccountService.credit(user.getId(), 134);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        String submitBody = mockMvc.perform(post("/api/v1/cashouts")
+        String submitBody = mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         String cashoutId = JsonPath.read(submitBody, "$.data.cashoutId");
 
-        mockMvc.perform(get("/api/v1/cashouts/" + cashoutId)
+        mockMvc.perform(get("/api/cashouts/" + cashoutId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.cashoutId").value(cashoutId))
@@ -235,7 +235,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         AppUser user = registerUser("cashout-tester-10");
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(get("/api/v1/cashouts/" + UUID.randomUUID())
+        mockMvc.perform(get("/api/cashouts/" + UUID.randomUUID())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("CASHOUT_NOT_FOUND"));
@@ -246,7 +246,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         AppUser owner = registerUser("cashout-tester-11");
         pointAccountService.credit(owner.getId(), 134);
         TestTokens ownerTokens = saveTokenBackedSession(owner.getId(), UUID.randomUUID().toString());
-        String submitBody = mockMvc.perform(post("/api/v1/cashouts")
+        String submitBody = mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerTokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
@@ -256,7 +256,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         AppUser stranger = registerUser("cashout-tester-12");
         TestTokens strangerTokens = saveTokenBackedSession(stranger.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(get("/api/v1/cashouts/" + cashoutId)
+        mockMvc.perform(get("/api/cashouts/" + cashoutId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + strangerTokens.accessToken()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("CASHOUT_NOT_FOUND"));
@@ -271,13 +271,13 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
                 .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112"));
 
-        mockMvc.perform(post("/api/v1/cashouts")
+        mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("FAILED"));
 
-        mockMvc.perform(get("/api/v1/cashouts/quote")
+        mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(134));
