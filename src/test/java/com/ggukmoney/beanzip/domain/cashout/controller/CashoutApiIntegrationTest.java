@@ -1,5 +1,8 @@
 package com.ggukmoney.beanzip.domain.cashout.controller;
 
+import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
+import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.domain.cashout.client.TossPromotionClient;
 import com.ggukmoney.beanzip.domain.cashout.entity.CashoutRequest;
 import com.ggukmoney.beanzip.domain.cashout.repository.CashoutRequestRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
@@ -9,13 +12,20 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -34,6 +44,20 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private CashoutRequestRepository cashoutRequestRepository;
+
+    @Autowired
+    private AuthIdentityRepository authIdentityRepository;
+
+    @MockitoBean
+    private TossPromotionClient tossPromotionClient;
+
+    @BeforeEach
+    void stubTossPromotionSuccessByDefault() {
+        reset(tossPromotionClient);
+        when(tossPromotionClient.getKey(anyString())).thenReturn("promo-key");
+        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
+                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.success());
+    }
 
     @Test
     void returnsEligibleQuoteWhenBalanceMeetsMinimum() throws Exception {
@@ -78,7 +102,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(93))
-                .andExpect(jsonPath("$.data.status").value("REQUESTED"));
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/v1/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
@@ -131,7 +155,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.cashoutId").value(firstCashoutId))
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(93))
-                .andExpect(jsonPath("$.data.status").value("REQUESTED"));
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/v1/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
@@ -202,7 +226,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.cashoutId").value(cashoutId))
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(93))
-                .andExpect(jsonPath("$.data.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.data.completedAt").doesNotExist());
     }
 
@@ -238,9 +262,31 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.error.code").value("CASHOUT_NOT_FOUND"));
     }
 
+    @Test
+    void refundsBalanceWhenTossExplicitlyRejectsPromotionExecution() throws Exception {
+        AppUser user = registerUser("cashout-tester-13");
+        pointAccountService.credit(user.getId(), 134);
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+
+        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
+                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112"));
+
+        mockMvc.perform(post("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .header("Idempotency-Key", UUID.randomUUID().toString()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.status").value("FAILED"));
+
+        mockMvc.perform(get("/api/v1/cashouts/quote")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pointBalance").value(134));
+    }
+
     private AppUser registerUser(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
+        authIdentityRepository.save(AuthIdentity.toss(user, "toss-user-key-" + nickname));
         return user;
     }
 }

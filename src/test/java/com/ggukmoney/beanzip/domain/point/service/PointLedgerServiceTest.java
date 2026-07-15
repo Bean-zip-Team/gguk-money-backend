@@ -42,6 +42,17 @@ class PointLedgerServiceTest {
     }
 
     @Test
+    void recordReversalSavesReversalEntry() {
+        PointAccount account = PointAccount.createFor(mock(AppUser.class));
+        AppUser user = mock(AppUser.class);
+        UUID idempotencyKey = UUID.randomUUID();
+
+        pointLedgerService.recordReversal(account, user, 1, "CASHOUT_FAILED", idempotencyKey);
+
+        verify(pointLedgerRepository).save(any(PointLedger.class));
+    }
+
+    @Test
     void isAlreadyRecordedDelegatesToRepository() {
         UUID userId = UUID.randomUUID();
         UUID idempotencyKey = UUID.randomUUID();
