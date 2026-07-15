@@ -91,7 +91,8 @@ public enum ErrorCode {
     BOOSTER_DAILY_LIMIT_EXCEEDED("BOOSTER_DAILY_LIMIT_EXCEEDED", "오늘 부스터 사용 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS),
 
     CASHOUT_MINIMUM_NOT_MET("CASHOUT_MINIMUM_NOT_MET", "최소 출금 포인트 미달", HttpStatus.BAD_REQUEST),
-    CASHOUT_ALREADY_PROCESSING("CASHOUT_ALREADY_PROCESSING", "처리 중인 출금 존재", HttpStatus.CONFLICT);
+    CASHOUT_ALREADY_PROCESSING("CASHOUT_ALREADY_PROCESSING", "처리 중인 출금 존재", HttpStatus.CONFLICT),
+    CASHOUT_NOT_FOUND("CASHOUT_NOT_FOUND", "출금 요청을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
 
     private final String code;
     private final String message;

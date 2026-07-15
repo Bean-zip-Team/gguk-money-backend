@@ -183,6 +183,61 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.items[0].completedAt").exists());
     }
 
+    @Test
+    void returnsCashoutDetailForOwner() throws Exception {
+        AppUser user = registerUser("cashout-tester-9");
+        pointAccountService.credit(user.getId(), 134);
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+
+        String submitBody = mockMvc.perform(post("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .header("Idempotency-Key", UUID.randomUUID().toString()))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        String cashoutId = JsonPath.read(submitBody, "$.data.cashoutId");
+
+        mockMvc.perform(get("/api/v1/cashouts/" + cashoutId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cashoutId").value(cashoutId))
+                .andExpect(jsonPath("$.data.pointAmount").value(134))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
+                .andExpect(jsonPath("$.data.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.completedAt").doesNotExist());
+    }
+
+    @Test
+    void returnsNotFoundForNonExistentCashoutId() throws Exception {
+        AppUser user = registerUser("cashout-tester-10");
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+
+        mockMvc.perform(get("/api/v1/cashouts/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("CASHOUT_NOT_FOUND"));
+    }
+
+    @Test
+    void returnsNotFoundWhenCashoutIdBelongsToAnotherUser() throws Exception {
+        AppUser owner = registerUser("cashout-tester-11");
+        pointAccountService.credit(owner.getId(), 134);
+        TestTokens ownerTokens = saveTokenBackedSession(owner.getId(), UUID.randomUUID().toString());
+        String submitBody = mockMvc.perform(post("/api/v1/cashouts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerTokens.accessToken())
+                        .header("Idempotency-Key", UUID.randomUUID().toString()))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        String cashoutId = JsonPath.read(submitBody, "$.data.cashoutId");
+
+        AppUser stranger = registerUser("cashout-tester-12");
+        TestTokens strangerTokens = saveTokenBackedSession(stranger.getId(), UUID.randomUUID().toString());
+
+        mockMvc.perform(get("/api/v1/cashouts/" + cashoutId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + strangerTokens.accessToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("CASHOUT_NOT_FOUND"));
+    }
+
     private AppUser registerUser(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));

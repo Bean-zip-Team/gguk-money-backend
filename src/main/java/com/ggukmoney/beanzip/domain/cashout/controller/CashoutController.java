@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.cashout.controller;
 
+import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListItemResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListPageResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutQuoteResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutSubmitResponse;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,5 +55,14 @@ public class CashoutController {
     ) {
         var userId = AuthRequestAttributes.getRequiredUserId(httpServletRequest);
         return ResponseEntity.ok(ApiResponse.success(cashoutService.list(userId, cursor, size, status)));
+    }
+
+    @GetMapping("/{cashoutId}")
+    public ResponseEntity<ApiResponse<CashoutListItemResponse>> detail(
+            @PathVariable UUID cashoutId,
+            HttpServletRequest httpServletRequest
+    ) {
+        var userId = AuthRequestAttributes.getRequiredUserId(httpServletRequest);
+        return ResponseEntity.ok(ApiResponse.success(cashoutService.getDetail(userId, cashoutId)));
     }
 }

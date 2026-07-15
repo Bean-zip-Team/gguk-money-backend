@@ -227,6 +227,42 @@ class CashoutServiceTest {
         assertThat(response.items().get(1).completedAt()).isNotNull();
     }
 
+    @Test
+    void returnsDetailForOwnedCashoutRequest() {
+        UUID cashoutId = UUID.randomUUID();
+        CashoutRequest request = cashoutRequestFixture(1L, CashoutRequest.Status.REQUESTED);
+        ReflectionTestUtils.setField(request, "publicId", cashoutId);
+        when(cashoutRequestRepository.findByPublicIdAndUserId(cashoutId, userId)).thenReturn(Optional.of(request));
+
+        var response = cashoutService.getDetail(userId, cashoutId);
+
+        assertThat(response.cashoutId()).isEqualTo(cashoutId);
+        assertThat(response.pointAmount()).isEqualTo(100L);
+        assertThat(response.tossPointAmount()).isEqualTo(70L);
+        assertThat(response.status()).isEqualTo("REQUESTED");
+    }
+
+    @Test
+    void throwsNotFoundWhenCashoutRequestDoesNotExist() {
+        UUID cashoutId = UUID.randomUUID();
+        when(cashoutRequestRepository.findByPublicIdAndUserId(cashoutId, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cashoutService.getDetail(userId, cashoutId))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("CASHOUT_NOT_FOUND");
+    }
+
+    @Test
+    void throwsNotFoundWhenCashoutRequestBelongsToAnotherUser() {
+        UUID cashoutId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        when(cashoutRequestRepository.findByPublicIdAndUserId(cashoutId, otherUserId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cashoutService.getDetail(otherUserId, cashoutId))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("CASHOUT_NOT_FOUND");
+    }
+
     private Page<CashoutRequest> pageOf(List<CashoutRequest> requests) {
         return new PageImpl<>(requests);
     }
