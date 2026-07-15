@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -29,9 +30,9 @@ public class BoosterGrantService {
     private final TapPolicyConfig tapPolicyConfig;
 
     @Transactional
-    public BoosterActivateResponse activate(UUID userId, UUID adViewId) {
-        if (adViewId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AD_VIEW_ID_REQUIRED");
+    public BoosterActivateResponse activate(UUID userId, String adGroupId) {
+        if (!StringUtils.hasText(adGroupId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AD_GROUP_ID_REQUIRED");
         }
 
         Instant now = Instant.now();

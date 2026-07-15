@@ -45,7 +45,7 @@ class BoosterGrantServiceTest {
         when(userService.getById(userId)).thenReturn(user);
         when(boosterGrantRepository.save(any(BoosterGrant.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        BoosterActivateResponse response = boosterGrantService.activate(userId, UUID.randomUUID());
+        BoosterActivateResponse response = boosterGrantService.activate(userId, "ait.dev.43daa14da3ae487b");
 
         assertThat(response.active()).isTrue();
         assertThat(response.multiplier()).isEqualByComparingTo("2.0");
@@ -54,10 +54,10 @@ class BoosterGrantServiceTest {
     }
 
     @Test
-    void throwsWhenAdViewIdMissing() {
+    void throwsWhenAdGroupIdMissing() {
         assertThatThrownBy(() -> boosterGrantService.activate(userId, null))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("AD_VIEW_ID_REQUIRED");
+                .hasMessageContaining("AD_GROUP_ID_REQUIRED");
     }
 
     @Test
@@ -66,7 +66,7 @@ class BoosterGrantServiceTest {
         when(boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(eq(userId), eq(BoosterGrant.Status.ACTIVE), any(Instant.class)))
                 .thenReturn(Optional.of(activeGrant));
 
-        assertThatThrownBy(() -> boosterGrantService.activate(userId, UUID.randomUUID()))
+        assertThatThrownBy(() -> boosterGrantService.activate(userId, "ait.dev.43daa14da3ae487b"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("BOOSTER_ALREADY_ACTIVE");
     }
@@ -78,7 +78,7 @@ class BoosterGrantServiceTest {
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(3L);
 
-        assertThatThrownBy(() -> boosterGrantService.activate(userId, UUID.randomUUID()))
+        assertThatThrownBy(() -> boosterGrantService.activate(userId, "ait.dev.43daa14da3ae487b"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("BOOSTER_DAILY_LIMIT_EXCEEDED");
     }

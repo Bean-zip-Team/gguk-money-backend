@@ -34,10 +34,10 @@ public class BoosterController {
 
     private final BoosterGrantService boosterGrantService;
 
-    @Operation(summary = "부스터 활성화", description = "광고 시청 식별자로 부스터를 활성화합니다.")
+    @Operation(summary = "부스터 활성화", description = "Toss IntegratedAd의 userEarnedReward 이벤트 이후 광고 그룹 ID로 부스터를 활성화합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "활성화 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "adViewId 누락 또는 요청 값 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "adGroupId 누락 또는 요청 값 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 활성화된 부스터", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "일일 부스터 한도 초과", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -48,7 +48,7 @@ public class BoosterController {
             @Parameter(hidden = true) HttpServletRequest httpServletRequest
     ) {
         var userId = AuthRequestAttributes.getRequiredUserId(httpServletRequest);
-        return ResponseEntity.ok(ApiResponse.success(boosterGrantService.activate(userId, request.adViewId())));
+        return ResponseEntity.ok(ApiResponse.success(boosterGrantService.activate(userId, request.adGroupId())));
     }
 
     @Operation(summary = "현재 부스터 상태 조회")
