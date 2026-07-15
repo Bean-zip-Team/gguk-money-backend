@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.global.config.controller;
 
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -20,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.APP_CONFIG)
+@RequestMapping("/api/app-config")
 @Tag(name = "App Config", description = "앱 공개 정책 설정 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class AppConfigController {

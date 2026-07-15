@@ -70,7 +70,7 @@ class MemberControllerTest {
         when(userService.getCurrentMember(userId))
                 .thenReturn(new MemberMeResponse(userId, "ACTIVE", "Bean", null, null, 0L));
 
-        mockMvc.perform(get("/api/v1/members/me")
+        mockMvc.perform(get("/api/members/me")
                         .requestAttr(AuthRequestAttributes.USER_ID, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -85,7 +85,7 @@ class MemberControllerTest {
         when(userService.updateCurrentMember(userId, new UpdateMemberRequest("Bean", null)))
                 .thenReturn(new MemberUpdateResponse(userId, "Bean", null));
 
-        mockMvc.perform(patch("/api/v1/members/me")
+        mockMvc.perform(patch("/api/members/me")
                         .requestAttr(AuthRequestAttributes.USER_ID, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nickname\":\"Bean\"}"))
@@ -98,7 +98,7 @@ class MemberControllerTest {
 
     @Test
     void patchMeRejectsEmptyBodyWithValidationError() throws Exception {
-        mockMvc.perform(patch("/api/v1/members/me")
+        mockMvc.perform(patch("/api/members/me")
                         .requestAttr(AuthRequestAttributes.USER_ID, UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))

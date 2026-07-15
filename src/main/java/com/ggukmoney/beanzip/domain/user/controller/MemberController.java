@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/members/me")
+@RequestMapping("/api/members/me")
 @Tag(name = "Members", description = "내 회원 정보 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class MemberController {

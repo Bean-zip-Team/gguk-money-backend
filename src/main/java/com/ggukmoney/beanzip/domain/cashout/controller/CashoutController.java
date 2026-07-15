@@ -6,7 +6,6 @@ import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutQuoteResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutSubmitResponse;
 import com.ggukmoney.beanzip.domain.cashout.entity.CashoutRequest;
 import com.ggukmoney.beanzip.domain.cashout.service.CashoutService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -35,7 +34,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.CASHOUTS)
+@RequestMapping("/api/cashouts")
 @Tag(name = "Cashouts", description = "포인트 출금 견적, 신청, 조회 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class CashoutController {

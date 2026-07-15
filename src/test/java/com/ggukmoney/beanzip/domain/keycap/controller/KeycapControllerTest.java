@@ -92,7 +92,7 @@ class KeycapControllerTest {
                 new KeycapItemResponse(keycapId, "BASIC_001", "Basic", "COMMON", 10, 1, null, null)
         )));
 
-        mockMvc.perform(get("/api/v1/keycaps")
+        mockMvc.perform(get("/api/keycaps")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -113,7 +113,7 @@ class KeycapControllerTest {
                 new MyKeycapItemResponse(keycapId, "BASIC_001", "Basic", 10, "COMPLETED", true)
         )));
 
-        mockMvc.perform(get("/api/v1/keycaps/me")
+        mockMvc.perform(get("/api/keycaps/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -133,7 +133,7 @@ class KeycapControllerTest {
         when(keycapService.equipKeycap(authenticatedUserId(), keycapId))
                 .thenReturn(new KeycapEquipResponse(keycapId, true));
 
-        mockMvc.perform(put("/api/v1/keycaps/{keycapId}/equip", keycapId)
+        mockMvc.perform(put("/api/keycaps/{keycapId}/equip", keycapId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -145,7 +145,7 @@ class KeycapControllerTest {
 
     @Test
     void unauthenticatedGetKeycapsIsRejectedByExistingAuthPolicy() throws Exception {
-        mockMvc.perform(get("/api/v1/keycaps"))
+        mockMvc.perform(get("/api/keycaps"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
@@ -153,7 +153,7 @@ class KeycapControllerTest {
 
     @Test
     void unauthenticatedGetMyKeycapsIsRejectedByExistingAuthPolicy() throws Exception {
-        mockMvc.perform(get("/api/v1/keycaps/me"))
+        mockMvc.perform(get("/api/keycaps/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
@@ -161,7 +161,7 @@ class KeycapControllerTest {
 
     @Test
     void unauthenticatedEquipKeycapIsRejectedByExistingAuthPolicy() throws Exception {
-        mockMvc.perform(put("/api/v1/keycaps/{keycapId}/equip", UUID.randomUUID()))
+        mockMvc.perform(put("/api/keycaps/{keycapId}/equip", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));

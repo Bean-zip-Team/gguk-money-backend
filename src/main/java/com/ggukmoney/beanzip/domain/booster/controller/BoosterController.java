@@ -4,7 +4,6 @@ import com.ggukmoney.beanzip.domain.booster.dto.request.BoosterActivateRequest;
 import com.ggukmoney.beanzip.domain.booster.dto.response.BoosterActivateResponse;
 import com.ggukmoney.beanzip.domain.booster.dto.response.BoosterStatusResponse;
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -28,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.BOOSTERS)
+@RequestMapping("/api/boosters")
 @Tag(name = "Boosters", description = "부스터 활성화 및 상태 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class BoosterController {

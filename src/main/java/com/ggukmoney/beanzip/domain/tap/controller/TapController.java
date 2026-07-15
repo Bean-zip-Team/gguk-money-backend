@@ -5,7 +5,6 @@ import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapTodayStatusResponse;
 import com.ggukmoney.beanzip.domain.tap.service.TapBatchService;
 import com.ggukmoney.beanzip.domain.tap.service.TapStatusService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -29,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.TAP)
+@RequestMapping("/api/tap")
 @Tag(name = "Tap", description = "탭 적립 및 당일 상태 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class TapController {

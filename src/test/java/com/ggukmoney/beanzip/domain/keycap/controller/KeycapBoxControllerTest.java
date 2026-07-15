@@ -71,7 +71,7 @@ class KeycapBoxControllerTest {
         when(keycapBoxStatusService.getStatus(authenticatedUserId()))
                 .thenReturn(new KeycapBoxStatusResponse(2, 1, 45, 100));
 
-        mockMvc.perform(get("/api/v1/keycap-boxes/status")
+        mockMvc.perform(get("/api/keycap-boxes/status")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -88,7 +88,7 @@ class KeycapBoxControllerTest {
 
     @Test
     void unauthenticatedGetStatusIsRejectedByExistingAuthPolicy() throws Exception {
-        mockMvc.perform(get("/api/v1/keycap-boxes/status"))
+        mockMvc.perform(get("/api/keycap-boxes/status"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
@@ -100,7 +100,7 @@ class KeycapBoxControllerTest {
         when(keycapBoxStatusService.getStatus(authenticatedUserId()))
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "TAP_PROGRESS_NOT_FOUND"));
 
-        mockMvc.perform(get("/api/v1/keycap-boxes/status")
+        mockMvc.perform(get("/api/keycap-boxes/status")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
@@ -116,7 +116,7 @@ class KeycapBoxControllerTest {
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
                 .thenReturn(new KeycapBoxOpenResponse(boxOpenId, keycapId, 1, false, openedAt));
 
-        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+        mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
                         .header("Idempotency-Key", "idem-key")
                         .contentType("application/json")
@@ -139,7 +139,7 @@ class KeycapBoxControllerTest {
 
     @Test
     void openRequiresAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+        mockMvc.perform(post("/api/keycap-boxes/open")
                         .header("Idempotency-Key", "idem-key")
                         .contentType("application/json")
                         .content("""
@@ -158,7 +158,7 @@ class KeycapBoxControllerTest {
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), isNull(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED"));
 
-        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+        mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
                         .contentType("application/json")
                         .content("""
@@ -175,7 +175,7 @@ class KeycapBoxControllerTest {
     void openRejectsInvalidRequestBody() throws Exception {
         stubAuthenticatedAccessToken("access-token");
 
-        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+        mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
                         .header("Idempotency-Key", "idem-key")
                         .contentType("application/json")
@@ -191,7 +191,7 @@ class KeycapBoxControllerTest {
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
 
-        mockMvc.perform(post("/api/v1/keycap-boxes/open")
+        mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
                         .header("Idempotency-Key", "idem-key")
                         .contentType("application/json")
@@ -219,7 +219,7 @@ class KeycapBoxControllerTest {
         );
         when(keycapBoxHistoryService.getHistory(authenticatedUserId(), "cursor-1", 10)).thenReturn(response);
 
-        mockMvc.perform(get("/api/v1/keycap-boxes/history")
+        mockMvc.perform(get("/api/keycap-boxes/history")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
                         .param("cursor", "cursor-1")
                         .param("size", "10"))
@@ -244,7 +244,7 @@ class KeycapBoxControllerTest {
 
     @Test
     void historyRequiresAuthentication() throws Exception {
-        mockMvc.perform(get("/api/v1/keycap-boxes/history"))
+        mockMvc.perform(get("/api/keycap-boxes/history"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));

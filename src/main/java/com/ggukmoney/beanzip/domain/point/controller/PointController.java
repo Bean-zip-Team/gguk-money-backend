@@ -4,7 +4,6 @@ import com.ggukmoney.beanzip.domain.point.dto.response.PointLedgerPageResponse;
 import com.ggukmoney.beanzip.domain.point.dto.response.PointMeResponse;
 import com.ggukmoney.beanzip.domain.point.entity.PointLedger;
 import com.ggukmoney.beanzip.domain.point.service.PointStatusService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -28,7 +27,7 @@ import java.time.Instant;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.POINTS)
+@RequestMapping("/api/points")
 @Tag(name = "Points", description = "포인트 잔액 및 원장 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class PointController {

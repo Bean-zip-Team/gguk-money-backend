@@ -21,7 +21,7 @@ class GlobalExceptionHandlerTest extends FullStackIntegrationTestSupport {
     void validationFailureUsesRequestIdHeaderAndDoesNotExposeBodyRequestIdOrDetails() throws Exception {
         String requestId = "01JTESTREQUEST";
 
-        MvcResult result = mockMvc.perform(post(ApiPaths.AUTH + "/refresh")
+        MvcResult result = mockMvc.perform(post("/api/auth/refresh")
                         .header(RequestLogContext.REQUEST_ID_HEADER, requestId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -45,7 +45,7 @@ class GlobalExceptionHandlerTest extends FullStackIntegrationTestSupport {
     @Test
     void unexpectedExceptionDoesNotExposeInternalDetails() {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
-        HttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/internal-error");
+        HttpServletRequest request = new MockHttpServletRequest("GET", "/api/internal-error");
 
         ResponseEntity<ApiErrorResponse> response = handler.handleException(
                 new IllegalStateException("database password leaked"),

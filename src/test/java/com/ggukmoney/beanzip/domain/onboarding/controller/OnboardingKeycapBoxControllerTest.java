@@ -56,7 +56,7 @@ class OnboardingKeycapBoxControllerTest {
                 Instant.parse("2026-07-16T01:00:05Z")
         ));
 
-        mockMvc.perform(post("/api/v1/onboarding/keycap-boxes/open")
+        mockMvc.perform(post("/api/onboarding/keycap-boxes/open")
                         .contentType("application/json")
                         .content(validBody()))
                 .andExpect(status().isOk())
@@ -84,7 +84,7 @@ class OnboardingKeycapBoxControllerTest {
     @Test
     void protectedKeycapBoxStatusStillRequiresAuthentication() {
         AuthInterceptor interceptor = new AuthInterceptor(authService);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/keycap-boxes/status");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/keycap-boxes/status");
 
         assertThatThrownBy(() -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
                 .isInstanceOf(ResponseStatusException.class)
@@ -94,7 +94,7 @@ class OnboardingKeycapBoxControllerTest {
 
     @Test
     void invalidRequestBodyUsesCommonValidationError() throws Exception {
-        mockMvc.perform(post("/api/v1/onboarding/keycap-boxes/open")
+        mockMvc.perform(post("/api/onboarding/keycap-boxes/open")
                         .contentType("application/json")
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -106,7 +106,7 @@ class OnboardingKeycapBoxControllerTest {
     void serviceErrorUsesOnboardingErrorCode() throws Exception {
         when(service.open(any())).thenThrow(new ResponseStatusException(CONFLICT, "ONBOARDING_TAP_SESSION_REUSED"));
 
-        mockMvc.perform(post("/api/v1/onboarding/keycap-boxes/open")
+        mockMvc.perform(post("/api/onboarding/keycap-boxes/open")
                         .contentType("application/json")
                         .content(validBody()))
                 .andExpect(status().isConflict())

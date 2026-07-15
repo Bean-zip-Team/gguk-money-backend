@@ -4,7 +4,6 @@ import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapEquipResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.MyKeycapListResponse;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -29,7 +28,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.KEYCAPS)
+@RequestMapping("/api/keycaps")
 @Tag(name = "Keycaps", description = "키캡 카탈로그 및 보유 키캡 API")
 public class KeycapController {
 

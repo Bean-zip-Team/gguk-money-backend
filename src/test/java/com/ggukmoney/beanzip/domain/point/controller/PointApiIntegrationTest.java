@@ -40,7 +40,7 @@ class PointApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        mockMvc.perform(get("/api/v1/points/me")
+        mockMvc.perform(get("/api/points/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.balance").value(15))
@@ -58,7 +58,7 @@ class PointApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        String firstPageBody = mockMvc.perform(get("/api/v1/points/ledger")
+        String firstPageBody = mockMvc.perform(get("/api/points/ledger")
                         .param("size", "2")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
@@ -69,7 +69,7 @@ class PointApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         String cursor = extractNextCursor(firstPageBody);
 
-        mockMvc.perform(get("/api/v1/points/ledger")
+        mockMvc.perform(get("/api/points/ledger")
                         .param("size", "2")
                         .param("cursor", cursor)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))

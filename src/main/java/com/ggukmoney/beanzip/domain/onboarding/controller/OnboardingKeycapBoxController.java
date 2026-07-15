@@ -3,7 +3,6 @@ package com.ggukmoney.beanzip.domain.onboarding.controller;
 import com.ggukmoney.beanzip.domain.onboarding.dto.request.OnboardingKeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.onboarding.dto.response.OnboardingKeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingKeycapBoxOpenService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.ONBOARDING_KEYCAP_BOXES)
+@RequestMapping("/api/onboarding/keycap-boxes")
 @Tag(name = "Onboarding Keycap Boxes", description = "비로그인 온보딩 키캡 상자 API")
 public class OnboardingKeycapBoxController {
 

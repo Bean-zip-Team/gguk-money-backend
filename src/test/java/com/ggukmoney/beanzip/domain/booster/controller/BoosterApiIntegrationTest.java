@@ -42,7 +42,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     void activatesBoosterAndAppliesDoublePointsOnSubsequentTapBatch() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-1");
 
-        mockMvc.perform(post("/api/v1/boosters/activate")
+        mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(activateJson(UUID.randomUUID())))
@@ -51,7 +51,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.multiplier").value(2.0))
                 .andExpect(jsonPath("$.data.remainingDailyCount").value(2));
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 1, 350)))
@@ -63,13 +63,13 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     void rejectsActivationWhenAlreadyActive() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-2");
 
-        mockMvc.perform(post("/api/v1/boosters/activate")
+        mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(activateJson(UUID.randomUUID())))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/boosters/activate")
+        mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(activateJson(UUID.randomUUID())))
@@ -81,7 +81,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     void rejectsActivationWithoutAdViewId() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-missing-ad-view");
 
-        mockMvc.perform(post("/api/v1/boosters/activate")
+        mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -93,13 +93,13 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     void currentReflectsActiveBoosterStateAfterActivation() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-3");
 
-        mockMvc.perform(post("/api/v1/boosters/activate")
+        mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(activateJson(UUID.randomUUID())))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/boosters/current")
+        mockMvc.perform(get("/api/boosters/current")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.active").value(true))

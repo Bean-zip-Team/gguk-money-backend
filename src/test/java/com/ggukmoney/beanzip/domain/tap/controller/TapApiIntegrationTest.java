@@ -43,7 +43,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens tokens = registerUserWithSession("tester-1");
         UUID sessionId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(sessionId, 1, 50)))
@@ -63,13 +63,13 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
         UUID sessionId = UUID.randomUUID();
         String body = batchJson(sessionId, 1, 50);
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -82,14 +82,14 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens tokens = registerUserWithSession("tester-3");
 
         for (int i = 0; i < 8; i++) {
-            mockMvc.perform(post("/api/v1/tap/batches")
+            mockMvc.perform(post("/api/tap/batches")
                             .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(batchJson(UUID.randomUUID(), i, 1)))
                     .andExpect(status().isOk());
         }
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 99, 1)))
@@ -101,7 +101,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     void returnsZeroedStatusRightAfterRegistration() throws Exception {
         TestTokens tokens = registerUserWithSession("tester-4");
 
-        mockMvc.perform(get("/api/v1/tap/today")
+        mockMvc.perform(get("/api/tap/today")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.validTapCount").value(0))
@@ -114,13 +114,13 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     void reflectsAcceptedTapsAfterBatchSubmission() throws Exception {
         TestTokens tokens = registerUserWithSession("tester-5");
 
-        mockMvc.perform(post("/api/v1/tap/batches")
+        mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 1, 50)))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/tap/today")
+        mockMvc.perform(get("/api/tap/today")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.validTapCount").value(50));

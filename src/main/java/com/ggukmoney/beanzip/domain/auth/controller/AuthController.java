@@ -9,7 +9,6 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -34,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.AUTH)
+@RequestMapping("/api/auth")
 @Tag(name = "Auth", description = "인증 및 세션 API")
 public class AuthController {
 

@@ -7,7 +7,6 @@ import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxHistoryService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxStatusService;
-import com.ggukmoney.beanzip.global.common.ApiPaths;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -34,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(ApiPaths.KEYCAP_BOXES)
+@RequestMapping("/api/keycap-boxes")
 @Tag(name = "Keycap Boxes", description = "키캡 상자 상태, 개봉, 이력 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class KeycapBoxController {
