@@ -45,7 +45,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
         mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(activateJson(UUID.randomUUID())))
+                        .content(activateJson()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.active").value(true))
                 .andExpect(jsonPath("$.data.multiplier").value(2.0))
@@ -66,20 +66,20 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
         mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(activateJson(UUID.randomUUID())))
+                        .content(activateJson()))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(activateJson(UUID.randomUUID())))
+                        .content(activateJson()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("BOOSTER_ALREADY_ACTIVE"));
     }
 
     @Test
-    void rejectsActivationWithoutAdViewId() throws Exception {
-        TestTokens tokens = registerUserWithSession("booster-tester-missing-ad-view");
+    void rejectsActivationWithoutAdGroupId() throws Exception {
+        TestTokens tokens = registerUserWithSession("booster-tester-missing-ad-group");
 
         mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
@@ -96,7 +96,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
         mockMvc.perform(post("/api/boosters/activate")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(activateJson(UUID.randomUUID())))
+                        .content(activateJson()))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/boosters/current")
@@ -115,8 +115,8 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
         return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
     }
 
-    private String activateJson(UUID adViewId) {
-        return "{\"adViewId\":\"" + adViewId + "\"}";
+    private String activateJson() {
+        return "{\"adGroupId\":\"ait.dev.43daa14da3ae487b\"}";
     }
 
     private String batchJson(UUID tapSessionId, long sequence, int submittedCount) {
