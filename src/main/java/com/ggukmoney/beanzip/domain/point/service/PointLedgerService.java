@@ -26,4 +26,8 @@ public class PointLedgerService {
     public void recordDebit(PointAccount account, AppUser user, long amount, String reason, UUID idempotencyKey) {
         pointLedgerRepository.save(PointLedger.createDebit(account, user, amount, reason, idempotencyKey));
     }
+
+    public void recordReversal(PointAccount account, AppUser user, long amount, String reason, UUID idempotencyKey) {
+        pointLedgerRepository.save(PointLedger.createReversal(account, user, amount, reason, idempotencyKey));
+    }
 }

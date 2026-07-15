@@ -1,5 +1,8 @@
 package com.ggukmoney.beanzip.domain.cashout.service;
 
+import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
+import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.domain.cashout.client.TossPromotionClient;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListItemResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListPageResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutQuoteResponse;
@@ -14,6 +17,8 @@ import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -33,11 +38,13 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CashoutService {
 
     private static final String DEBIT_REASON_CASHOUT = "CASHOUT";
+    private static final String REVERSAL_REASON_CASHOUT_FAILED = "CASHOUT_FAILED";
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final EnumSet<CashoutRequest.Status> TERMINAL_STATUSES =
@@ -46,8 +53,13 @@ public class CashoutService {
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
     private final CashoutRequestRepository cashoutRequestRepository;
+    private final AuthIdentityRepository authIdentityRepository;
+    private final TossPromotionClient tossPromotionClient;
     private final UserService userService;
     private final CashoutPolicyConfig cashoutPolicyConfig;
+
+    @Value("${app.cashout.toss.promotion-code:}")
+    private String promotionCode;
 
     public CashoutQuoteResponse getQuote(UUID userId) {
         long balance = pointAccountService.getBalance(userId);
@@ -92,7 +104,79 @@ public class CashoutService {
         CashoutRequest request = cashoutRequestRepository.save(
                 CashoutRequest.createFor(user, balance, tossPointAmount, idempotencyKey)
         );
-        return toResponse(request);
+
+        submitToToss(request, userId, user, balance, idempotencyKey);
+
+        return toResponse(cashoutRequestRepository.save(request));
+    }
+
+    /**
+     * get-key + execute-promotion을 동기로 호출해 Toss에 지급을 접수한다. 실패 처리 방식은
+     * PRD 논의에서 확정한 대로 다음과 같이 나뉜다:
+     * - get-key 실패: Toss 쪽에서 아무 일도 일어나지 않았음이 확실하므로 안전하게 FAILED + 환불
+     * - execute-promotion의 명시적 실패(4xx): 마찬가지로 안전하게 FAILED + 환불
+     * - execute-promotion의 모호한 실패(네트워크 오류/5xx): 실제 처리 여부를 알 수 없으므로
+     *   자동 환불하지 않고 REQUESTED로 남겨 운영자가 수동으로 확인하도록 한다(이중지급 위험 방지).
+     */
+    private void submitToToss(CashoutRequest request, UUID userId, AppUser user, long balance, UUID idempotencyKey) {
+        AuthIdentity identity = authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)
+                .orElse(null);
+        if (identity == null) {
+            log.error("출금 신청에 연결된 Toss 계정이 없음: cashoutId={}", request.getPublicId());
+            request.markFailed();
+            reverseDebit(request, user, balance, idempotencyKey);
+            return;
+        }
+
+        String key;
+        try {
+            key = tossPromotionClient.getKey(identity.getProviderUserId());
+        } catch (RuntimeException exception) {
+            log.error("Toss get-key 호출 실패, 환불 처리: cashoutId={}", request.getPublicId(), exception);
+            request.markFailed();
+            reverseDebit(request, user, balance, idempotencyKey);
+            return;
+        }
+
+        try {
+            TossPromotionClient.PromotionExecutionOutcome outcome =
+                    tossPromotionClient.executePromotion(promotionCode, key, request.getTossPointAmount());
+            if (outcome.succeeded()) {
+                request.markProcessing(key);
+            } else {
+                log.warn("Toss execute-promotion 명시적 실패, 환불 처리: cashoutId={} errorCode={}",
+                        request.getPublicId(), outcome.tossErrorCode());
+                request.markFailed();
+                reverseDebit(request, user, balance, idempotencyKey);
+            }
+        } catch (TossPromotionClient.AmbiguousTossFailureException exception) {
+            log.error("Toss execute-promotion 결과 불명 — 수동 확인 필요: cashoutId={}", request.getPublicId(), exception);
+            // REQUESTED 상태 유지, 자동 환불하지 않음
+        }
+    }
+
+    /**
+     * {@code PROCESSING} 건의 execution-result 폴링 결과를 반영한다. {@code CashoutProcessingScheduler}에서 호출된다.
+     */
+    @Transactional
+    public void finalizeProcessingCashout(CashoutRequest request, TossPromotionClient.PromotionResultStatus result) {
+        switch (result) {
+            case SUCCESS -> request.markSucceeded();
+            case FAILED -> {
+                request.markFailed();
+                reverseDebit(request, request.getUser(), request.getPointAmount(), request.getIdempotencyKey());
+            }
+            case PENDING -> {
+                // 다음 tick에 재확인
+            }
+        }
+        cashoutRequestRepository.save(request);
+    }
+
+    private void reverseDebit(CashoutRequest request, AppUser user, long amount, UUID idempotencyKey) {
+        PointAccount account = pointAccountService.credit(user.getId(), amount);
+        UUID reversalIdempotencyKey = UUID.nameUUIDFromBytes((idempotencyKey + "-reversal").getBytes(StandardCharsets.UTF_8));
+        pointLedgerService.recordReversal(account, user, amount, REVERSAL_REASON_CASHOUT_FAILED, reversalIdempotencyKey);
     }
 
     private CashoutSubmitResponse toResponse(CashoutRequest request) {
