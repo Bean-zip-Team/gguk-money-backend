@@ -78,6 +78,18 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     }
 
     @Test
+    void rejectsActivationWithoutAdViewId() throws Exception {
+        TestTokens tokens = registerUserWithSession("booster-tester-missing-ad-view");
+
+        mockMvc.perform(post("/api/v1/boosters/activate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+    }
+
+    @Test
     void currentReflectsActiveBoosterStateAfterActivation() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-3");
 
