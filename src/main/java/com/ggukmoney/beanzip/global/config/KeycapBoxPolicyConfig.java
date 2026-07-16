@@ -20,10 +20,12 @@ public class KeycapBoxPolicyConfig {
 
     public static final String KEY_FREE_TICKET_REFILL_PER_HOUR = "keycapBox.freeTicket.refillPerHour";
     public static final String KEY_FREE_TICKET_CAP = "keycapBox.freeTicket.cap";
+    public static final String KEY_AD_OPEN_DAILY_LIMIT = "keycapBox.adOpen.dailyLimit";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_FREE_TICKET_REFILL_PER_HOUR, "1"),
-            Map.entry(KEY_FREE_TICKET_CAP, "8")
+            Map.entry(KEY_FREE_TICKET_CAP, "8"),
+            Map.entry(KEY_AD_OPEN_DAILY_LIMIT, "2")
     );
 
     private final AppConfigRepository appConfigRepository;
@@ -50,6 +52,10 @@ public class KeycapBoxPolicyConfig {
 
     public int cap() {
         return getInt(KEY_FREE_TICKET_CAP);
+    }
+
+    public int adOpenDailyLimit() {
+        return getInt(KEY_AD_OPEN_DAILY_LIMIT);
     }
 
     private int getInt(String key) {

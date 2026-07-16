@@ -186,10 +186,10 @@ class KeycapBoxControllerTest {
     }
 
     @Test
-    void openAdvertisementUnsupportedResponse() throws Exception {
+    void openAdvertisementDailyLimitExceededResponse() throws Exception {
         stubAuthenticatedAccessToken("access-token");
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
-                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
+                .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_DAILY_LIMIT_EXCEEDED"));
 
         mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -201,9 +201,9 @@ class KeycapBoxControllerTest {
                                   "adRewardId": "ad-1"
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("ADVERTISEMENT_OPEN_NOT_SUPPORTED"));
+                .andExpect(jsonPath("$.error.code").value("AD_OPEN_DAILY_LIMIT_EXCEEDED"));
     }
 
     @Test

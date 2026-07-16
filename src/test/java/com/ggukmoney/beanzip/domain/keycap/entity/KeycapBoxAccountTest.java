@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -82,6 +83,50 @@ class KeycapBoxAccountTest {
 
         assertThat(account.getFreeOpenTicketCount()).isEqualTo(8);
         assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(start.plusSeconds(10 * 3600));
+    }
+
+    @Test
+    void consumesAdOpenAndDecrementsBoxBalanceWithoutTouchingFreeTickets() {
+        KeycapBoxAccount account = account(2, 1);
+
+        account.consumeAdOpen(LocalDate.parse("2026-07-16"), 2);
+
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getFreeOpenTicketCount()).isEqualTo(1);
+        assertThat(account.getAdOpenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void resetsAdOpenCountOnNewDay() {
+        KeycapBoxAccount account = account(1, 0);
+        ReflectionTestUtils.setField(account, "adOpenCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenCountDate", LocalDate.parse("2026-07-15"));
+
+        account.consumeAdOpen(LocalDate.parse("2026-07-16"), 2);
+
+        assertThat(account.getAdOpenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsAdOpenWhenDailyLimitReached() {
+        KeycapBoxAccount account = account(1, 0);
+        LocalDate today = LocalDate.parse("2026-07-16");
+        ReflectionTestUtils.setField(account, "adOpenCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenCountDate", today);
+
+        assertThatThrownBy(() -> account.consumeAdOpen(today, 2))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getAdOpenCount()).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsAdOpenWhenBoxBalanceIsMissing() {
+        KeycapBoxAccount account = account(0, 0);
+
+        assertThatThrownBy(() -> account.consumeAdOpen(LocalDate.parse("2026-07-16"), 2))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(account.getAdOpenCount()).isZero();
     }
 
     private static KeycapBoxAccount account(int boxBalance, int freeOpenTicketCount) {
