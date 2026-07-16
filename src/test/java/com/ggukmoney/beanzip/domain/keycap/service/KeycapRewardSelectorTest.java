@@ -14,17 +14,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class KeycapRewardSelectorTest {
 
     @Test
-    void selectsCandidateAtRandomIndex() {
-        Keycap first = keycap("FIRST");
-        Keycap second = keycap("SECOND");
-        KeycapRewardSelector selector = new KeycapRewardSelector(new FixedRandomGenerator(1));
-
-        Keycap selected = selector.select(List.of(first, second));
-
-        assertThat(selected).isSameAs(second);
-    }
-
-    @Test
     void rejectsEmptyCandidates() {
         KeycapRewardSelector selector = new KeycapRewardSelector(new FixedRandomGenerator(0));
 
@@ -32,9 +21,36 @@ class KeycapRewardSelectorTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    private static Keycap keycap(String code) {
+    @Test
+    void splitsWeightEquallyWithinSameGrade() {
+        Keycap first = keycap("FIRST", Keycap.Grade.COMMON);
+        Keycap second = keycap("SECOND", Keycap.Grade.COMMON);
+        KeycapRewardSelector selector = new KeycapRewardSelector(new FixedRandomGenerator(0.6));
+
+        Keycap selected = selector.select(List.of(first, second));
+
+        assertThat(selected).isSameAs(second);
+    }
+
+    @Test
+    void favorsCommonGradeOverLegendaryPerFigmaWeighting() {
+        Keycap common = keycap("COMMON_ITEM", Keycap.Grade.COMMON);
+        Keycap legendary = keycap("LEGENDARY_ITEM", Keycap.Grade.LEGENDARY);
+        List<Keycap> candidates = List.of(common, legendary);
+
+        Keycap justBelowCommonShare = new KeycapRewardSelector(new FixedRandomGenerator(0.9))
+                .select(candidates);
+        Keycap withinLegendaryShare = new KeycapRewardSelector(new FixedRandomGenerator(0.99))
+                .select(candidates);
+
+        assertThat(justBelowCommonShare).isSameAs(common);
+        assertThat(withinLegendaryShare).isSameAs(legendary);
+    }
+
+    private static Keycap keycap(String code, Keycap.Grade grade) {
         Keycap keycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(keycap, "code", code);
+        ReflectionTestUtils.setField(keycap, "grade", grade);
         return keycap;
     }
 
@@ -48,14 +64,14 @@ class KeycapRewardSelectorTest {
         }
     }
 
-    private record FixedRandomGenerator(int value) implements RandomGenerator {
+    private record FixedRandomGenerator(double value) implements RandomGenerator {
         @Override
         public long nextLong() {
-            return value;
+            return (long) value;
         }
 
         @Override
-        public int nextInt(int bound) {
+        public double nextDouble() {
             return value;
         }
     }

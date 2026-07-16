@@ -15,7 +15,11 @@ public interface KeycapRepository extends JpaRepository<Keycap, Long> {
 
     Optional<Keycap> findByCode(String code);
 
+    boolean existsByCode(String code);
+
     List<Keycap> findByActiveTrueOrderBySortOrderAscCodeAsc();
+
+    long countByActiveTrue();
 
     @Query("""
             select keycap

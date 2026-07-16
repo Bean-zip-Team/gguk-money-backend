@@ -64,6 +64,26 @@ public class Keycap {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    public static Keycap createFor(
+            String code,
+            String name,
+            Grade grade,
+            int requiredShardCount,
+            int season,
+            String imageUrl,
+            int sortOrder
+    ) {
+        Keycap keycap = new Keycap();
+        keycap.code = code;
+        keycap.name = name;
+        keycap.grade = grade;
+        keycap.requiredShardCount = requiredShardCount;
+        keycap.season = season;
+        keycap.imageUrl = imageUrl;
+        keycap.sortOrder = sortOrder;
+        return keycap;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
