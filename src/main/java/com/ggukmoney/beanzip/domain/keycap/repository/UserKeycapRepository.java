@@ -17,6 +17,8 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
 
     Optional<UserKeycap> findByUserIdAndEquippedTrue(UUID userId);
 
+    long countByUserIdAndStatus(UUID userId, UserKeycap.Status status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select userKeycap

@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Getter
@@ -46,6 +47,12 @@ public class KeycapBoxAccount {
 
     @Column(name = "last_free_ticket_granted_at", nullable = false)
     private Instant lastFreeTicketGrantedAt;
+
+    @Column(name = "ad_open_count", nullable = false)
+    private Integer adOpenCount = 0;
+
+    @Column(name = "ad_open_count_date")
+    private LocalDate adOpenCountDate;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -100,6 +107,32 @@ public class KeycapBoxAccount {
         int granted = (int) Math.min(elapsedHours * refillPerHour, Math.max(cap - freeOpenTicketCount, 0));
         freeOpenTicketCount += granted;
         lastFreeTicketGrantedAt = lastFreeTicketGrantedAt.plus(Duration.ofHours(elapsedHours));
+    }
+
+    public boolean hasAdOpenQuota(LocalDate today, int dailyLimit) {
+        if (adOpenCountDate == null || !adOpenCountDate.equals(today)) {
+            return dailyLimit > 0;
+        }
+        return adOpenCount < dailyLimit;
+    }
+
+    /**
+     * 광고 시청 완료를 트러스트 기반으로 인정하고(서버 검증 불가, §11.10) 상자 하나를 소비한다.
+     * 무료 개봉권(freeOpenTicketCount)과는 별개의 일일 카운터를 쓴다 — 광고 개봉은 무료권을 소비하지 않는다.
+     */
+    public void consumeAdOpen(LocalDate today, int dailyLimit) {
+        if (!hasBox()) {
+            throw new IllegalStateException("Keycap box balance is insufficient.");
+        }
+        if (adOpenCountDate == null || !adOpenCountDate.equals(today)) {
+            adOpenCount = 0;
+            adOpenCountDate = today;
+        }
+        if (adOpenCount >= dailyLimit) {
+            throw new IllegalStateException("Ad open daily limit exceeded.");
+        }
+        boxBalance -= 1;
+        adOpenCount += 1;
     }
 
     @PrePersist

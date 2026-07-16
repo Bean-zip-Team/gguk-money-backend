@@ -10,9 +10,15 @@ import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
+import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
+import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -22,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Constructor;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +36,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,8 +51,12 @@ class KeycapBoxOpenServiceTest {
     private final UserKeycapRepository userKeycapRepository = mock(UserKeycapRepository.class);
     private final UserService userService = mock(UserService.class);
     private final KeycapRewardSelector keycapRewardSelector = mock(KeycapRewardSelector.class);
+    private final KeycapShardCountGenerator shardCountGenerator = mock(KeycapShardCountGenerator.class);
     private final KeycapBoxOpenRequestHasher requestHasher = new KeycapBoxOpenRequestHasher();
     private final KeycapBoxMapper keycapBoxMapper = mock(KeycapBoxMapper.class);
+    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
+    private final PointAccountService pointAccountService = mock(PointAccountService.class);
+    private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final KeycapBoxOpenService service = new KeycapBoxOpenService(
             keycapBoxAccountService,
             keycapBoxOpenRepository,
@@ -51,13 +64,23 @@ class KeycapBoxOpenServiceTest {
             userKeycapRepository,
             userService,
             keycapRewardSelector,
+            shardCountGenerator,
             requestHasher,
             keycapBoxMapper,
+            keycapBoxPolicyConfig,
+            pointAccountService,
+            pointLedgerService,
             new NoOpTransactionManager()
     );
 
     private final UUID userId = UUID.randomUUID();
     private final String idempotencyKey = UUID.randomUUID().toString();
+
+    @BeforeEach
+    void stubPolicyDefaults() {
+        when(keycapBoxPolicyConfig.adOpenDailyLimit()).thenReturn(2);
+        when(shardCountGenerator.generate()).thenReturn(1);
+    }
 
     @Test
     void opensFreeBoxAndCreatesUserKeycapWhenRewardWasNotOwned() {
@@ -142,16 +165,65 @@ class KeycapBoxOpenServiceTest {
     }
 
     @Test
-    void rejectsAdvertisementWithoutMutatingResources() {
+    void opensAdvertisementBoxAndConsumesDailyQuotaWithoutTouchingFreeTickets() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 2, 1);
+        Keycap keycap = keycap(10);
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, "ad-1");
+        KeycapBoxOpenResponse mapped = response(false);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(mapped);
 
-        assertThatThrownBy(() -> service.open(userId, idempotencyKey, request))
+        KeycapBoxOpenResponse response = service.open(userId, idempotencyKey, request);
+
+        assertThat(response).isEqualTo(mapped);
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getFreeOpenTicketCount()).isEqualTo(1);
+        assertThat(account.getAdOpenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsAdvertisementOpenWhenAdRewardIdMissing() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 0);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+
+        assertThatThrownBy(() -> service.open(userId, idempotencyKey,
+                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("ADVERTISEMENT_OPEN_NOT_SUPPORTED");
+                .isEqualTo("AD_REWARD_ID_REQUIRED");
 
-        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
-        verify(keycapBoxOpenRepository, never()).save(any());
+        verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+    }
+
+    @Test
+    void rejectsAdvertisementOpenWhenDailyLimitReached() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 0);
+        ReflectionTestUtils.setField(account, "adOpenCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenCountDate", LocalDate.now());
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+
+        assertThatThrownBy(() -> service.open(userId, idempotencyKey,
+                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, "ad-1")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("AD_OPEN_DAILY_LIMIT_EXCEEDED");
+
+        verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
     }
 
     @Test
@@ -207,6 +279,88 @@ class KeycapBoxOpenServiceTest {
                 .isEqualTo("FREE_OPEN_TICKET_NOT_AVAILABLE");
 
         verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+    }
+
+    @Test
+    void clampsGrantedShardCountToWhatWasActuallyNeeded() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 1);
+        Keycap keycap = keycap(20);
+        UserKeycap userKeycap = UserKeycap.createInProgress(user, keycap);
+        ReflectionTestUtils.setField(userKeycap, "shardCount", 19);
+        KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(shardCountGenerator.generate()).thenReturn(3);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.of(userKeycap));
+        when(userService.getById(userId)).thenReturn(user);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(response(true));
+
+        service.open(userId, idempotencyKey, request);
+
+        ArgumentCaptor<KeycapBoxOpen> captor = ArgumentCaptor.forClass(KeycapBoxOpen.class);
+        verify(keycapBoxOpenRepository).save(captor.capture());
+        assertThat(captor.getValue().getShardCount()).isEqualTo(1);
+        assertThat(userKeycap.getShardCount()).isEqualTo(20);
+    }
+
+    @Test
+    void awardsAllCompleteBonusOnceWhenLastActiveKeycapCompletes() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 1);
+        Keycap keycap = keycap(1);
+        KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
+        PointAccount pointAccount = mock(PointAccount.class);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(12L);
+        when(keycapRepository.countByActiveTrue()).thenReturn(12L);
+        when(pointLedgerService.isAlreadyRecorded(eq(userId), any(UUID.class))).thenReturn(false);
+        when(pointAccountService.credit(userId, 1)).thenReturn(pointAccount);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(response(true));
+
+        service.open(userId, idempotencyKey, request);
+
+        verify(pointAccountService).credit(userId, 1);
+        verify(pointLedgerService).recordCredit(eq(pointAccount), eq(user), eq(1L), eq("KEYCAP_ALL_COMPLETE_BONUS"), any(UUID.class));
+    }
+
+    @Test
+    void skipsAllCompleteBonusWhenAlreadyAwarded() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 1);
+        Keycap keycap = keycap(1);
+        KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(12L);
+        when(keycapRepository.countByActiveTrue()).thenReturn(12L);
+        when(pointLedgerService.isAlreadyRecorded(eq(userId), any(UUID.class))).thenReturn(true);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(response(true));
+
+        service.open(userId, idempotencyKey, request);
+
+        verify(pointAccountService, never()).credit(any(UUID.class), anyLong());
+        verify(pointLedgerService, never()).recordCredit(any(), any(), anyLong(), any(), any());
     }
 
     private static KeycapBoxOpenResponse response(boolean completed) {
