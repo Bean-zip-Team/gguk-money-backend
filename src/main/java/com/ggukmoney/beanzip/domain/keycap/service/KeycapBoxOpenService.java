@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.keycap.service;
 
+import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
 import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
@@ -25,6 +26,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,6 +55,7 @@ public class KeycapBoxOpenService {
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
+    private final BoosterGrantService boosterGrantService;
     private final PlatformTransactionManager transactionManager;
 
     public KeycapBoxOpenResponse open(UUID userId, String idempotencyKey, KeycapBoxOpenRequest request) {
@@ -104,10 +108,12 @@ public class KeycapBoxOpenService {
         }
 
         AppUser user = userService.getById(userId);
+        Instant now = Instant.now();
         UserKeycap userKeycap = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId())
                 .orElseGet(() -> UserKeycap.createInProgress(user, selected));
         int shardCountBefore = userKeycap.getShardCount();
-        boolean completedNow = userKeycap.addShard(shardCountGenerator.generate(), Instant.now());
+        int boostedShardCount = applyBoosterMultiplier(shardCountGenerator.generate(), userId, now);
+        boolean completedNow = userKeycap.addShard(boostedShardCount, now);
         int grantedShardCount = userKeycap.getShardCount() - shardCountBefore;
         if (userKeycap.getId() == null) {
             userKeycapRepository.save(userKeycap);
@@ -135,6 +141,14 @@ public class KeycapBoxOpenService {
      * Figma SPEC(548:13) "완성 조각 풀 제외 · 전 종류 완성 시 +1P"를 반영한 일회성 완주 보너스.
      * 카탈로그를 이후 확장하더라도 다시 지급되지 않도록 유저당 고정된 idempotencyKey로 지급 여부를 확인한다.
      */
+    private int applyBoosterMultiplier(int rolledShardCount, UUID userId, Instant now) {
+        BigDecimal multiplier = boosterGrantService.findActiveMultiplier(userId, now);
+        return BigDecimal.valueOf(rolledShardCount)
+                .multiply(multiplier)
+                .setScale(0, RoundingMode.DOWN)
+                .intValueExact();
+    }
+
     private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user) {
         long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
         long activeCatalogCount = keycapRepository.countByActiveTrue();
