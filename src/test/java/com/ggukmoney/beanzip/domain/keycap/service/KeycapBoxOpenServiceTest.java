@@ -7,7 +7,6 @@ import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
@@ -37,7 +36,7 @@ import static org.mockito.Mockito.when;
 
 class KeycapBoxOpenServiceTest {
 
-    private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
+    private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
     private final KeycapBoxOpenRepository keycapBoxOpenRepository = mock(KeycapBoxOpenRepository.class);
     private final KeycapRepository keycapRepository = mock(KeycapRepository.class);
     private final UserKeycapRepository userKeycapRepository = mock(UserKeycapRepository.class);
@@ -46,7 +45,7 @@ class KeycapBoxOpenServiceTest {
     private final KeycapBoxOpenRequestHasher requestHasher = new KeycapBoxOpenRequestHasher();
     private final KeycapBoxMapper keycapBoxMapper = mock(KeycapBoxMapper.class);
     private final KeycapBoxOpenService service = new KeycapBoxOpenService(
-            keycapBoxAccountRepository,
+            keycapBoxAccountService,
             keycapBoxOpenRepository,
             keycapRepository,
             userKeycapRepository,
@@ -69,7 +68,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenResponse mapped = response(false);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -97,7 +96,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -125,7 +124,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenResponse response = service.open(userId, idempotencyKey, request);
 
         assertThat(response).isEqualTo(mapped);
-        verify(keycapBoxAccountRepository, never()).findByUserIdForUpdate(userId);
+        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
         verify(keycapBoxOpenRepository, never()).save(any());
     }
 
@@ -151,7 +150,7 @@ class KeycapBoxOpenServiceTest {
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
                 .isEqualTo("ADVERTISEMENT_OPEN_NOT_SUPPORTED");
 
-        verify(keycapBoxAccountRepository, never()).findByUserIdForUpdate(userId);
+        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
         verify(keycapBoxOpenRepository, never()).save(any());
     }
 
@@ -161,7 +160,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 1, 1);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
@@ -182,7 +181,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 0, 1);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null)))
@@ -199,7 +198,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 1, 0);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null)))
