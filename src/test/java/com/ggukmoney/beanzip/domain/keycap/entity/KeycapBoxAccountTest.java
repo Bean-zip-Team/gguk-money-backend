@@ -3,6 +3,8 @@ package com.ggukmoney.beanzip.domain.keycap.entity;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -38,10 +40,61 @@ class KeycapBoxAccountTest {
         assertThat(account.getFreeOpenTicketCount()).isZero();
     }
 
+    @Test
+    void grantsOneTicketPerElapsedHourUpToCap() {
+        Instant start = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithTicket(0, start);
+
+        account.grantElapsedFreeTickets(start.plusSeconds(3 * 3600), 1, 8);
+
+        assertThat(account.getFreeOpenTicketCount()).isEqualTo(3);
+        assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(start.plusSeconds(3 * 3600));
+    }
+
+    @Test
+    void grantsNothingWhenLessThanOneHourElapsed() {
+        Instant start = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithTicket(0, start);
+
+        account.grantElapsedFreeTickets(start.plusSeconds(1800), 1, 8);
+
+        assertThat(account.getFreeOpenTicketCount()).isZero();
+        assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(start);
+    }
+
+    @Test
+    void clampsGrantAtCapButStillAdvancesClock() {
+        Instant start = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithTicket(6, start);
+
+        account.grantElapsedFreeTickets(start.plusSeconds(5 * 3600), 1, 8);
+
+        assertThat(account.getFreeOpenTicketCount()).isEqualTo(8);
+        assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(start.plusSeconds(5 * 3600));
+    }
+
+    @Test
+    void doesNotGrantAdditionalTicketsWhenAlreadyAtCapButClockStillAdvances() {
+        Instant start = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithTicket(8, start);
+
+        account.grantElapsedFreeTickets(start.plusSeconds(10 * 3600), 1, 8);
+
+        assertThat(account.getFreeOpenTicketCount()).isEqualTo(8);
+        assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(start.plusSeconds(10 * 3600));
+    }
+
     private static KeycapBoxAccount account(int boxBalance, int freeOpenTicketCount) {
         KeycapBoxAccount account = new KeycapBoxAccount();
         ReflectionTestUtils.setField(account, "boxBalance", boxBalance);
         ReflectionTestUtils.setField(account, "freeOpenTicketCount", freeOpenTicketCount);
+        return account;
+    }
+
+    private static KeycapBoxAccount accountWithTicket(int freeOpenTicketCount, Instant lastGrantedAt) {
+        KeycapBoxAccount account = new KeycapBoxAccount();
+        ReflectionTestUtils.setField(account, "freeOpenTicketCount", freeOpenTicketCount);
+        ReflectionTestUtils.setField(account, "lastFreeTicketGrantedAt", lastGrantedAt);
         return account;
     }
 }

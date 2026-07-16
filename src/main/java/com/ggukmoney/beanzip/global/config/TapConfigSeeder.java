@@ -25,6 +25,7 @@ public class TapConfigSeeder implements CommandLineRunner {
             Instant now = Instant.now();
             seedDefaults(TapPolicyConfig.DEFAULT_VALUES, now);
             seedDefaults(CashoutPolicyConfig.DEFAULT_VALUES, now);
+            seedDefaults(KeycapBoxPolicyConfig.DEFAULT_VALUES, now);
         } catch (RuntimeException exception) {
             log.warn("Failed to seed default policy AppConfig rows; defaults will be used until this succeeds", exception);
         }

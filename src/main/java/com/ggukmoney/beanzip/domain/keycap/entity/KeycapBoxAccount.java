@@ -17,6 +17,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -43,6 +44,9 @@ public class KeycapBoxAccount {
     @Column(name = "free_open_ticket_count", nullable = false)
     private Integer freeOpenTicketCount = 0;
 
+    @Column(name = "last_free_ticket_granted_at", nullable = false)
+    private Instant lastFreeTicketGrantedAt;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
@@ -56,6 +60,7 @@ public class KeycapBoxAccount {
     public static KeycapBoxAccount createFor(AppUser user) {
         KeycapBoxAccount account = new KeycapBoxAccount();
         account.user = user;
+        account.lastFreeTicketGrantedAt = Instant.now();
         return account;
     }
 
@@ -80,6 +85,21 @@ public class KeycapBoxAccount {
         }
         boxBalance -= 1;
         freeOpenTicketCount -= 1;
+    }
+
+    /**
+     * 마지막 충전 이후 경과한 시간만큼 무료 개봉권을 충전한다(상한 초과분은 버림).
+     * 상한에 도달해 충전량이 0이어도 시계는 항상 전진시킨다 — 그렇지 않으면 오래 상한에
+     * 머물다 나중에 소비했을 때 그동안 누적된 시간이 한꺼번에 몰아서 충전되는 부작용이 생긴다.
+     */
+    public void grantElapsedFreeTickets(Instant now, int refillPerHour, int cap) {
+        long elapsedHours = Duration.between(lastFreeTicketGrantedAt, now).toHours();
+        if (elapsedHours <= 0) {
+            return;
+        }
+        int granted = (int) Math.min(elapsedHours * refillPerHour, Math.max(cap - freeOpenTicketCount, 0));
+        freeOpenTicketCount += granted;
+        lastFreeTicketGrantedAt = lastFreeTicketGrantedAt.plus(Duration.ofHours(elapsedHours));
     }
 
     @PrePersist

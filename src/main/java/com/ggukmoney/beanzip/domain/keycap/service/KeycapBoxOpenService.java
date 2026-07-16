@@ -7,7 +7,6 @@ import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
@@ -34,7 +33,7 @@ public class KeycapBoxOpenService {
     private static final int DEFAULT_REWARD_SHARD_COUNT = 1;
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
 
-    private final KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private final KeycapBoxAccountService keycapBoxAccountService;
     private final KeycapBoxOpenRepository keycapBoxOpenRepository;
     private final KeycapRepository keycapRepository;
     private final UserKeycapRepository userKeycapRepository;
@@ -77,8 +76,7 @@ public class KeycapBoxOpenService {
             return replay.get();
         }
 
-        KeycapBoxAccount account = keycapBoxAccountRepository.findByUserIdForUpdate(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+        KeycapBoxAccount account = keycapBoxAccountService.refillFreeTickets(userId);
         validateFreeOpenResources(account);
 
         List<Keycap> candidates = keycapRepository.findIncompleteActiveRewardCandidates(userId);
