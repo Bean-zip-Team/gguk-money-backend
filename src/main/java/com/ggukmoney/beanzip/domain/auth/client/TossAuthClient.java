@@ -1,8 +1,12 @@
 package com.ggukmoney.beanzip.domain.auth.client;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -10,6 +14,8 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+
+import java.net.http.HttpClient;
 
 @Component
 public class TossAuthClient {
@@ -20,6 +26,7 @@ public class TossAuthClient {
             "/api-partner/v1/apps-in-toss/user/oauth2/login-me";
     private static final String REMOVE_BY_USER_KEY_PATH =
             "/api-partner/v1/apps-in-toss/user/oauth2/access/remove-by-user-key";
+    private static final String MTLS_BUNDLE_NAME = "toss-auth";
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -27,13 +34,25 @@ public class TossAuthClient {
 
     public TossAuthClient(
             ObjectMapper objectMapper,
-            @Value("${app.auth.toss.base-url:}") String baseUrl
+            @Value("${app.auth.toss.base-url:}") String baseUrl,
+            SslBundles sslBundles
     ) {
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
-        this.restClient = StringUtils.hasText(this.baseUrl)
-                ? RestClient.builder().baseUrl(this.baseUrl).build()
-                : RestClient.builder().build();
+        RestClient.Builder builder = StringUtils.hasText(this.baseUrl)
+                ? RestClient.builder().baseUrl(this.baseUrl)
+                : RestClient.builder();
+        if (sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME)) {
+            builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
+        }
+        this.restClient = builder.build();
+    }
+
+    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .sslContext(sslBundle.createSslContext())
+                .build();
+        return new JdkClientHttpRequestFactory(httpClient);
     }
 
     public TossToken generateToken(String authorizationCode, String referrer) {
