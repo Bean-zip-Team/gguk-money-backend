@@ -65,8 +65,11 @@ public class TossAuthClient {
                     .retrieve()
                     .body(TossGenerateTokenResponse.class);
 
-            if (response == null || response.success() == null || !StringUtils.hasText(response.success().accessToken())) {
+            if (response == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
+            }
+            if (response.success() == null || !StringUtils.hasText(response.success().accessToken())) {
+                throw convertFailureResponse(response.error());
             }
             return new TossToken(response.success().accessToken());
         } catch (RestClientResponseException exception) {
@@ -146,6 +149,19 @@ public class TossAuthClient {
             return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "TOSS_INVALID_GRANT", exception);
         }
         return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
+    }
+
+    /**
+     * Toss는 인가코드가 만료/재사용/불일치인 경우에도 HTTP 200에 {@code resultType: "FAIL"}로 응답한다
+     * (4xx/5xx가 아니라 정상 HTTP 상태로 옴). {@code error}가 있다는 건 Toss가 요청을 정상적으로 받아
+     * 처리하고 명확히 거부했다는 뜻이라 502(TOSS_SERVER_ERROR, "Toss와 통신 자체가 실패함")가 아니라
+     * 401(TOSS_INVALID_GRANT, "인가코드가 유효하지 않음")로 매핑해야 한다.
+     */
+    private ResponseStatusException convertFailureResponse(TossApiError error) {
+        if (error != null) {
+            return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "TOSS_INVALID_GRANT");
+        }
+        return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
     }
 
     private String extractErrorCode(String responseBody) {
