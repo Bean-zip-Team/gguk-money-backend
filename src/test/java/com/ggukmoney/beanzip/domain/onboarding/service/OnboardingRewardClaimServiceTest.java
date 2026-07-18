@@ -10,6 +10,7 @@ import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +61,7 @@ class OnboardingRewardClaimServiceTest {
         when(pointAccountService.credit(userId, 2)).thenReturn(account);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 17L)).thenReturn(Optional.empty());
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 18L)).thenReturn(Optional.empty());
+        when(userKeycapRepository.save(any(UserKeycap.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         boolean applied = service.claimForNewUser(user, attemptId);
 
@@ -69,7 +72,15 @@ class OnboardingRewardClaimServiceTest {
         assertThat(attempt.getClaimedUser()).isEqualTo(user);
         assertThat(attempt.getClaimedAt()).isEqualTo(NOW);
         verify(pointLedgerService).recordCredit(account, user, 2, "ONBOARDING_REWARD", attemptId);
-        verify(userKeycapRepository, org.mockito.Mockito.times(2)).save(any(UserKeycap.class));
+
+        ArgumentCaptor<UserKeycap> savedCaptor = ArgumentCaptor.forClass(UserKeycap.class);
+        verify(userKeycapRepository, times(2)).save(savedCaptor.capture());
+        UserKeycap savedMainKeycap = savedCaptor.getAllValues().get(0);
+        UserKeycap savedBonusKeycap = savedCaptor.getAllValues().get(1);
+        assertThat(savedMainKeycap.getKeycap()).isEqualTo(mainKeycap);
+        assertThat(savedMainKeycap.isEquipped()).isTrue();
+        assertThat(savedBonusKeycap.getKeycap()).isEqualTo(bonusKeycap);
+        assertThat(savedBonusKeycap.isEquipped()).isFalse();
     }
 
     @Test

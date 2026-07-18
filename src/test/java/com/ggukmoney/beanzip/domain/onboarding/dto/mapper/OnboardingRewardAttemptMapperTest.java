@@ -18,7 +18,7 @@ class OnboardingRewardAttemptMapperTest {
     private final OnboardingRewardAttemptMapper mapper = Mappers.getMapper(OnboardingRewardAttemptMapper.class);
 
     @Test
-    void mapsAttemptAndBothRewardKeycapsToResponse() {
+    void mapsAttemptToResponseWithOnlyBonusKeycap() {
         UUID attemptId = UUID.randomUUID();
         UUID mainKeycapId = UUID.randomUUID();
         UUID bonusKeycapId = UUID.randomUUID();
@@ -29,15 +29,12 @@ class OnboardingRewardAttemptMapperTest {
         OnboardingKeycapBoxOpenResponse response = mapper.mapToResponse(attempt);
 
         assertThat(response.onboardingAttemptId()).isEqualTo(attemptId);
-        assertThat(response.keycaps()).hasSize(2);
-        assertThat(response.keycaps().get(0).keycapId()).isEqualTo(mainKeycapId);
-        assertThat(response.keycaps().get(0).code()).isEqualTo("main");
-        assertThat(response.keycaps().get(0).name()).isEqualTo("메인 키캡");
-        assertThat(response.keycaps().get(0).grade()).isEqualTo("COMMON");
-        assertThat(response.keycaps().get(0).imageUrl()).isEqualTo("https://example.com/keycaps/main.webp");
-        assertThat(response.keycaps().get(0).soundUrl()).isEqualTo("https://example.com/keycaps/main.mp3");
-        assertThat(response.keycaps().get(1).keycapId()).isEqualTo(bonusKeycapId);
-        assertThat(response.keycaps().get(1).code()).isEqualTo("cheer");
+        assertThat(response.keycapId()).isEqualTo(bonusKeycapId);
+        assertThat(response.code()).isEqualTo("cheer");
+        assertThat(response.name()).isEqualTo("치어 키캡");
+        assertThat(response.grade()).isEqualTo("COMMON");
+        assertThat(response.imageUrl()).isEqualTo("https://example.com/keycaps/cheer.webp");
+        assertThat(response.soundUrl()).isEqualTo("https://example.com/keycaps/cheer.mp3");
         assertThat(response.completed()).isTrue();
         assertThat(response.rewardPoint()).isEqualTo(2);
         assertThat(response.openedAt()).isEqualTo(openedAt);
@@ -50,7 +47,12 @@ class OnboardingRewardAttemptMapperTest {
                 .extracting(component -> component.getName())
                 .containsExactly(
                         "onboardingAttemptId",
-                        "keycaps",
+                        "keycapId",
+                        "code",
+                        "name",
+                        "grade",
+                        "imageUrl",
+                        "soundUrl",
                         "completed",
                         "rewardPoint",
                         "openedAt",

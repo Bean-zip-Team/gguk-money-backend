@@ -49,18 +49,21 @@ public class OnboardingRewardClaimService {
                 attempt.getPublicId()
         );
 
-        grantKeycapIfMissing(user, attempt.getRewardKeycap(), now);
-        grantKeycapIfMissing(user, attempt.getBonusRewardKeycap(), now);
+        grantKeycapIfMissing(user, attempt.getRewardKeycap(), now, true);
+        grantKeycapIfMissing(user, attempt.getBonusRewardKeycap(), now, false);
         user.claimOnboardingReward(now);
         attempt.claim(user, now);
         return true;
     }
 
-    private void grantKeycapIfMissing(AppUser user, Keycap keycap, Instant now) {
-        userKeycapRepository.findByUserIdAndKeycapIdForUpdate(user.getId(), keycap.getId())
+    private void grantKeycapIfMissing(AppUser user, Keycap keycap, Instant now, boolean equip) {
+        UserKeycap userKeycap = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(user.getId(), keycap.getId())
                 .orElseGet(() -> userKeycapRepository.save(
                         UserKeycap.createCompletedOnboardingReward(user, keycap, now)
                 ));
+        if (equip) {
+            userKeycap.equip();
+        }
     }
 
     @Transactional(readOnly = true)
