@@ -29,21 +29,26 @@ class OnboardingRewardConfigTest {
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
                 org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_REWARD_KEYCAP_CODE),
                 any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_REWARD_KEYCAP_CODE, "\"ONBOARDING_BASIC\"", Instant.EPOCH)));
+        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_REWARD_KEYCAP_CODE, "\"main\"", Instant.EPOCH)));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_BONUS_KEYCAP_GRADE),
+                any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_BONUS_KEYCAP_GRADE, "\"COMMON\"", Instant.EPOCH)));
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
                 org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT),
                 any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, "100", Instant.EPOCH)));
+        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, "2", Instant.EPOCH)));
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
                 org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS),
                 any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS, "86400", Instant.EPOCH)));
+        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS, "900", Instant.EPOCH)));
 
         OnboardingRewardConfig.OnboardingRewardPolicy policy = config.resolve();
 
-        assertThat(policy.rewardKeycapCode()).isEqualTo("ONBOARDING_BASIC");
-        assertThat(policy.rewardPointAmount()).isEqualTo(100);
-        assertThat(policy.attemptTtl()).isEqualTo(Duration.ofHours(24));
+        assertThat(policy.rewardKeycapCode()).isEqualTo("main");
+        assertThat(policy.bonusKeycapGrade()).isEqualTo("COMMON");
+        assertThat(policy.rewardPointAmount()).isEqualTo(2);
+        assertThat(policy.attemptTtl()).isEqualTo(Duration.ofMinutes(15));
     }
 
     @Test

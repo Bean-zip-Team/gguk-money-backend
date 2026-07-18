@@ -9,26 +9,36 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 public class OnboardingRewardConfig {
 
     public static final String KEY_REWARD_KEYCAP_CODE = "onboarding.reward.keycapCode";
+    public static final String KEY_BONUS_KEYCAP_GRADE = "onboarding.reward.bonusKeycapGrade";
     public static final String KEY_REWARD_POINT_AMOUNT = "onboarding.reward.pointAmount";
     public static final String KEY_ATTEMPT_TTL_SECONDS = "onboarding.reward.attemptTtlSeconds";
+
+    public static final Map<String, String> DEFAULT_VALUES = Map.of(
+            KEY_REWARD_KEYCAP_CODE, "main",
+            KEY_BONUS_KEYCAP_GRADE, "COMMON",
+            KEY_REWARD_POINT_AMOUNT, "2",
+            KEY_ATTEMPT_TTL_SECONDS, "900"
+    );
 
     private final AppConfigRepository appConfigRepository;
 
     public OnboardingRewardPolicy resolve() {
         try {
             String keycapCode = stripJsonString(resolveValue(KEY_REWARD_KEYCAP_CODE));
+            String bonusKeycapGrade = stripJsonString(resolveValue(KEY_BONUS_KEYCAP_GRADE));
             int pointAmount = Integer.parseInt(resolveValue(KEY_REWARD_POINT_AMOUNT).trim());
             long ttlSeconds = Long.parseLong(resolveValue(KEY_ATTEMPT_TTL_SECONDS).trim());
-            if (!StringUtils.hasText(keycapCode) || pointAmount < 0 || ttlSeconds <= 0) {
+            if (!StringUtils.hasText(keycapCode) || !StringUtils.hasText(bonusKeycapGrade) || pointAmount < 0 || ttlSeconds <= 0) {
                 throw unavailable();
             }
-            return new OnboardingRewardPolicy(keycapCode, pointAmount, Duration.ofSeconds(ttlSeconds));
+            return new OnboardingRewardPolicy(keycapCode, bonusKeycapGrade, pointAmount, Duration.ofSeconds(ttlSeconds));
         } catch (RuntimeException exception) {
             if (exception instanceof ResponseStatusException responseStatusException) {
                 throw responseStatusException;
@@ -57,6 +67,7 @@ public class OnboardingRewardConfig {
 
     public record OnboardingRewardPolicy(
             String rewardKeycapCode,
+            String bonusKeycapGrade,
             int rewardPointAmount,
             Duration attemptTtl
     ) {

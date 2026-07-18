@@ -37,6 +37,7 @@ import java.util.UUID;
         indexes = {
                 @Index(name = "ix_onboarding_reward_attempt_expires_at", columnList = "expires_at"),
                 @Index(name = "ix_onboarding_reward_attempt_reward_keycap", columnList = "reward_keycap_id"),
+                @Index(name = "ix_onboarding_reward_attempt_bonus_keycap", columnList = "bonus_reward_keycap_id"),
                 @Index(name = "ix_onboarding_reward_attempt_claimed_user", columnList = "claimed_user_id")
         }
 )
@@ -75,6 +76,10 @@ public class OnboardingRewardAttempt {
     @JoinColumn(name = "reward_keycap_id", nullable = false)
     private Keycap rewardKeycap;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "bonus_reward_keycap_id", nullable = false)
+    private Keycap bonusRewardKeycap;
+
     @Column(name = "reward_point_amount", nullable = false)
     private Integer rewardPointAmount;
 
@@ -106,6 +111,7 @@ public class OnboardingRewardAttempt {
             String requestHash,
             int acceptedTapCount,
             Keycap rewardKeycap,
+            Keycap bonusRewardKeycap,
             int rewardPointAmount,
             Instant openedAt,
             Instant expiresAt
@@ -115,6 +121,7 @@ public class OnboardingRewardAttempt {
         attempt.requestHash = requestHash;
         attempt.acceptedTapCount = acceptedTapCount;
         attempt.rewardKeycap = rewardKeycap;
+        attempt.bonusRewardKeycap = bonusRewardKeycap;
         attempt.rewardPointAmount = rewardPointAmount;
         attempt.status = Status.OPENED;
         attempt.openedAt = openedAt;

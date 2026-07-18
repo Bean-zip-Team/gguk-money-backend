@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -41,19 +42,24 @@ class OnboardingKeycapBoxControllerTest {
     @Test
     void opensOnboardingBoxWithoutAuthentication() throws Exception {
         UUID attemptId = UUID.randomUUID();
-        UUID keycapId = UUID.randomUUID();
+        UUID mainKeycapId = UUID.randomUUID();
+        UUID bonusKeycapId = UUID.randomUUID();
         when(service.open(any())).thenReturn(new OnboardingKeycapBoxOpenResponse(
                 attemptId,
-                keycapId,
-                "ONBOARDING_BASIC",
-                "온보딩 키캡",
-                "COMMON",
-                "https://example.com/keycaps/onboarding-basic.png",
-                "https://example.com/keycaps/onboarding-basic.mp3",
+                List.of(
+                        new OnboardingKeycapBoxOpenResponse.KeycapSummary(
+                                mainKeycapId, "main", "메인 키캡", "COMMON",
+                                "https://example.com/keycaps/main.webp", "https://example.com/keycaps/main.mp3"
+                        ),
+                        new OnboardingKeycapBoxOpenResponse.KeycapSummary(
+                                bonusKeycapId, "cheer", "치어 키캡", "COMMON",
+                                "https://example.com/keycaps/cheer.webp", "https://example.com/keycaps/cheer.mp3"
+                        )
+                ),
                 true,
-                100,
+                2,
                 Instant.parse("2026-07-15T01:00:05Z"),
-                Instant.parse("2026-07-16T01:00:05Z")
+                Instant.parse("2026-07-15T01:15:05Z")
         ));
 
         mockMvc.perform(post("/api/onboarding/keycap-boxes/open")
@@ -62,16 +68,15 @@ class OnboardingKeycapBoxControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.onboardingAttemptId").value(attemptId.toString()))
-                .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
-                .andExpect(jsonPath("$.data.code").value("ONBOARDING_BASIC"))
-                .andExpect(jsonPath("$.data.name").value("온보딩 키캡"))
-                .andExpect(jsonPath("$.data.grade").value("COMMON"))
-                .andExpect(jsonPath("$.data.imageUrl").value("https://example.com/keycaps/onboarding-basic.png"))
-                .andExpect(jsonPath("$.data.soundUrl").value("https://example.com/keycaps/onboarding-basic.mp3"))
+                .andExpect(jsonPath("$.data.keycaps.length()").value(2))
+                .andExpect(jsonPath("$.data.keycaps[0].keycapId").value(mainKeycapId.toString()))
+                .andExpect(jsonPath("$.data.keycaps[0].code").value("main"))
+                .andExpect(jsonPath("$.data.keycaps[1].keycapId").value(bonusKeycapId.toString()))
+                .andExpect(jsonPath("$.data.keycaps[1].code").value("cheer"))
                 .andExpect(jsonPath("$.data.completed").value(true))
-                .andExpect(jsonPath("$.data.rewardPoint").value(100))
+                .andExpect(jsonPath("$.data.rewardPoint").value(2))
                 .andExpect(jsonPath("$.data.openedAt").value("2026-07-15T01:00:05Z"))
-                .andExpect(jsonPath("$.data.expiresAt").value("2026-07-16T01:00:05Z"))
+                .andExpect(jsonPath("$.data.expiresAt").value("2026-07-15T01:15:05Z"))
                 .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.tapSessionId").doesNotExist())
                 .andExpect(jsonPath("$.data.requestHash").doesNotExist())
