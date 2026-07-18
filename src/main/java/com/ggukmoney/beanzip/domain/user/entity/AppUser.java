@@ -32,10 +32,10 @@ public class AppUser {
     @Column(name = "status", nullable = false, length = 20)
     private Status status = Status.ACTIVE;
 
-    @Column(name = "nickname", length = 50)
+    @Column(name = "nickname", columnDefinition = "text")
     private String nickname;
 
-    @Column(name = "nickname_normalized", length = 50)
+    @Column(name = "nickname_normalized", columnDefinition = "text")
     private String nicknameNormalized;
 
     @Column(name = "profile_image_url", columnDefinition = "text")
