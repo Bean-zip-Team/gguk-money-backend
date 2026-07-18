@@ -65,8 +65,11 @@ public class TossAuthClient {
                     .retrieve()
                     .body(TossGenerateTokenResponse.class);
 
-            if (response == null || response.success() == null || !StringUtils.hasText(response.success().accessToken())) {
+            if (response == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
+            }
+            if (response.success() == null || !StringUtils.hasText(response.success().accessToken())) {
+                throw convertFailureResponse(response.error());
             }
             return new TossToken(response.success().accessToken());
         } catch (RestClientResponseException exception) {
@@ -146,6 +149,13 @@ public class TossAuthClient {
             return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "TOSS_INVALID_GRANT", exception);
         }
         return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
+    }
+
+    private ResponseStatusException convertFailureResponse(TossApiError error) {
+        if (error != null) {
+            return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "TOSS_INVALID_GRANT");
+        }
+        return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
     }
 
     private String extractErrorCode(String responseBody) {
