@@ -47,16 +47,18 @@ class OnboardingRewardClaimServiceTest {
     );
 
     @Test
-    void claimsOpenedAttemptAndGrantsPointAndCompletedKeycap() {
+    void claimsOpenedAttemptAndGrantsPointAndBothCompletedKeycaps() {
         UUID userId = UUID.randomUUID();
         UUID attemptId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", null), userId);
-        Keycap keycap = keycap(17L, 3, true);
-        OnboardingRewardAttempt attempt = attempt(attemptId, keycap, 100, NOW.plusSeconds(60));
+        Keycap mainKeycap = keycap(17L, 3, true);
+        Keycap bonusKeycap = keycap(18L, 3, true);
+        OnboardingRewardAttempt attempt = attempt(attemptId, mainKeycap, bonusKeycap, 2, NOW.plusSeconds(60));
         PointAccount account = PointAccount.createFor(user);
         when(attemptRepository.findByPublicIdWithRewardKeycapForUpdate(attemptId)).thenReturn(Optional.of(attempt));
-        when(pointAccountService.credit(userId, 100)).thenReturn(account);
+        when(pointAccountService.credit(userId, 2)).thenReturn(account);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 17L)).thenReturn(Optional.empty());
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 18L)).thenReturn(Optional.empty());
 
         boolean applied = service.claimForNewUser(user, attemptId);
 
@@ -66,8 +68,8 @@ class OnboardingRewardClaimServiceTest {
         assertThat(attempt.getStatus()).isEqualTo(OnboardingRewardAttempt.Status.CLAIMED);
         assertThat(attempt.getClaimedUser()).isEqualTo(user);
         assertThat(attempt.getClaimedAt()).isEqualTo(NOW);
-        verify(pointLedgerService).recordCredit(account, user, 100, "ONBOARDING_REWARD", attemptId);
-        verify(userKeycapRepository).save(any(UserKeycap.class));
+        verify(pointLedgerService).recordCredit(account, user, 2, "ONBOARDING_REWARD", attemptId);
+        verify(userKeycapRepository, org.mockito.Mockito.times(2)).save(any(UserKeycap.class));
     }
 
     @Test
@@ -94,7 +96,9 @@ class OnboardingRewardClaimServiceTest {
         UUID userId = UUID.randomUUID();
         UUID attemptId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", null), userId);
-        OnboardingRewardAttempt attempt = attempt(attemptId, keycap(17L, 3, true), 100, NOW.plusSeconds(60));
+        OnboardingRewardAttempt attempt = attempt(
+                attemptId, keycap(17L, 3, true), keycap(18L, 3, true), 2, NOW.plusSeconds(60)
+        );
         claimAttempt(attempt, user, NOW);
         when(attemptRepository.findByPublicId(attemptId)).thenReturn(Optional.of(attempt));
 
@@ -102,12 +106,19 @@ class OnboardingRewardClaimServiceTest {
         assertThat(service.isClaimedByUser(UUID.randomUUID(), attemptId)).isFalse();
     }
 
-    private static OnboardingRewardAttempt attempt(UUID publicId, Keycap keycap, int pointAmount, Instant expiresAt) {
+    private static OnboardingRewardAttempt attempt(
+            UUID publicId,
+            Keycap keycap,
+            Keycap bonusKeycap,
+            int pointAmount,
+            Instant expiresAt
+    ) {
         OnboardingRewardAttempt attempt = OnboardingRewardAttempt.open(
                 UUID.randomUUID(),
                 "hash",
                 45,
                 keycap,
+                bonusKeycap,
                 pointAmount,
                 NOW,
                 expiresAt

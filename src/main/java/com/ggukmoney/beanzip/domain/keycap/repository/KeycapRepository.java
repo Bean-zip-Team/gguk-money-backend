@@ -19,6 +19,8 @@ public interface KeycapRepository extends JpaRepository<Keycap, Long> {
 
     List<Keycap> findByActiveTrueOrderBySortOrderAscCodeAsc();
 
+    List<Keycap> findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade grade);
+
     long countByActiveTrue();
 
     @Query("""

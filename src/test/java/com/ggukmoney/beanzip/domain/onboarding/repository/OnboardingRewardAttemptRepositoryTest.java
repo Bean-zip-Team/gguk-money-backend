@@ -32,15 +32,17 @@ class OnboardingRewardAttemptRepositoryTest {
     @Test
     void savesOpenedAttemptAndFindsByTapSessionIdWithRewardKeycap() {
         Keycap keycap = keycapRepository.save(keycap("ONBOARDING_BASIC"));
+        Keycap bonusKeycap = keycapRepository.save(keycap("ONBOARDING_BONUS"));
         UUID tapSessionId = UUID.randomUUID();
         OnboardingRewardAttempt saved = attemptRepository.save(OnboardingRewardAttempt.open(
                 tapSessionId,
                 "request-hash",
                 45,
                 keycap,
-                100,
+                bonusKeycap,
+                2,
                 Instant.parse("2026-07-15T01:00:05Z"),
-                Instant.parse("2026-07-16T01:00:05Z")
+                Instant.parse("2026-07-15T01:15:05Z")
         ));
 
         Optional<OnboardingRewardAttempt> result = attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId);
@@ -51,7 +53,8 @@ class OnboardingRewardAttemptRepositoryTest {
         assertThat(result.get().getRequestHash()).isEqualTo("request-hash");
         assertThat(result.get().getAcceptedTapCount()).isEqualTo(45);
         assertThat(result.get().getRewardKeycap().getCode()).isEqualTo("ONBOARDING_BASIC");
-        assertThat(result.get().getRewardPointAmount()).isEqualTo(100);
+        assertThat(result.get().getBonusRewardKeycap().getCode()).isEqualTo("ONBOARDING_BONUS");
+        assertThat(result.get().getRewardPointAmount()).isEqualTo(2);
         assertThat(result.get().getStatus()).isEqualTo(OnboardingRewardAttempt.Status.OPENED);
         assertThat(result.get().getClaimedUser()).isNull();
         assertThat(result.get().getClaimedAt()).isNull();
@@ -61,15 +64,17 @@ class OnboardingRewardAttemptRepositoryTest {
     @Test
     void openedAttemptCanLaterReferenceClaimedUserWithoutThisIssueClaimingIt() {
         Keycap keycap = keycapRepository.save(keycap("ONBOARDING_CLAIM"));
+        Keycap bonusKeycap = keycapRepository.save(keycap("ONBOARDING_CLAIM_BONUS"));
         AppUser user = appUserRepository.save(AppUser.createActive("Bean", null));
         OnboardingRewardAttempt attempt = OnboardingRewardAttempt.open(
                 UUID.randomUUID(),
                 "request-hash",
                 45,
                 keycap,
-                100,
+                bonusKeycap,
+                2,
                 Instant.parse("2026-07-15T01:00:05Z"),
-                Instant.parse("2026-07-16T01:00:05Z")
+                Instant.parse("2026-07-15T01:15:05Z")
         );
         ReflectionTestUtils.setField(attempt, "claimedUser", user);
         ReflectionTestUtils.setField(attempt, "claimedAt", Instant.parse("2026-07-15T02:00:00Z"));

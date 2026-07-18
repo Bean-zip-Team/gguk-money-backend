@@ -19,6 +19,7 @@ public interface OnboardingRewardAttemptRepository extends JpaRepository<Onboard
             select attempt
             from OnboardingRewardAttempt attempt
             join fetch attempt.rewardKeycap rewardKeycap
+            join fetch attempt.bonusRewardKeycap bonusRewardKeycap
             where attempt.publicId = :publicId
             """)
     Optional<OnboardingRewardAttempt> findByPublicIdWithRewardKeycapForUpdate(@Param("publicId") UUID publicId);
@@ -27,6 +28,7 @@ public interface OnboardingRewardAttemptRepository extends JpaRepository<Onboard
             select attempt
             from OnboardingRewardAttempt attempt
             join fetch attempt.rewardKeycap rewardKeycap
+            join fetch attempt.bonusRewardKeycap bonusRewardKeycap
             where attempt.tapSessionId = :tapSessionId
             """)
     Optional<OnboardingRewardAttempt> findByTapSessionIdWithRewardKeycap(@Param("tapSessionId") UUID tapSessionId);

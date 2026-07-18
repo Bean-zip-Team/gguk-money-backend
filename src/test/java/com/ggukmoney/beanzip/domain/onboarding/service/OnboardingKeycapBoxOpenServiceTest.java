@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.onboarding.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapRewardSelector;
 import com.ggukmoney.beanzip.domain.onboarding.dto.mapper.OnboardingRewardAttemptMapper;
 import com.ggukmoney.beanzip.domain.onboarding.dto.request.OnboardingKeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.onboarding.dto.response.OnboardingKeycapBoxOpenResponse;
@@ -40,6 +41,7 @@ class OnboardingKeycapBoxOpenServiceTest {
 
     private final OnboardingRewardAttemptRepository attemptRepository = mock(OnboardingRewardAttemptRepository.class);
     private final KeycapRepository keycapRepository = mock(KeycapRepository.class);
+    private final KeycapRewardSelector keycapRewardSelector = mock(KeycapRewardSelector.class);
     private final OnboardingTapValidator tapValidator = new OnboardingTapValidator();
     private final OnboardingKeycapBoxOpenRequestHasher requestHasher = new OnboardingKeycapBoxOpenRequestHasher();
     private final OnboardingRewardConfig rewardConfig = mock(OnboardingRewardConfig.class);
@@ -47,6 +49,7 @@ class OnboardingKeycapBoxOpenServiceTest {
     private final OnboardingKeycapBoxOpenService service = new OnboardingKeycapBoxOpenService(
             attemptRepository,
             keycapRepository,
+            keycapRewardSelector,
             tapValidator,
             requestHasher,
             rewardConfig,
@@ -59,15 +62,20 @@ class OnboardingKeycapBoxOpenServiceTest {
     void opensOnboardingBoxAndPersistsOpenedAttemptSnapshot() {
         UUID tapSessionId = UUID.randomUUID();
         OnboardingKeycapBoxOpenRequest request = request(tapSessionId);
-        Keycap keycap = keycap("ONBOARDING_BASIC", true);
+        Keycap mainKeycap = keycap("main", true);
+        Keycap bonusKeycap = keycap("cheer", true);
         OnboardingKeycapBoxOpenResponse mapped = response(false);
         when(attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId)).thenReturn(Optional.empty());
         when(rewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
-                "ONBOARDING_BASIC",
-                100,
-                Duration.ofHours(24)
+                "main",
+                "COMMON",
+                2,
+                Duration.ofMinutes(15)
         ));
-        when(keycapRepository.findByCode("ONBOARDING_BASIC")).thenReturn(Optional.of(keycap));
+        when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
+        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+                .thenReturn(List.of(mainKeycap, bonusKeycap));
+        when(keycapRewardSelector.select(List.of(bonusKeycap))).thenReturn(bonusKeycap);
         when(attemptRepository.save(any(OnboardingRewardAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(mapper.mapToResponse(any(OnboardingRewardAttempt.class))).thenReturn(mapped);
 
@@ -79,13 +87,63 @@ class OnboardingKeycapBoxOpenServiceTest {
         OnboardingRewardAttempt attempt = captor.getValue();
         assertThat(attempt.getTapSessionId()).isEqualTo(tapSessionId);
         assertThat(attempt.getAcceptedTapCount()).isEqualTo(45);
-        assertThat(attempt.getRewardKeycap()).isEqualTo(keycap);
-        assertThat(attempt.getRewardPointAmount()).isEqualTo(100);
+        assertThat(attempt.getRewardKeycap()).isEqualTo(mainKeycap);
+        assertThat(attempt.getBonusRewardKeycap()).isEqualTo(bonusKeycap);
+        assertThat(attempt.getRewardPointAmount()).isEqualTo(2);
         assertThat(attempt.getStatus()).isEqualTo(OnboardingRewardAttempt.Status.OPENED);
         assertThat(attempt.getOpenedAt()).isEqualTo(NOW);
-        assertThat(attempt.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
+        assertThat(attempt.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
         assertThat(attempt.getClaimedUser()).isNull();
         assertThat(attempt.getClaimedAt()).isNull();
+    }
+
+    @Test
+    void excludesPrimaryKeycapFromBonusCandidatePool() {
+        UUID tapSessionId = UUID.randomUUID();
+        OnboardingKeycapBoxOpenRequest request = request(tapSessionId);
+        Keycap mainKeycap = keycap("main", true);
+        Keycap otherCommonKeycap = keycap("dolphin", true);
+        when(attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId)).thenReturn(Optional.empty());
+        when(rewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
+                "main",
+                "COMMON",
+                2,
+                Duration.ofMinutes(15)
+        ));
+        when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
+        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+                .thenReturn(List.of(mainKeycap, otherCommonKeycap));
+        when(keycapRewardSelector.select(List.of(otherCommonKeycap))).thenReturn(otherCommonKeycap);
+        when(attemptRepository.save(any(OnboardingRewardAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(mapper.mapToResponse(any(OnboardingRewardAttempt.class))).thenReturn(response(false));
+
+        service.open(request);
+
+        verify(keycapRewardSelector).select(List.of(otherCommonKeycap));
+    }
+
+    @Test
+    void rejectsWhenNoBonusCandidatesRemainAfterExcludingPrimary() {
+        UUID tapSessionId = UUID.randomUUID();
+        OnboardingKeycapBoxOpenRequest request = request(tapSessionId);
+        Keycap mainKeycap = keycap("main", true);
+        when(attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId)).thenReturn(Optional.empty());
+        when(rewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
+                "main",
+                "COMMON",
+                2,
+                Duration.ofMinutes(15)
+        ));
+        when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
+        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+                .thenReturn(List.of(mainKeycap));
+
+        assertThatThrownBy(() -> service.open(request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("ONBOARDING_REWARD_NOT_AVAILABLE");
+
+        verify(attemptRepository, never()).save(any());
     }
 
     @Test
@@ -135,11 +193,12 @@ class OnboardingKeycapBoxOpenServiceTest {
         OnboardingKeycapBoxOpenRequest request = request(tapSessionId);
         when(attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId)).thenReturn(Optional.empty());
         when(rewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
-                "ONBOARDING_BASIC",
-                100,
-                Duration.ofHours(24)
+                "main",
+                "COMMON",
+                2,
+                Duration.ofMinutes(15)
         ));
-        when(keycapRepository.findByCode("ONBOARDING_BASIC")).thenReturn(Optional.of(keycap("ONBOARDING_BASIC", false)));
+        when(keycapRepository.findByCode("main")).thenReturn(Optional.of(keycap("main", false)));
 
         assertThatThrownBy(() -> service.open(request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -163,16 +222,20 @@ class OnboardingKeycapBoxOpenServiceTest {
     private static OnboardingKeycapBoxOpenResponse response(boolean completed) {
         return new OnboardingKeycapBoxOpenResponse(
                 UUID.randomUUID(),
-                UUID.randomUUID(),
-                "ONBOARDING_BASIC",
-                "온보딩 키캡",
-                "COMMON",
-                "https://example.com/keycaps/onboarding-basic.png",
-                "https://example.com/keycaps/onboarding-basic.mp3",
+                List.of(
+                        new OnboardingKeycapBoxOpenResponse.KeycapSummary(
+                                UUID.randomUUID(), "main", "메인 키캡", "COMMON",
+                                "https://example.com/keycaps/main.webp", "https://example.com/keycaps/main.mp3"
+                        ),
+                        new OnboardingKeycapBoxOpenResponse.KeycapSummary(
+                                UUID.randomUUID(), "cheer", "치어 키캡", "COMMON",
+                                "https://example.com/keycaps/cheer.webp", "https://example.com/keycaps/cheer.mp3"
+                        )
+                ),
                 completed,
-                100,
+                2,
                 NOW,
-                NOW.plus(Duration.ofHours(24))
+                NOW.plus(Duration.ofMinutes(15))
         );
     }
 
@@ -187,10 +250,10 @@ class OnboardingKeycapBoxOpenServiceTest {
     private static Keycap keycap(String code, boolean active) {
         Keycap keycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(keycap, "code", code);
-        ReflectionTestUtils.setField(keycap, "name", "온보딩 키캡");
+        ReflectionTestUtils.setField(keycap, "name", code + " 키캡");
         ReflectionTestUtils.setField(keycap, "grade", Keycap.Grade.COMMON);
-        ReflectionTestUtils.setField(keycap, "imageUrl", "https://example.com/keycaps/onboarding-basic.png");
-        ReflectionTestUtils.setField(keycap, "soundUrl", "https://example.com/keycaps/onboarding-basic.mp3");
+        ReflectionTestUtils.setField(keycap, "imageUrl", "https://example.com/keycaps/" + code + ".webp");
+        ReflectionTestUtils.setField(keycap, "soundUrl", "https://example.com/keycaps/" + code + ".mp3");
         ReflectionTestUtils.setField(keycap, "active", active);
         return keycap;
     }

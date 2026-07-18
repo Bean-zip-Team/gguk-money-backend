@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.onboarding.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapRewardSelector;
 import com.ggukmoney.beanzip.domain.onboarding.dto.mapper.OnboardingRewardAttemptMapper;
 import com.ggukmoney.beanzip.domain.onboarding.dto.request.OnboardingKeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.onboarding.dto.response.OnboardingKeycapBoxOpenResponse;
@@ -18,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -26,6 +28,7 @@ public class OnboardingKeycapBoxOpenService {
 
     private final OnboardingRewardAttemptRepository attemptRepository;
     private final KeycapRepository keycapRepository;
+    private final KeycapRewardSelector keycapRewardSelector;
     private final OnboardingTapValidator tapValidator;
     private final OnboardingKeycapBoxOpenRequestHasher requestHasher;
     private final OnboardingRewardConfig rewardConfig;
@@ -65,17 +68,36 @@ public class OnboardingKeycapBoxOpenService {
                 .filter(Keycap::isActive)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "ONBOARDING_REWARD_NOT_AVAILABLE"));
 
+        Keycap.Grade bonusGrade = parseGrade(policy.bonusKeycapGrade());
+        List<Keycap> bonusCandidates = keycapRepository
+                .findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(bonusGrade).stream()
+                .filter(candidate -> !candidate.getCode().equals(rewardKeycap.getCode()))
+                .toList();
+        if (bonusCandidates.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ONBOARDING_REWARD_NOT_AVAILABLE");
+        }
+        Keycap bonusRewardKeycap = keycapRewardSelector.select(bonusCandidates);
+
         Instant openedAt = Instant.now(clock);
         OnboardingRewardAttempt attempt = OnboardingRewardAttempt.open(
                 request.tapSessionId(),
                 requestHash,
                 acceptedTapCount,
                 rewardKeycap,
+                bonusRewardKeycap,
                 policy.rewardPointAmount(),
                 openedAt,
                 openedAt.plus(policy.attemptTtl())
         );
         return mapper.mapToResponse(attemptRepository.save(attempt));
+    }
+
+    private Keycap.Grade parseGrade(String grade) {
+        try {
+            return Keycap.Grade.valueOf(grade);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ONBOARDING_REWARD_NOT_AVAILABLE", exception);
+        }
     }
 
     private Optional<OnboardingKeycapBoxOpenResponse> findReplay(

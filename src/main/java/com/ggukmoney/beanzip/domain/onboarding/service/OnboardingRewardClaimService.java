@@ -49,14 +49,18 @@ public class OnboardingRewardClaimService {
                 attempt.getPublicId()
         );
 
-        Keycap rewardKeycap = attempt.getRewardKeycap();
-        userKeycapRepository.findByUserIdAndKeycapIdForUpdate(user.getId(), rewardKeycap.getId())
-                .orElseGet(() -> userKeycapRepository.save(
-                        UserKeycap.createCompletedOnboardingReward(user, rewardKeycap, now)
-                ));
+        grantKeycapIfMissing(user, attempt.getRewardKeycap(), now);
+        grantKeycapIfMissing(user, attempt.getBonusRewardKeycap(), now);
         user.claimOnboardingReward(now);
         attempt.claim(user, now);
         return true;
+    }
+
+    private void grantKeycapIfMissing(AppUser user, Keycap keycap, Instant now) {
+        userKeycapRepository.findByUserIdAndKeycapIdForUpdate(user.getId(), keycap.getId())
+                .orElseGet(() -> userKeycapRepository.save(
+                        UserKeycap.createCompletedOnboardingReward(user, keycap, now)
+                ));
     }
 
     @Transactional(readOnly = true)
@@ -84,16 +88,20 @@ public class OnboardingRewardClaimService {
         if (!attempt.getExpiresAt().isAfter(now)) {
             throw new ResponseStatusException(HttpStatus.GONE, "ONBOARDING_ATTEMPT_EXPIRED");
         }
-        Keycap rewardKeycap = attempt.getRewardKeycap();
         if (attempt.getAcceptedTapCount() == null
                 || attempt.getAcceptedTapCount() != REQUIRED_ACCEPTED_TAP_COUNT
-                || rewardKeycap == null
-                || !rewardKeycap.isActive()
-                || rewardKeycap.getRequiredShardCount() == null
-                || rewardKeycap.getRequiredShardCount() < 0
+                || !isValidRewardKeycap(attempt.getRewardKeycap())
+                || !isValidRewardKeycap(attempt.getBonusRewardKeycap())
                 || attempt.getRewardPointAmount() == null
                 || attempt.getRewardPointAmount() < 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "ONBOARDING_REWARD_INVALID");
         }
+    }
+
+    private boolean isValidRewardKeycap(Keycap keycap) {
+        return keycap != null
+                && keycap.isActive()
+                && keycap.getRequiredShardCount() != null
+                && keycap.getRequiredShardCount() >= 0;
     }
 }
