@@ -5,7 +5,7 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
-import com.ggukmoney.beanzip.domain.ranking.service.RankingProjectionService;
+import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreSyncRequestedEvent;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
@@ -18,7 +18,9 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.web.server.ResponseStatusException;
@@ -58,12 +60,12 @@ class TapBatchServiceTest {
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final UserService userService = mock(UserService.class);
-    private final RankingProjectionService rankingProjectionService = mock(RankingProjectionService.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, pointAccountService, pointLedgerService,
             keycapBoxAccountService, boosterGrantService, redisService, tapPolicyConfig, userService,
-            rankingProjectionService
+            eventPublisher
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -110,6 +112,7 @@ class TapBatchServiceTest {
         verify(userService, never()).getById(any());
         verify(userTapDailyService, never()).getOrCreateToday(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -137,12 +140,33 @@ class TapBatchServiceTest {
         assertThat(daily.getValidTapCount()).isZero();
         verify(userTapDailyService, never()).save(any());
         verify(userTapProgressService, never()).getForUser(any());
-        verify(rankingProjectionService, never()).syncAllTimeScore(any(), anyLong());
+        verify(eventPublisher, never()).publishEvent(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
 
         ArgumentCaptor<TapBatch> batchCaptor = ArgumentCaptor.forClass(TapBatch.class);
         verify(tapBatchRepository).save(batchCaptor.capture());
         assertThat(batchCaptor.getValue().isBotSuspected()).isTrue();
+    }
+
+    @Test
+    void doesNotPublishRankingSyncEventWhenAcceptedCountIsZero() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapBatchRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(PageRequest.class))).thenReturn(List.of());
+        stubCommonPolicy();
+        when(tapPolicyConfig.maxPerMinute()).thenReturn(0);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
+        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pointAccountService.getBalance(userId)).thenReturn(0L);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        assertThat(response.acceptedCount()).isZero();
+        verify(userTapProgressService, never()).getForUser(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -220,10 +244,13 @@ class TapBatchServiceTest {
         assertThat(response.balance()).isEqualTo(1L);
         assertThat(progress.getNextPointTarget()).isEqualTo(400);
         assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
-        verify(rankingProjectionService).syncAllTimeScore(userId, progress.getCumulativeValidTapCount());
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        InOrder inOrder = org.mockito.Mockito.inOrder(userTapDailyService, userTapProgressService, eventPublisher);
+        inOrder.verify(userTapDailyService).save(daily);
+        inOrder.verify(userTapProgressService).save(progress);
+        inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId));
         verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
-        verify(userTapDailyService).save(daily);
-        verify(userTapProgressService).save(progress);
         verify(redisService).executeScript(any(RedisScript.class), eq(List.of("tap:minute:" + userId)), eq("100"), eq("60"));
     }
 

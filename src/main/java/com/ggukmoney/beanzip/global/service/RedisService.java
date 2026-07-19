@@ -2,10 +2,12 @@ package com.ggukmoney.beanzip.global.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +26,10 @@ public class RedisService {
 
     public void set(String key, String value, Duration ttl) {
         redisTemplate.opsForValue().set(key, value, ttl);
+    }
+
+    public boolean setIfAbsent(String key, String value, Duration ttl) {
+        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(key, value, ttl));
     }
 
     public Optional<String> get(String key) {
@@ -90,6 +96,20 @@ public class RedisService {
         return range == null ? Set.of() : range;
     }
 
+    public List<SortedSetMember> getSortedSetReverseRangeWithScores(String key, long start, long end) {
+        Set<ZSetOperations.TypedTuple<String>> range = redisTemplate.opsForZSet().reverseRangeWithScores(key, start, end);
+        if (range == null || range.isEmpty()) {
+            return List.of();
+        }
+        List<SortedSetMember> members = new ArrayList<>();
+        for (ZSetOperations.TypedTuple<String> tuple : range) {
+            if (tuple.getValue() != null && tuple.getScore() != null) {
+                members.add(new SortedSetMember(tuple.getValue(), tuple.getScore()));
+            }
+        }
+        return members;
+    }
+
     public Long getSortedSetSize(String key) {
         return redisTemplate.opsForZSet().zCard(key);
     }
@@ -107,6 +127,10 @@ public class RedisService {
         redisTemplate.opsForHash().putAll(key, fields);
     }
 
+    public void putHash(String key, String field, String value) {
+        redisTemplate.opsForHash().put(key, field, value);
+    }
+
     public Map<String, String> getAllHash(String key) {
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
         return entries.entrySet().stream()
@@ -115,5 +139,8 @@ public class RedisService {
 
     public <T> T executeScript(RedisScript<T> script, List<String> keys, Object... args) {
         return redisTemplate.execute(script, keys, args);
+    }
+
+    public record SortedSetMember(String member, double score) {
     }
 }

@@ -27,7 +27,7 @@ public record RankingRedisMeta(
         return lastReconciledAt != null && !lastReconciledAt.plus(maxStaleness).isBefore(now);
     }
 
-    public static Optional<RankingRedisMeta> fromHash(Map<Object, Object> hash) {
+    public static Optional<RankingRedisMeta> fromHash(Map<String, String> hash) {
         if (hash == null || hash.isEmpty()) {
             return Optional.empty();
         }
@@ -43,17 +43,16 @@ public record RankingRedisMeta(
         ));
     }
 
-    private static String string(Map<Object, Object> hash, String key) {
-        Object value = hash.get(key);
-        return value == null ? null : value.toString();
+    private static String string(Map<String, String> hash, String key) {
+        return hash.get(key);
     }
 
-    private static Instant instant(Map<Object, Object> hash, String key) {
+    private static Instant instant(Map<String, String> hash, String key) {
         String value = string(hash, key);
         return value == null || value.isBlank() ? null : Instant.parse(value);
     }
 
-    private static long longValue(Map<Object, Object> hash, String key, long defaultValue) {
+    private static long longValue(Map<String, String> hash, String key, long defaultValue) {
         String value = string(hash, key);
         return value == null || value.isBlank() ? defaultValue : Long.parseLong(value);
     }

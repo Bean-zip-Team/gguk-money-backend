@@ -1,9 +1,8 @@
 package com.ggukmoney.beanzip.domain.ranking.redis;
 
+import com.ggukmoney.beanzip.global.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Repository;
 
@@ -14,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 @Repository
@@ -26,7 +24,7 @@ public class RankingRedisRepository {
     private static final RedisScript<Long> SWAP_GLOBAL_SCRIPT =
             RedisScript.of(new ClassPathResource("scripts/ranking-swap-global.lua"), Long.class);
 
-    private final StringRedisTemplate redisTemplate;
+    private final RedisService redisService;
     private final RankingRedisKeys keys;
 
     public Optional<RankingRedisMeta> findReadyMeta(
@@ -42,40 +40,40 @@ public class RankingRedisRepository {
     }
 
     public Optional<RankingRedisMeta> findMeta(Long seasonId) {
-        return RankingRedisMeta.fromHash(redisTemplate.opsForHash().entries(keys.meta(seasonId)));
+        return RankingRedisMeta.fromHash(redisService.getAllHash(keys.meta(seasonId)));
     }
 
     public void updateScore(Long seasonId, UUID userId, long score, String regionCode, String previousRegionCode) {
         String member = userId.toString();
-        redisTemplate.opsForZSet().add(keys.global(seasonId), member, score);
+        redisService.addToSortedSet(keys.global(seasonId), member, score);
         if (regionCode != null) {
-            redisTemplate.opsForZSet().add(keys.region(seasonId, regionCode), member, score);
+            redisService.addToSortedSet(keys.region(seasonId, regionCode), member, score);
         }
         if (previousRegionCode != null && !previousRegionCode.equals(regionCode)) {
-            redisTemplate.opsForZSet().remove(keys.region(seasonId, previousRegionCode), member);
+            redisService.removeFromSortedSet(keys.region(seasonId, previousRegionCode), member);
         }
     }
 
     public void removeParticipant(Long seasonId, UUID userId, String regionCode) {
         String member = userId.toString();
-        redisTemplate.opsForZSet().remove(keys.global(seasonId), member);
+        redisService.removeFromSortedSet(keys.global(seasonId), member);
         if (regionCode != null) {
-            redisTemplate.opsForZSet().remove(keys.region(seasonId, regionCode), member);
+            redisService.removeFromSortedSet(keys.region(seasonId, regionCode), member);
         }
     }
 
     public List<RankingRedisMember> findTopMembers(Long seasonId, int limit) {
-        Set<ZSetOperations.TypedTuple<String>> tuples =
-                redisTemplate.opsForZSet().reverseRangeWithScores(keys.global(seasonId), 0, limit - 1L);
-        if (tuples == null || tuples.isEmpty()) {
+        List<RedisService.SortedSetMember> sortedMembers =
+                redisService.getSortedSetReverseRangeWithScores(keys.global(seasonId), 0, limit - 1L);
+        if (sortedMembers.isEmpty()) {
             return List.of();
         }
         List<RankingRedisMember> members = new ArrayList<>();
         long rank = 1;
-        for (ZSetOperations.TypedTuple<String> tuple : tuples) {
+        for (RedisService.SortedSetMember sortedMember : sortedMembers) {
             members.add(new RankingRedisMember(
-                    UUID.fromString(tuple.getValue()),
-                    tuple.getScore() == null ? 0L : tuple.getScore().longValue(),
+                    UUID.fromString(sortedMember.member()),
+                    (long) sortedMember.score(),
                     rank++
             ));
         }
@@ -83,26 +81,26 @@ public class RankingRedisRepository {
     }
 
     public Long findRank(Long seasonId, UUID userId) {
-        Long zeroBased = redisTemplate.opsForZSet().reverseRank(keys.global(seasonId), userId.toString());
+        Long zeroBased = redisService.getSortedSetRank(keys.global(seasonId), userId.toString());
         return zeroBased == null ? null : zeroBased + 1;
     }
 
     public long findScore(Long seasonId, UUID userId) {
-        Double score = redisTemplate.opsForZSet().score(keys.global(seasonId), userId.toString());
+        Double score = redisService.getSortedSetScore(keys.global(seasonId), userId.toString());
         return score == null ? 0L : score.longValue();
     }
 
     public long findParticipantCount(Long seasonId) {
-        Long count = redisTemplate.opsForZSet().zCard(keys.global(seasonId));
+        Long count = redisService.getSortedSetSize(keys.global(seasonId));
         return count == null ? 0L : count;
     }
 
     public boolean isGlobalZSetMissing(Long seasonId) {
-        return !Boolean.TRUE.equals(redisTemplate.hasKey(keys.global(seasonId)));
+        return !redisService.exists(keys.global(seasonId));
     }
 
     public void markBuilding(Long seasonId, int schemaVersion, Instant now) {
-        redisTemplate.opsForHash().putAll(keys.meta(seasonId), Map.of(
+        redisService.putAllHash(keys.meta(seasonId), Map.of(
                 "state", RankingRedisMeta.STATE_BUILDING,
                 "schemaVersion", String.valueOf(schemaVersion),
                 "lastErrorAt", "",
@@ -112,7 +110,7 @@ public class RankingRedisRepository {
     }
 
     public void markFailed(Long seasonId, int schemaVersion, Instant now) {
-        redisTemplate.opsForHash().putAll(keys.meta(seasonId), Map.of(
+        redisService.putAllHash(keys.meta(seasonId), Map.of(
                 "state", RankingRedisMeta.STATE_FAILED,
                 "schemaVersion", String.valueOf(schemaVersion),
                 "lastErrorAt", now.toString()
@@ -120,7 +118,7 @@ public class RankingRedisRepository {
     }
 
     public void recordReconciliationFailure(Long seasonId, Instant failedAt) {
-        redisTemplate.opsForHash().put(keys.meta(seasonId), "lastErrorAt", failedAt.toString());
+        redisService.putHash(keys.meta(seasonId), "lastErrorAt", failedAt.toString());
     }
 
     public void recordReconciliationSuccess(
@@ -136,17 +134,17 @@ public class RankingRedisRepository {
         values.put("lastReconciledAt", reconciledAt.toString());
         values.put("lastProcessedUpdatedAt", lastProcessedUpdatedAt.toString());
         values.put("lastProcessedEntryId", String.valueOf(lastProcessedEntryId));
-        Long count = redisTemplate.opsForZSet().zCard(keys.global(seasonId));
+        Long count = redisService.getSortedSetSize(keys.global(seasonId));
         values.put("participantCount", String.valueOf(count == null ? 0L : count));
-        redisTemplate.opsForHash().putAll(keys.meta(seasonId), values);
+        redisService.putAllHash(keys.meta(seasonId), values);
     }
 
     public boolean tryAcquireRebuildLock(Long seasonId, String token, Duration ttl) {
-        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(keys.rebuildLock(seasonId), token, ttl));
+        return redisService.setIfAbsent(keys.rebuildLock(seasonId), token, ttl);
     }
 
     public boolean isRebuildLockOwned(Long seasonId, String token) {
-        return token.equals(redisTemplate.opsForValue().get(keys.rebuildLock(seasonId)));
+        return redisService.get(keys.rebuildLock(seasonId)).map(token::equals).orElse(false);
     }
 
     public void releaseRebuildLock(Long seasonId, String token) {
@@ -154,7 +152,7 @@ public class RankingRedisRepository {
     }
 
     public boolean tryAcquireReconciliationLock(Long seasonId, String token, Duration ttl) {
-        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(keys.reconcileLock(seasonId), token, ttl));
+        return redisService.setIfAbsent(keys.reconcileLock(seasonId), token, ttl);
     }
 
     public void releaseReconciliationLock(Long seasonId, String token) {
@@ -162,7 +160,7 @@ public class RankingRedisRepository {
     }
 
     public boolean tryAcquireInitializationLock(String token, Duration ttl) {
-        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(keys.initializationLock(), token, ttl));
+        return redisService.setIfAbsent(keys.initializationLock(), token, ttl);
     }
 
     public void releaseInitializationLock(String token) {
@@ -174,7 +172,7 @@ public class RankingRedisRepository {
     }
 
     public void addToTempGlobal(String tempKey, UUID userId, long score) {
-        redisTemplate.opsForZSet().add(tempKey, userId.toString(), score);
+        redisService.addToSortedSet(tempKey, userId.toString(), score);
     }
 
     public boolean swapTempGlobalToLive(
@@ -187,7 +185,7 @@ public class RankingRedisRepository {
             long lastProcessedEntryId,
             String rebuildLockToken
     ) {
-        Long result = redisTemplate.execute(
+        Long result = redisService.executeScript(
                 SWAP_GLOBAL_SCRIPT,
                 List.of(tempKey, keys.global(seasonId), keys.meta(seasonId), keys.rebuildLock(seasonId)),
                 String.valueOf(participantCount),
@@ -203,13 +201,13 @@ public class RankingRedisRepository {
     }
 
     public void deleteTemp(String tempKey) {
-        redisTemplate.delete(tempKey);
+        redisService.delete(tempKey);
     }
 
     public record RankingRedisMember(UUID userId, long score, long rank) {
     }
 
     private void releaseLock(String key, String token) {
-        redisTemplate.execute(RELEASE_LOCK_SCRIPT, List.of(key), token);
+        redisService.executeScript(RELEASE_LOCK_SCRIPT, List.of(key), token);
     }
 }
