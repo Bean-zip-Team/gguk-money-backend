@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.user.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingEligibilityChangeService;
 import com.ggukmoney.beanzip.domain.user.dto.mapper.MemberMapper;
 import com.ggukmoney.beanzip.domain.user.dto.request.UpdateMemberRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.MemberMeResponse;
@@ -30,12 +31,14 @@ class UserServiceTest {
     private final AppUserRepository appUserRepository = mock(AppUserRepository.class);
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final KeycapService keycapService = mock(KeycapService.class);
+    private final RankingEligibilityChangeService rankingEligibilityChangeService = mock(RankingEligibilityChangeService.class);
     private final MemberMapper memberMapper = Mappers.getMapper(MemberMapper.class);
     private final UserService userService = new UserService(
             appUserRepository,
             pointAccountService,
             keycapService,
-            memberMapper
+            memberMapper,
+            rankingEligibilityChangeService
     );
 
     @Test
@@ -154,6 +157,18 @@ class UserServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
                 .isEqualTo("ACCOUNT_WITHDRAWN");
+    }
+
+    @Test
+    void withdrawPublishesRankingEligibilityChange() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = user(userId, "Bean", null);
+        when(appUserRepository.save(user)).thenReturn(user);
+
+        AppUser withdrawn = userService.withdraw(user);
+
+        assertThat(withdrawn.isWithdrawn()).isTrue();
+        verify(rankingEligibilityChangeService).publishAllTimeEligibilityChanged(user);
     }
 
     private static AppUser user(UUID userId, String nickname, String profileImageUrl) {

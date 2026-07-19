@@ -5,6 +5,7 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingProjectionService;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
@@ -57,10 +58,12 @@ class TapBatchServiceTest {
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final UserService userService = mock(UserService.class);
+    private final RankingProjectionService rankingProjectionService = mock(RankingProjectionService.class);
 
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, pointAccountService, pointLedgerService,
-            keycapBoxAccountService, boosterGrantService, redisService, tapPolicyConfig, userService
+            keycapBoxAccountService, boosterGrantService, redisService, tapPolicyConfig, userService,
+            rankingProjectionService
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -134,6 +137,7 @@ class TapBatchServiceTest {
         assertThat(daily.getValidTapCount()).isZero();
         verify(userTapDailyService, never()).save(any());
         verify(userTapProgressService, never()).getForUser(any());
+        verify(rankingProjectionService, never()).syncAllTimeScore(any(), anyLong());
         verify(pointAccountService, never()).credit(any(), anyLong());
 
         ArgumentCaptor<TapBatch> batchCaptor = ArgumentCaptor.forClass(TapBatch.class);
@@ -216,6 +220,7 @@ class TapBatchServiceTest {
         assertThat(response.balance()).isEqualTo(1L);
         assertThat(progress.getNextPointTarget()).isEqualTo(400);
         assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
+        verify(rankingProjectionService).syncAllTimeScore(userId, progress.getCumulativeValidTapCount());
         verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
         verify(userTapDailyService).save(daily);
         verify(userTapProgressService).save(progress);

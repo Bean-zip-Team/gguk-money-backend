@@ -5,6 +5,7 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingProjectionService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
@@ -62,6 +63,7 @@ public class TapBatchService {
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
     private final UserService userService;
+    private final RankingProjectionService rankingProjectionService;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId, TapBatchSubmitRequest request) {
@@ -114,6 +116,7 @@ public class TapBatchService {
             daily.addValidTaps(acceptedCount);
             UserTapProgress progress = userTapProgressService.getForUser(userId);
             progress.addValidTaps(acceptedCount);
+            rankingProjectionService.syncAllTimeScore(userId, progress.getCumulativeValidTapCount());
 
             BigDecimal boosterMultiplier = boosterGrantService.findActiveMultiplier(userId, now);
             long creditAmount = BigDecimal.ONE.multiply(boosterMultiplier).setScale(0, RoundingMode.DOWN).longValueExact();

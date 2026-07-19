@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.user.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingEligibilityChangeService;
 import com.ggukmoney.beanzip.domain.user.dto.mapper.MemberMapper;
 import com.ggukmoney.beanzip.domain.user.dto.request.UpdateMemberRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.MemberMeResponse;
@@ -28,6 +29,7 @@ public class UserService {
     private final PointAccountService pointAccountService;
     private final KeycapService keycapService;
     private final MemberMapper memberMapper;
+    private final RankingEligibilityChangeService rankingEligibilityChangeService;
 
     @Transactional
     public AppUser createActive(String nickname, String profileImageUrl) {
@@ -64,7 +66,9 @@ public class UserService {
     @Transactional
     public AppUser withdraw(AppUser user) {
         user.withdraw();
-        return appUserRepository.save(user);
+        AppUser saved = appUserRepository.save(user);
+        rankingEligibilityChangeService.publishAllTimeEligibilityChanged(saved);
+        return saved;
     }
 
     private AppUser getActiveMember(UUID userId) {
