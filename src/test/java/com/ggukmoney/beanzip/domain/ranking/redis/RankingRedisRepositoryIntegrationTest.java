@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.ranking.redis;
 
 import com.ggukmoney.beanzip.support.RedisIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -13,6 +14,12 @@ class RankingRedisRepositoryIntegrationTest extends RedisIntegrationTestSupport 
 
     private RankingRedisRepository repository() {
         return new RankingRedisRepository(redisTemplate, new RankingRedisKeys());
+    }
+
+    @Test
+    void rankingLuaScriptsAreStoredAsClasspathResources() {
+        assertThat(new ClassPathResource("scripts/ranking-release-lock.lua").exists()).isTrue();
+        assertThat(new ClassPathResource("scripts/ranking-swap-global.lua").exists()).isTrue();
     }
 
     @Test
