@@ -113,6 +113,13 @@ public class AppUser {
         this.profileImageUrl = null;
     }
 
+    public void suspend() {
+        if (status == Status.WITHDRAWN) {
+            return;
+        }
+        this.status = Status.SUSPENDED;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
