@@ -91,15 +91,22 @@ class RankingRedisRepositoryIntegrationTest extends RedisIntegrationTestSupport 
         String firstToken = "owner-1";
         String secondToken = "owner-2";
 
-        assertThat(repository.tryAcquireRebuildLock(1L, firstToken, Duration.ofMillis(50))).isTrue();
+        assertThat(repository.tryAcquireRebuildLock(1L, firstToken, Duration.ofSeconds(5))).isTrue();
         repository.releaseRebuildLock(1L, "other-owner");
         assertThat(repository.isRebuildLockOwned(1L, firstToken)).isTrue();
 
-        Thread.sleep(80);
+        repository.releaseRebuildLock(1L, firstToken);
         assertThat(repository.tryAcquireRebuildLock(1L, secondToken, Duration.ofSeconds(5))).isTrue();
         repository.releaseRebuildLock(1L, firstToken);
 
         assertThat(repository.isRebuildLockOwned(1L, secondToken)).isTrue();
+
+        assertThat(repository.tryAcquireRebuildLock(2L, firstToken, Duration.ofMillis(300))).isTrue();
+        Thread.sleep(500);
+        assertThat(repository.tryAcquireRebuildLock(2L, secondToken, Duration.ofSeconds(5))).isTrue();
+        repository.releaseRebuildLock(2L, firstToken);
+
+        assertThat(repository.isRebuildLockOwned(2L, secondToken)).isTrue();
     }
 
     @Test
