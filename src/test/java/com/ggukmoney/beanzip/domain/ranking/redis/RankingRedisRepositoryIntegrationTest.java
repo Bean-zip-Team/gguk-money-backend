@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.ranking.redis;
 
 import com.ggukmoney.beanzip.support.RedisIntegrationTestSupport;
+import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -13,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RankingRedisRepositoryIntegrationTest extends RedisIntegrationTestSupport {
 
     private RankingRedisRepository repository() {
-        return new RankingRedisRepository(redisTemplate, new RankingRedisKeys());
+        return new RankingRedisRepository(new RedisService(redisTemplate), new RankingRedisKeys());
     }
 
     @Test

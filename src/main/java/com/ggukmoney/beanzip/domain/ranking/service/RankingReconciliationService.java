@@ -57,10 +57,11 @@ public class RankingReconciliationService {
     }
 
     private void reconcileLocked(RankingSeason season, RankingRedisMeta meta) {
-        Instant cursorUpdatedAt = meta.lastProcessedUpdatedAt() == null
+        Instant queryCursorUpdatedAt = meta.lastProcessedUpdatedAt() == null
                 ? Instant.EPOCH
                 : meta.lastProcessedUpdatedAt().minus(properties.deltaOverlap());
-        long cursorEntryId = meta.lastProcessedUpdatedAt() == null ? 0L : 0L;
+        // overlap 구간을 다시 조회하므로 ID cursor도 처음부터 시작한다.
+        long queryCursorEntryId = 0L;
 
         try {
             Instant nextUpdatedAt = meta.lastProcessedUpdatedAt() == null ? Instant.EPOCH : meta.lastProcessedUpdatedAt();
@@ -68,8 +69,8 @@ public class RankingReconciliationService {
             while (true) {
                 List<RankingEntry> changedEntries = entryRepository.findChangedEntries(
                         season,
-                        cursorUpdatedAt,
-                        cursorEntryId,
+                        queryCursorUpdatedAt,
+                        queryCursorEntryId,
                         PageRequest.of(0, properties.pageSize())
                 );
                 if (changedEntries.isEmpty()) {
@@ -87,8 +88,8 @@ public class RankingReconciliationService {
                     } else {
                         redisRepository.removeParticipant(season.getId(), entry.getUser().getId(), entry.getRegionCode());
                     }
-                    cursorUpdatedAt = entry.getUpdatedAt();
-                    cursorEntryId = entry.getId();
+                    queryCursorUpdatedAt = entry.getUpdatedAt();
+                    queryCursorEntryId = entry.getId();
                     if (isAfter(entry.getUpdatedAt(), entry.getId(), nextUpdatedAt, nextEntryId)) {
                         nextUpdatedAt = entry.getUpdatedAt();
                         nextEntryId = entry.getId();
