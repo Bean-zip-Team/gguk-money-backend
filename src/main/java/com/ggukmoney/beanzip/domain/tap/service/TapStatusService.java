@@ -8,6 +8,9 @@ import com.ggukmoney.beanzip.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
@@ -17,10 +20,13 @@ public class TapStatusService {
     private final UserTapDailyService userTapDailyService;
     private final UserTapProgressService userTapProgressService;
     private final UserService userService;
+    private final Clock clock;
+    private final ZoneId businessZoneId;
 
     public TapTodayStatusResponse getTodayStatus(UUID userId) {
         AppUser user = userService.getById(userId);
-        UserTapDaily daily = userTapDailyService.getOrCreateToday(user);
+        LocalDate tapDate = LocalDate.ofInstant(clock.instant(), businessZoneId);
+        UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
         UserTapProgress progress = userTapProgressService.getForUser(userId);
 
         int remainingToNextPoint = (int) Math.max(progress.getNextPointTarget() - progress.getCumulativeValidTapCount(), 0);

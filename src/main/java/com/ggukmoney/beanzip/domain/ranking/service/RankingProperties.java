@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
 
 @Component
 public class RankingProperties {
@@ -18,6 +20,10 @@ public class RankingProperties {
     private Duration maxStaleness = Duration.ofSeconds(120);
     private Duration deltaOverlap = Duration.ofSeconds(5);
     private Duration rebuildLockTtl = Duration.ofMinutes(5);
+    private DayOfWeek weeklyResetDayOfWeek = DayOfWeek.MONDAY;
+    private LocalTime weeklyResetTime = LocalTime.MIDNIGHT;
+    private Duration weeklyFinalizationDelay = Duration.ofMinutes(10);
+    private long weeklyAdvisoryLockKey = 1_580_001L;
 
     @Value("${ranking.default-limit:50}")
     void setDefaultLimit(int defaultLimit) {
@@ -69,6 +75,36 @@ public class RankingProperties {
         this.rebuildLockTtl = rebuildLockTtl;
     }
 
+    @Value("${ranking.weekly.reset-day-of-week:MONDAY}")
+    void setWeeklyResetDayOfWeek(DayOfWeek weeklyResetDayOfWeek) {
+        if (weeklyResetDayOfWeek != DayOfWeek.MONDAY) {
+            throw new IllegalStateException("ranking.weekly.reset-day-of-week must be MONDAY");
+        }
+        this.weeklyResetDayOfWeek = weeklyResetDayOfWeek;
+    }
+
+    @Value("${ranking.weekly.reset-time:00:00}")
+    void setWeeklyResetTime(String weeklyResetTime) {
+        LocalTime parsed = LocalTime.parse(weeklyResetTime);
+        if (!LocalTime.MIDNIGHT.equals(parsed)) {
+            throw new IllegalStateException("ranking.weekly.reset-time must be 00:00");
+        }
+        this.weeklyResetTime = parsed;
+    }
+
+    @Value("${ranking.weekly.finalization-delay:10m}")
+    void setWeeklyFinalizationDelay(Duration weeklyFinalizationDelay) {
+        if (weeklyFinalizationDelay.isNegative()) {
+            throw new IllegalStateException("ranking.weekly.finalization-delay must not be negative");
+        }
+        this.weeklyFinalizationDelay = weeklyFinalizationDelay;
+    }
+
+    @Value("${ranking.weekly.advisory-lock-key:1580001}")
+    void setWeeklyAdvisoryLockKey(long weeklyAdvisoryLockKey) {
+        this.weeklyAdvisoryLockKey = weeklyAdvisoryLockKey;
+    }
+
     public int defaultLimit() {
         return defaultLimit;
     }
@@ -107,5 +143,21 @@ public class RankingProperties {
 
     public Duration rebuildLockTtl() {
         return rebuildLockTtl;
+    }
+
+    public DayOfWeek weeklyResetDayOfWeek() {
+        return weeklyResetDayOfWeek;
+    }
+
+    public LocalTime weeklyResetTime() {
+        return weeklyResetTime;
+    }
+
+    public Duration weeklyFinalizationDelay() {
+        return weeklyFinalizationDelay;
+    }
+
+    public long weeklyAdvisoryLockKey() {
+        return weeklyAdvisoryLockKey;
     }
 }

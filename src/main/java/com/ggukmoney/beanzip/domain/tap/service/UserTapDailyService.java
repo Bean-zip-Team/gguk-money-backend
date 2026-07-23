@@ -14,10 +14,12 @@ public class UserTapDailyService {
 
     private final UserTapDailyRepository userTapDailyRepository;
 
-    public UserTapDaily getOrCreateToday(AppUser user) {
-        LocalDate today = LocalDate.now();
-        return userTapDailyRepository.findByUserIdAndTapDate(user.getId(), today)
-                .orElseGet(() -> userTapDailyRepository.save(UserTapDaily.createFor(user, today)));
+    public UserTapDaily getOrCreate(AppUser user, LocalDate tapDate) {
+        if (tapDate == null) {
+            throw new IllegalArgumentException("tapDate is required");
+        }
+        return userTapDailyRepository.findByUserIdAndTapDate(user.getId(), tapDate)
+                .orElseGet(() -> userTapDailyRepository.save(UserTapDaily.createFor(user, tapDate)));
     }
 
     public UserTapDaily save(UserTapDaily daily) {

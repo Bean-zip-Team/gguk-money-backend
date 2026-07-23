@@ -13,7 +13,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Testcontainers
@@ -41,7 +44,11 @@ public abstract class RedisIntegrationTestSupport {
         redisTemplate.afterPropertiesSet();
         RedisService redisService = new RedisService(redisTemplate);
         authService = new AuthService(null, redisService, null, null, null, null);
-        tapBatchService = new TapBatchService(null, null, null, null, null, null, null, redisService, null, null, null);
+        tapBatchService = new TapBatchService(
+                null, null, null, null, null, null, null, redisService, null, null, null,
+                Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC),
+                ZoneId.of("Asia/Seoul")
+        );
         flushRedis();
     }
 

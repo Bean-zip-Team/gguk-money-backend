@@ -32,8 +32,11 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -65,10 +68,14 @@ public class TapBatchService {
     private final TapPolicyConfig tapPolicyConfig;
     private final UserService userService;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
+    private final ZoneId businessZoneId;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId, TapBatchSubmitRequest request) {
-        if (!tryConsumeRateLimit(userId, tapPolicyConfig.rateLimitCapacity(), tapPolicyConfig.rateLimitRefillPerSecond())) {
+        Instant acceptedAt = clock.instant();
+        LocalDate tapDate = LocalDate.ofInstant(acceptedAt, businessZoneId);
+        if (!tryConsumeRateLimit(userId, tapPolicyConfig.rateLimitCapacity(), tapPolicyConfig.rateLimitRefillPerSecond(), acceptedAt)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "TAP_RATE_LIMITED");
         }
 
@@ -80,15 +87,14 @@ public class TapBatchService {
 
         AppUser user = userService.getById(userId);
 
-        Instant now = Instant.now();
         List<TapBatch> recentBatches = tapBatchRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, tapPolicyConfig.botSampleSize()));
         Duration elapsedSinceLastBatch = recentBatches.isEmpty()
                 ? null
-                : Duration.between(recentBatches.get(0).getCreatedAt(), now);
+                : Duration.between(recentBatches.get(0).getCreatedAt(), acceptedAt);
 
         int minuteRemaining = tapPolicyConfig.maxPerMinute() - getMinuteCount(userId);
 
-        UserTapDaily daily = userTapDailyService.getOrCreateToday(user);
+        UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
         int dailyRemaining = tapPolicyConfig.maxPerDay() - daily.getValidTapCount();
 
         int acceptedCount = calculateAcceptedCount(
@@ -96,7 +102,7 @@ public class TapBatchService {
         );
 
         List<Instant> botCheckTimestamps = new ArrayList<>();
-        botCheckTimestamps.add(now);
+        botCheckTimestamps.add(acceptedAt);
         recentBatches.forEach(batch -> botCheckTimestamps.add(batch.getCreatedAt()));
         boolean botSuspected = isSuspicious(botCheckTimestamps, tapPolicyConfig);
 
@@ -118,7 +124,7 @@ public class TapBatchService {
             UserTapProgress progress = userTapProgressService.getForUser(userId);
             progress.addValidTaps(acceptedCount);
 
-            BigDecimal boosterMultiplier = boosterGrantService.findActiveMultiplier(userId, now);
+            BigDecimal boosterMultiplier = boosterGrantService.findActiveMultiplier(userId, acceptedAt);
             long creditAmount = BigDecimal.ONE.multiply(boosterMultiplier).setScale(0, RoundingMode.DOWN).longValueExact();
 
             int dailyCap = tapPolicyConfig.pointDailyCap();
@@ -218,14 +224,14 @@ public class TapBatchService {
         return TokenHash.sha256Base64Url(raw);
     }
 
-    boolean tryConsumeRateLimit(UUID userId, int capacity, double refillPerSecond) {
+    boolean tryConsumeRateLimit(UUID userId, int capacity, double refillPerSecond, Instant now) {
         try {
             Long allowed = redisService.executeScript(
                     TOKEN_BUCKET_SCRIPT,
                     List.of(bucketKey(userId)),
                     String.valueOf(capacity),
                     String.valueOf(refillPerSecond),
-                    String.valueOf(Instant.now().toEpochMilli())
+                    String.valueOf(now.toEpochMilli())
             );
             return allowed != null && allowed == 1L;
         } catch (RuntimeException exception) {
