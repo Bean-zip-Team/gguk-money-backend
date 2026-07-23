@@ -220,6 +220,28 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
                 .toList();
     }
 
+    @Query(value = """
+            SELECT e.user_id AS userId,
+                   e.final_rank AS finalRank
+            FROM ranking_entry e
+            WHERE e.season_id = :seasonId
+              AND e.user_id IN (:userIds)
+              AND e.final_rank IS NOT NULL
+            """, nativeQuery = true)
+    List<RankingFinalRankProjection> findFinalRankProjectionsByUserIds(
+            @Param("seasonId") Long seasonId,
+            @Param("userIds") List<UUID> userIds
+    );
+
+    default List<RankingFinalRankRow> findFinalRanksByUserIds(RankingSeason season, List<UUID> userIds) {
+        if (season == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        return findFinalRankProjectionsByUserIds(season.getId(), userIds).stream()
+                .map(RankingFinalRankRow::from)
+                .toList();
+    }
+
     interface RankingParticipantProjection {
         UUID getUserId();
 
@@ -228,6 +250,12 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
         String getProfileImageUrl();
 
         Long getScore();
+    }
+
+    interface RankingFinalRankProjection {
+        UUID getUserId();
+
+        Long getFinalRank();
     }
 
     record RankingParticipantRow(
@@ -243,6 +271,15 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
                     projection.getProfileImageUrl(),
                     projection.getScore()
             );
+        }
+    }
+
+    record RankingFinalRankRow(
+            UUID userId,
+            Long finalRank
+    ) {
+        static RankingFinalRankRow from(RankingFinalRankProjection projection) {
+            return new RankingFinalRankRow(projection.getUserId(), projection.getFinalRank());
         }
     }
 }

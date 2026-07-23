@@ -69,6 +69,14 @@ public class RankingSeasonService {
         );
     }
 
+    public Optional<RankingSeason> findPreviousClosedWeeklySeason(RankingSeason currentSeason) {
+        return seasonRepository.findFirstByRankingTypeAndStatusAndEndsAtLessThanEqualOrderByEndsAtDesc(
+                RankingType.WEEKLY,
+                RankingSeasonStatus.CLOSED,
+                currentSeason.getStartsAt()
+        );
+    }
+
     public RankingSeason getOrCreateActiveAllTimeSeason() {
         Optional<RankingSeason> existing = findActiveAllTimeSeason();
         if (existing.isPresent()) {

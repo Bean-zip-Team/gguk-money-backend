@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.ranking.service;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.CurrentRankingResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.MyRankingResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingItemResponse;
+import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingSeasonResponse;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisMeta;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
@@ -16,7 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,10 +41,11 @@ public class RankingQueryService {
     private final RankingRedisRepository redisRepository;
     private final RankingProperties properties;
     private final Clock clock;
+    private final ZoneId businessZoneId;
 
     public CurrentRankingResponse getCurrentRanking(UUID userId, Integer requestedLimit) {
         int limit = validateLimit(requestedLimit);
-        RankingSeason season = seasonService.getActiveAllTimeSeason();
+        RankingSeason season = seasonService.getActiveWeeklySeason();
 
         try {
             Optional<RankingRedisMeta> meta = redisRepository.findReadyMeta(
@@ -64,7 +70,7 @@ public class RankingQueryService {
             RankingRedisMeta meta
     ) {
         if (meta.participantCount() == 0 && redisRepository.isGlobalZSetMissing(season.getId())) {
-            return new CurrentRankingResponse(List.of(), new MyRankingResponse(null, 0L, 0L), 0L);
+            return assembleResponse(season, List.of(), userId, null, 0L, 0L, 0L);
         }
         if (meta.participantCount() > 0 && redisRepository.isGlobalZSetMissing(season.getId())) {
             return fromPostgreSql(season, userId, limit);
@@ -82,8 +88,8 @@ public class RankingQueryService {
             log.warn("Ranking Redis top members include inactive or missing users; falling back to PostgreSQL seasonId={}", season.getId());
             return fromPostgreSql(season, userId, limit);
         }
-        List<RankingItemResponse> items = members.stream()
-                .map(member -> toItem(member.rank(), rowsByUserId.get(member.userId()), member.score(), userId))
+        List<RankedParticipant> rankedParticipants = members.stream()
+                .map(member -> new RankedParticipant(member.rank(), rowsByUserId.get(member.userId()), member.score()))
                 .toList();
 
         Long myRank = redisRepository.findRank(season.getId(), userId);
@@ -93,18 +99,15 @@ public class RankingQueryService {
         }
         long myScore = myRank == null ? 0L : redisRepository.findScore(season.getId(), userId);
         long firstScore = members.isEmpty() ? 0L : members.get(0).score();
-        return new CurrentRankingResponse(
-                items,
-                new MyRankingResponse(myRank, myScore, Math.max(firstScore - myScore, 0L)),
-                meta.participantCount()
-        );
+        return assembleResponse(season, rankedParticipants, userId, myRank, myScore, firstScore, meta.participantCount());
     }
 
     private CurrentRankingResponse fromPostgreSql(RankingSeason season, UUID userId, int limit) {
         List<RankingEntryRepository.RankingParticipantRow> rows = entryRepository.findTopParticipants(season, limit);
-        List<RankingItemResponse> items = new java.util.ArrayList<>();
+        List<RankedParticipant> rankedParticipants = new ArrayList<>();
         for (int index = 0; index < rows.size(); index++) {
-            items.add(toItem(index + 1L, rows.get(index), userId));
+            RankingEntryRepository.RankingParticipantRow row = rows.get(index);
+            rankedParticipants.add(new RankedParticipant(index + 1L, row, row.score()));
         }
 
         Optional<RankingEntryRepository.RankingParticipantRow> myParticipant =
@@ -117,26 +120,97 @@ public class RankingQueryService {
                 .map(RankingEntryRepository.RankingParticipantRow::score)
                 .max(Comparator.naturalOrder())
                 .orElse(0L);
-        return new CurrentRankingResponse(
-                items,
-                new MyRankingResponse(myRank, myScore, Math.max(firstScore - myScore, 0L)),
+        return assembleResponse(
+                season,
+                rankedParticipants,
+                userId,
+                myRank,
+                myScore,
+                firstScore,
                 entryRepository.countParticipants(season)
         );
     }
 
-    private RankingItemResponse toItem(long rank, RankingEntryRepository.RankingParticipantRow row, UUID me) {
-        return toItem(rank, row, row.score(), me);
+    private CurrentRankingResponse assembleResponse(
+            RankingSeason season,
+            List<RankedParticipant> rankedParticipants,
+            UUID me,
+            Long myRank,
+            long myScore,
+            long firstScore,
+            long totalParticipantCount
+    ) {
+        Optional<RankingSeason> previousSeason =
+                Optional.ofNullable(seasonService.findPreviousClosedWeeklySeason(season)).orElse(Optional.empty());
+        Map<UUID, Long> previousRanks = previousRanks(previousSeason, rankedParticipants, me);
+        List<RankingItemResponse> items = rankedParticipants.stream()
+                .map(participant -> toItem(participant, previousRanks.get(participant.row().userId()), me))
+                .toList();
+        Long previousMyRank = previousRanks.get(me);
+        return new CurrentRankingResponse(
+                seasonResponse(season),
+                items,
+                new MyRankingResponse(
+                        myRank,
+                        previousMyRank,
+                        rankChange(previousMyRank, myRank),
+                        myScore,
+                        Math.max(firstScore - myScore, 0L)
+                ),
+                totalParticipantCount
+        );
     }
 
-    private RankingItemResponse toItem(long rank, RankingEntryRepository.RankingParticipantRow row, long score, UUID me) {
+    private Map<UUID, Long> previousRanks(
+            Optional<RankingSeason> previousSeason,
+            List<RankedParticipant> rankedParticipants,
+            UUID me
+    ) {
+        if (previousSeason.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashSet<UUID> userIds = rankedParticipants.stream()
+                .map(participant -> participant.row().userId())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        userIds.add(me);
+        return entryRepository.findFinalRanksByUserIds(previousSeason.get(), new ArrayList<>(userIds)).stream()
+                .collect(Collectors.toMap(
+                        RankingEntryRepository.RankingFinalRankRow::userId,
+                        RankingEntryRepository.RankingFinalRankRow::finalRank
+                ));
+    }
+
+    private RankingSeasonResponse seasonResponse(RankingSeason season) {
+        return new RankingSeasonResponse(
+                season.getStartsAt(),
+                season.getEndsAt(),
+                season.getEndsAt(),
+                properties.weeklyResetDayOfWeek().name(),
+                properties.weeklyResetTime().format(DateTimeFormatter.ofPattern("HH:mm")),
+                businessZoneId.getId()
+        );
+    }
+
+    private RankingItemResponse toItem(RankedParticipant participant, Long previousRank, UUID me) {
+        long rank = participant.rank();
+        RankingEntryRepository.RankingParticipantRow row = participant.row();
         return new RankingItemResponse(
                 rank,
+                previousRank,
+                rankChange(previousRank, rank),
                 row.userId(),
                 row.nickname(),
                 row.profileImageUrl(),
-                score,
+                participant.score(),
                 row.userId().equals(me)
         );
+    }
+
+    private Long rankChange(Long previousRank, Long currentRank) {
+        if (previousRank == null || currentRank == null) {
+            return null;
+        }
+        return previousRank - currentRank;
     }
 
     private int validateLimit(Integer requestedLimit) {
@@ -145,5 +219,12 @@ public class RankingQueryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COMMON_VALIDATION_ERROR");
         }
         return limit;
+    }
+
+    private record RankedParticipant(
+            long rank,
+            RankingEntryRepository.RankingParticipantRow row,
+            long score
+    ) {
     }
 }
