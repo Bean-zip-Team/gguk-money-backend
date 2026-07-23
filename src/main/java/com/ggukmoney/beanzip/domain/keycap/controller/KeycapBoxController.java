@@ -61,11 +61,12 @@ public class KeycapBoxController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락, 개봉 불가, 요청 값 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "공통 충전 주기 개봉 한도 초과", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "멱등키 재사용 또는 보상 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/open")
     public ResponseEntity<ApiResponse<KeycapBoxOpenResponse>> open(
-            @Parameter(in = ParameterIn.HEADER, description = "개봉 요청 멱등키. 최대 128자이며 같은 요청 재시도에 같은 값을 사용합니다.", required = true, example = "open-20260715-0001")
+            @Parameter(in = ParameterIn.HEADER, description = "개봉 요청 멱등키. 최대 100자이며 같은 요청 재시도에 같은 값을 사용합니다.", required = true, example = "open-20260715-0001")
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody KeycapBoxOpenRequest request,
             @Parameter(hidden = true) HttpServletRequest httpServletRequest

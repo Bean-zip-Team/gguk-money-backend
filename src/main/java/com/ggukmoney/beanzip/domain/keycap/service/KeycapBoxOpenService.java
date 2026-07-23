@@ -29,8 +29,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,6 +57,7 @@ public class KeycapBoxOpenService {
     private final PointLedgerService pointLedgerService;
     private final BoosterGrantService boosterGrantService;
     private final PlatformTransactionManager transactionManager;
+    private final Clock clock;
 
     public KeycapBoxOpenResponse open(UUID userId, String idempotencyKey, KeycapBoxOpenRequest request) {
         validateIdempotencyKey(idempotencyKey);
@@ -72,7 +73,7 @@ public class KeycapBoxOpenService {
             return transactionTemplate.execute(status -> openInTransaction(userId, idempotencyKey, request, requestHash));
         } catch (DataIntegrityViolationException exception) {
             return findReplay(userId, idempotencyKey, requestHash)
-                    .orElseThrow(() -> exception);
+                    .orElseThrow(() -> duplicateAdRewardException(request, exception));
         }
     }
 
@@ -87,7 +88,12 @@ public class KeycapBoxOpenService {
             return replay.get();
         }
 
-        KeycapBoxAccount account = keycapBoxAccountService.refillFreeTickets(userId);
+        Instant acceptedAt = clock.instant();
+        KeycapBoxAccount account = keycapBoxAccountService.refreshOpenCycleForUpdate(
+                userId,
+                acceptedAt,
+                keycapBoxPolicyConfig.openCycleDuration()
+        );
         boolean isAdOpen = request.openMethod() == KeycapBoxOpen.OpenMethod.ADVERTISEMENT;
         if (isAdOpen) {
             validateAdOpenResources(account, request);
@@ -102,18 +108,17 @@ public class KeycapBoxOpenService {
 
         Keycap selected = keycapRewardSelector.select(candidates);
         if (isAdOpen) {
-            account.consumeAdOpen(LocalDate.now(), keycapBoxPolicyConfig.adOpenDailyLimit());
+            account.consumeAdOpen(keycapBoxPolicyConfig.adOpenLimit());
         } else {
-            account.consumeFreeOpen();
+            account.consumeFreeOpen(keycapBoxPolicyConfig.freeOpenLimit());
         }
 
         AppUser user = userService.getById(userId);
-        Instant now = Instant.now();
         UserKeycap userKeycap = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId())
                 .orElseGet(() -> UserKeycap.createInProgress(user, selected));
         int shardCountBefore = userKeycap.getShardCount();
-        int boostedShardCount = applyBoosterMultiplier(shardCountGenerator.generate(), userId, now);
-        boolean completedNow = userKeycap.addShard(boostedShardCount, now);
+        int boostedShardCount = applyBoosterMultiplier(shardCountGenerator.generate(), userId, acceptedAt);
+        boolean completedNow = userKeycap.addShard(boostedShardCount, acceptedAt);
         int grantedShardCount = userKeycap.getShardCount() - shardCountBefore;
         if (userKeycap.getId() == null) {
             userKeycapRepository.save(userKeycap);
@@ -132,7 +137,7 @@ public class KeycapBoxOpenService {
                 requestHash,
                 normalizeAdRewardId(request.adRewardId()),
                 completedNow,
-                Instant.now()
+                acceptedAt
         );
         return keycapBoxMapper.mapToOpenResponse(keycapBoxOpenRepository.save(boxOpen));
     }
@@ -198,25 +203,36 @@ public class KeycapBoxOpenService {
         if (!account.hasBox()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_BOX_NOT_AVAILABLE");
         }
-        if (!account.hasFreeOpenTicket()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "FREE_OPEN_TICKET_NOT_AVAILABLE");
+        if (!account.canUseFreeOpen(keycapBoxPolicyConfig.freeOpenLimit())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "FREE_OPEN_LIMIT_EXCEEDED");
         }
     }
 
-    /**
-     * 광고 시청 완료는 서버가 검증할 방법이 없다(§11.10) — adRewardId 존재 여부만 확인하는
-     * 트러스트 기반 검증이고, 실질적인 방어는 일일 한도(AD_OPEN_DAILY_LIMIT_EXCEEDED)뿐이다.
-     */
+    // Ad reward validation is trust-based; the shared cycle limit remains the server-side guard.
     private void validateAdOpenResources(KeycapBoxAccount account, KeycapBoxOpenRequest request) {
-        if (!StringUtils.hasText(request.adRewardId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AD_REWARD_ID_REQUIRED");
-        }
         if (!account.hasBox()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_BOX_NOT_AVAILABLE");
         }
-        if (!account.hasAdOpenQuota(LocalDate.now(), keycapBoxPolicyConfig.adOpenDailyLimit())) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_DAILY_LIMIT_EXCEEDED");
+        if (!account.canUseAdOpen(keycapBoxPolicyConfig.adOpenLimit())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_LIMIT_EXCEEDED");
         }
+        if (!StringUtils.hasText(request.adRewardId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AD_REWARD_ID_REQUIRED");
+        }
+        if (keycapBoxOpenRepository.existsByAdRewardId(normalizeAdRewardId(request.adRewardId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "AD_REWARD_ALREADY_USED");
+        }
+    }
+
+    private RuntimeException duplicateAdRewardException(
+            KeycapBoxOpenRequest request,
+            DataIntegrityViolationException exception
+    ) {
+        String adRewardId = normalizeAdRewardId(request.adRewardId());
+        if (StringUtils.hasText(adRewardId) && keycapBoxOpenRepository.existsByAdRewardId(adRewardId)) {
+            return new ResponseStatusException(HttpStatus.CONFLICT, "AD_REWARD_ALREADY_USED", exception);
+        }
+        return exception;
     }
 
     private String normalizeAdRewardId(String adRewardId) {

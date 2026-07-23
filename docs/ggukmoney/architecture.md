@@ -173,21 +173,21 @@ tap_batch
 
 1. `Idempotency-Key`를 검증하고 `openMethod`, `adRewardId` 기반 `request_hash`를 계산한다.
 2. `(user_id, idempotency_key)` 기존 개봉 이력이 있으면 `request_hash`를 비교한다. 같으면 기존 결과를 반환하고, 다르면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
-3. `keycap_box_account`를 잠근다.
-4. 개봉 방식별 자원 보유 여부를 검증한다.
+3. `keycap_box_account`를 잠그고 공통 1시간 주기 만료를 `open_cycle_started_at` 기준으로 반영한다.
+4. 상자 보유 여부와 개봉 방식별 공통 주기 사용 한도를 검증한다.
 5. `keycap.active=true` 키캡 중 현재 사용자가 아직 완성하지 않은 키캡을 후보로 조회한다. `UserKeycap`이 없거나 `status=IN_PROGRESS`이면 후보에 포함하고, `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 제외한다.
 6. 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 어떤 자원도 차감하지 않으며 개봉 이력도 생성하지 않는다.
 7. 후보 중 하나를 균등 랜덤으로 선택한다. MVP 기본 지급 조각 수는 1개다.
-8. 성공 개봉으로 확정된 뒤 `box_balance`를 1 차감한다. `FREE`는 추가로 `free_open_ticket_count`를 1 차감한다. `ADVERTISEMENT`는 검증된 `ad_reward_id`를 소비하며, 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다.
+8. 성공 개봉으로 확정된 뒤 `box_balance`를 1 차감한다. `FREE`는 `free_open_used_count`, `ADVERTISEMENT`는 `ad_open_used_count`를 1 증가시키며, `ADVERTISEMENT`는 검증된 `ad_reward_id`를 소비한다. 광고 Provider 신규 검증 구현은 이번 범위에 포함하지 않는다.
 9. `user_keycap`이 없으면 생성하고, 있으면 `shard_count`를 증가시킨다. 조각 수는 `required_shard_count`를 초과 저장하지 않는다.
 10. 필요 조각 수 이상이면 `status=COMPLETED`, `completed_at`을 설정한다.
 11. `keycap_box_open`에 개봉 방식, 멱등키, 요청 해시, 보상 결과를 한 행으로 저장한다.
 
 보상 후보 존재를 확인하기 전에 자원을 차감하지 않는다. 후보 없음 오류와 트랜잭션 전체 실패에서는 자원 차감, 조각 지급, 개봉 이력 생성의 부분 반영이 없어야 한다. 완성 키캡을 포인트나 다른 재화로 변환하는 중복 보상 정책은 MVP에서 제공하지 않는다.
 
-현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
+기존 부스터 배율은 상자 개봉 조각 수에 적용하지만 응답에는 `boostApplied`를 노출하지 않는다.
 
-현재 구현은 광고 검증 Service가 없으므로 `ADVERTISEMENT`를 `ADVERTISEMENT_OPEN_NOT_SUPPORTED`로 차단한다. 무료권 자동 충전과 온보딩 상자 개봉은 이 API 범위에 포함하지 않는다.
+무료와 광고는 순서와 관계없이 같은 1시간 주기를 공유하며, 사용하지 않은 횟수는 다음 주기로 이월하지 않는다. 온보딩 상자 개봉은 이 API 범위에 포함하지 않는다.
 
 상자 개봉 이력 조회는 `keycap_box_open`을 읽기 전용으로 조회한다. `KeycapBoxHistoryService`는 `cursor`와 `size`를 검증하고, `KeycapBoxOpenRepository`가 현재 사용자 UUID 조건과 `opened_at DESC, id DESC` cursor 조건을 DB 쿼리에 포함한다. 응답 조립은 `KeycapBoxMapper`가 담당하며 Controller와 Service는 내부 BIGINT ID, 멱등키, 요청 해시, 광고 보상 ID를 직접 노출하지 않는다.
 
