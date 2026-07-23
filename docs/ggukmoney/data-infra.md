@@ -226,3 +226,49 @@ durationMs
 - `auth_identity`는 MVP 보관 정책 동안 접근 제한 상태로 유지한다.
 - `point_ledger`, `cashout_request`, `keycap_box_open`은 금액·분쟁·부정 사용 근거로 보존한다.
 - 구체적인 보관 기간과 완전 삭제 Batch는 법적 정책 확정 뒤 별도 문서와 Migration으로 추가한다.
+## BEA-158 weekly ranking data flow addendum
+
+- PostgreSQL is the source of truth for weekly season state and final rank snapshots.
+- Redis stores rebuildable ranking projections only. Redis lock ownership is used for rebuild/reconciliation duplication control, not for season creation or status transitions.
+- Multi-instance weekly season operations are serialized with PostgreSQL transaction advisory lock:
+
+```sql
+SELECT pg_advisory_xact_lock(:weeklyRankingLockKey);
+```
+
+- Tap processing creates one `acceptedAt` from the injected UTC `Clock`. `TapBatchService` derives `tapDate = LocalDate.ofInstant(acceptedAt, businessZoneId)` and emits `RankingScoreSyncRequestedEvent(userId, acceptedAt)` after tap persistence.
+- `UserTapDailyService` receives a `LocalDate` and does not use `Clock`, `ZoneId`, `LocalDate.now()`, or `Instant.now()`.
+- Realtime ranking projection uses the `WEEKLY` season containing `occurredAt`. It modifies only `ACTIVE` weekly seasons.
+- `FINALIZING` and `CLOSED` seasons are not modified by realtime projection.
+- Current-week and finalizing backfill use aggregate sums from `user_tap_daily.valid_tap_count`:
+
+```sql
+SELECT user_id, SUM(valid_tap_count)
+FROM user_tap_daily
+WHERE tap_date >= :startDate
+  AND tap_date < :endDate
+GROUP BY user_id
+ORDER BY user_id;
+```
+
+- New active weekly season flow:
+
+```text
+DB commit
+-> RankingWeeklySeasonActivatedListener AFTER_COMMIT
+-> active weekly backfill
+-> Redis rebuild
+```
+
+- Rollover flow:
+
+```text
+endsAt reached:
+ACTIVE -> FINALIZING
+ensure current week ACTIVE
+
+endsAt + ranking.weekly.finalization-delay reached:
+finalizing-only backfill
+snapshot final_rank/finalized_at
+FINALIZING -> CLOSED
+```

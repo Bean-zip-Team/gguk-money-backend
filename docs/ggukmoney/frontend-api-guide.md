@@ -2403,3 +2403,42 @@ Query Parameter 초안:
 2. 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
 3. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
 4. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.
+## BEA-158 weekly ranking current API addendum
+
+### `GET /api/rankings/current`
+
+Use Access JWT. The endpoint returns the active weekly ranking only.
+
+Query:
+
+| Name | Type | Required | Description |
+|---|---|---:|---|
+| `limit` | Number | N | Default `50`, allowed `1..100`. No pagination or infinite scroll. |
+
+Response fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `data.season.startedAt` | String | Weekly season start `Instant`. |
+| `data.season.endsAt` | String | Weekly season end `Instant`. |
+| `data.season.nextResetAt` | String | Same as `endsAt` for this implementation. |
+| `data.season.resetDayOfWeek` | String | `MONDAY`. |
+| `data.season.resetTime` | String | `00:00`. |
+| `data.season.timeZone` | String | `Asia/Seoul`. |
+| `data.items[].rank` | Number | Current rank. |
+| `data.items[].previousRank` | Number/null | Previous closed weekly final rank. |
+| `data.items[].rankChange` | Number/null | `previousRank - rank`. |
+| `data.items[].score` | Number | Current weekly score. |
+| `data.myRank.rank` | Number/null | My current rank. |
+| `data.myRank.previousRank` | Number/null | My previous closed weekly final rank. |
+| `data.myRank.rankChange` | Number/null | `previousRank - rank`; null if either side is missing. |
+| `data.myRank.score` | Number | My current weekly score, `0` if not currently participating. |
+| `data.myRank.scoreGapToFirst` | Number | Current first score minus my current score; `0` when no current participant exists. |
+| `data.totalParticipantCount` | Number | Current weekly participant count. |
+
+Notes:
+
+- Weekly reset is Monday `00:00` in `Asia/Seoul`.
+- Previous rank is based on `finalRank` from the immediately previous `CLOSED WEEKLY` season.
+- `ALL_TIME` data is retained but is not the source for this screen.
+- BEA-157 history API is not included in this change. It should reuse closed weekly seasons, `startsAt`, `endsAt`, `finalRank`, and `ranking_entry.score`.
