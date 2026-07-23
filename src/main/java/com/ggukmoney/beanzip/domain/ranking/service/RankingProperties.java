@@ -23,6 +23,7 @@ public class RankingProperties {
     private DayOfWeek weeklyResetDayOfWeek = DayOfWeek.MONDAY;
     private LocalTime weeklyResetTime = LocalTime.MIDNIGHT;
     private Duration weeklyFinalizationDelay = Duration.ofMinutes(10);
+    private Duration weeklyRolloverInterval = Duration.ofMinutes(1);
     private long weeklyAdvisoryLockKey = 1_580_001L;
 
     @Value("${ranking.default-limit:50}")
@@ -100,6 +101,14 @@ public class RankingProperties {
         this.weeklyFinalizationDelay = weeklyFinalizationDelay;
     }
 
+    @Value("${ranking.weekly.rollover-interval:1m}")
+    void setWeeklyRolloverInterval(Duration weeklyRolloverInterval) {
+        if (weeklyRolloverInterval.isNegative() || weeklyRolloverInterval.isZero()) {
+            throw new IllegalStateException("ranking.weekly.rollover-interval must be positive");
+        }
+        this.weeklyRolloverInterval = weeklyRolloverInterval;
+    }
+
     @Value("${ranking.weekly.advisory-lock-key:1580001}")
     void setWeeklyAdvisoryLockKey(long weeklyAdvisoryLockKey) {
         this.weeklyAdvisoryLockKey = weeklyAdvisoryLockKey;
@@ -155,6 +164,10 @@ public class RankingProperties {
 
     public Duration weeklyFinalizationDelay() {
         return weeklyFinalizationDelay;
+    }
+
+    public Duration weeklyRolloverInterval() {
+        return weeklyRolloverInterval;
     }
 
     public long weeklyAdvisoryLockKey() {
