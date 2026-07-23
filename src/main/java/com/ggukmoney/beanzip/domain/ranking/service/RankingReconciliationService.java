@@ -32,6 +32,12 @@ public class RankingReconciliationService {
     private final Clock clock;
 
     @Transactional(readOnly = true)
+    public void reconcileActiveWeekly() {
+        seasonService.findActiveWeeklySeason().ifPresent(this::reconcile);
+    }
+
+    @Deprecated
+    @Transactional(readOnly = true)
     public void reconcileActiveAllTime() {
         seasonService.findActiveAllTimeSeason().ifPresent(this::reconcile);
     }

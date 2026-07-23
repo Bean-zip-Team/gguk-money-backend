@@ -154,7 +154,7 @@ public class TapBatchService {
 
             userTapDailyService.save(daily);
             userTapProgressService.save(progress);
-            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId));
+            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
         return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, boxesDropped, balance);

@@ -7,6 +7,7 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockReposito
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -37,8 +38,9 @@ class RankingSeasonServiceTest {
     private final TransactionStatus transactionStatus = mock(TransactionStatus.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final RankingSeasonService service = new RankingSeasonService(
-            seasonRepository, seasonLockRepository, properties, transactionManager, clock, businessZoneId
+            seasonRepository, seasonLockRepository, properties, transactionManager, clock, businessZoneId, eventPublisher
     );
 
     @Test

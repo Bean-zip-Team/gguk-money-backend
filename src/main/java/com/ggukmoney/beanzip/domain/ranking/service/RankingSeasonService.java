@@ -3,10 +3,12 @@ package com.ggukmoney.beanzip.domain.ranking.service;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeasonStatus;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingType;
+import com.ggukmoney.beanzip.domain.ranking.event.RankingWeeklySeasonActivatedEvent;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -34,6 +36,7 @@ public class RankingSeasonService {
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
     private final ZoneId businessZoneId;
+    private final ApplicationEventPublisher eventPublisher;
 
     public Optional<RankingSeason> findActiveAllTimeSeason() {
         return seasonRepository.findByCodeAndStatus(RankingSeason.ALL_TIME_CODE, RankingSeasonStatus.ACTIVE);
@@ -91,11 +94,19 @@ public class RankingSeasonService {
             WeeklyBoundary boundary = weeklyBoundary(now);
             finalizeExpiredActiveWeeklySeasons(now);
             RankingSeason season = seasonRepository.findByCode(RankingSeason.weeklyCode(boundary.weekStartDate()))
-                    .orElseGet(() -> seasonRepository.saveAndFlush(RankingSeason.activeWeekly(
-                            boundary.weekStartDate(),
-                            boundary.startsAt(),
-                            boundary.endsAt()
-                    )));
+                    .orElse(null);
+            boolean created = false;
+            if (season == null) {
+                season = seasonRepository.saveAndFlush(RankingSeason.activeWeekly(
+                        boundary.weekStartDate(),
+                        boundary.startsAt(),
+                        boundary.endsAt()
+                ));
+                created = true;
+            }
+            if (created) {
+                eventPublisher.publishEvent(new RankingWeeklySeasonActivatedEvent(season.getId()));
+            }
             transactionManager.commit(status);
             return season;
         } catch (RuntimeException exception) {

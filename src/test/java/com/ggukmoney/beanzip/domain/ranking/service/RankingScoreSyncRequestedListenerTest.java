@@ -6,6 +6,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,14 +19,15 @@ class RankingScoreSyncRequestedListenerTest {
 
     private final RankingProjectionService projectionService = mock(RankingProjectionService.class);
     private final RankingScoreSyncRequestedListener listener = new RankingScoreSyncRequestedListener(projectionService);
+    private final Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
 
     @Test
     void synchronizesLatestScoreAfterCommit() {
         UUID userId = UUID.randomUUID();
 
-        listener.handle(new RankingScoreSyncRequestedEvent(userId));
+        listener.handle(new RankingScoreSyncRequestedEvent(userId, occurredAt));
 
-        verify(projectionService).syncLatestAllTimeScore(userId);
+        verify(projectionService).syncLatestWeeklyScore(userId, occurredAt);
     }
 
     @Test
@@ -33,9 +35,9 @@ class RankingScoreSyncRequestedListenerTest {
         UUID userId = UUID.randomUUID();
         doThrow(new IllegalStateException("projection failed"))
                 .when(projectionService)
-                .syncLatestAllTimeScore(userId);
+                .syncLatestWeeklyScore(userId, occurredAt);
 
-        assertThatCode(() -> listener.handle(new RankingScoreSyncRequestedEvent(userId)))
+        assertThatCode(() -> listener.handle(new RankingScoreSyncRequestedEvent(userId, occurredAt)))
                 .doesNotThrowAnyException();
     }
 

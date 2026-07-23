@@ -45,8 +45,16 @@ public class RankingInitializer implements ApplicationRunner {
                 if (!isInitializationNeeded()) {
                     return;
                 }
-                RankingSeason season = seasonService.getOrCreateActiveAllTimeSeason();
-                backfillService.backfillActiveAllTimeFromTapProgress();
+                RankingSeason season = seasonService.ensureCurrentWeeklySeason(clock.instant());
+                if (redisRepository.findReadyMeta(
+                        season.getId(),
+                        properties.schemaVersion(),
+                        properties.maxStaleness(),
+                        clock.instant()
+                ).isPresent()) {
+                    return;
+                }
+                backfillService.backfillActiveWeeklySeason(season);
                 rebuildService.rebuild(season, "startup-initializer");
             } finally {
                 redisRepository.releaseInitializationLock(token);
@@ -57,7 +65,7 @@ public class RankingInitializer implements ApplicationRunner {
     }
 
     private boolean isInitializationNeeded() {
-        Optional<RankingSeason> activeSeason = seasonService.findActiveAllTimeSeason();
+        Optional<RankingSeason> activeSeason = seasonService.findActiveWeeklySeason();
         if (activeSeason.isEmpty()) {
             return true;
         }
