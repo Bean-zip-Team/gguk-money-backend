@@ -242,6 +242,46 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
                 .toList();
     }
 
+    @Query(value = """
+            SELECT s.id AS seasonId,
+                   s.code AS seasonCode,
+                   s.starts_at AS startedAt,
+                   s.ends_at AS endsAt,
+                   e.final_rank AS finalRank,
+                   e.score AS finalScore
+            FROM ranking_entry e
+            JOIN ranking_season s ON s.id = e.season_id
+            WHERE s.ranking_type = 'WEEKLY'
+              AND s.status = 'CLOSED'
+              AND e.user_id = :userId
+              AND e.final_rank IS NOT NULL
+              AND e.finalized_at IS NOT NULL
+              AND (
+                    CAST(:cursorEndsAt AS timestamp with time zone) IS NULL
+                 OR s.ends_at < :cursorEndsAt
+                 OR (s.ends_at = :cursorEndsAt AND s.id < :cursorSeasonId)
+              )
+            ORDER BY s.ends_at DESC, s.id DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<RankingHistoryProjection> findWeeklyHistoryProjections(
+            @Param("userId") UUID userId,
+            @Param("cursorEndsAt") Instant cursorEndsAt,
+            @Param("cursorSeasonId") Long cursorSeasonId,
+            @Param("limit") int limit
+    );
+
+    default List<RankingHistoryRow> findWeeklyHistory(
+            UUID userId,
+            Instant cursorEndsAt,
+            Long cursorSeasonId,
+            int limit
+    ) {
+        return findWeeklyHistoryProjections(userId, cursorEndsAt, cursorSeasonId, limit).stream()
+                .map(RankingHistoryRow::from)
+                .toList();
+    }
+
     interface RankingParticipantProjection {
         UUID getUserId();
 
@@ -256,6 +296,20 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
         UUID getUserId();
 
         Long getFinalRank();
+    }
+
+    interface RankingHistoryProjection {
+        Long getSeasonId();
+
+        String getSeasonCode();
+
+        Instant getStartedAt();
+
+        Instant getEndsAt();
+
+        Long getFinalRank();
+
+        Long getFinalScore();
     }
 
     record RankingParticipantRow(
@@ -280,6 +334,26 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
     ) {
         static RankingFinalRankRow from(RankingFinalRankProjection projection) {
             return new RankingFinalRankRow(projection.getUserId(), projection.getFinalRank());
+        }
+    }
+
+    record RankingHistoryRow(
+            Long seasonId,
+            String seasonCode,
+            Instant startedAt,
+            Instant endsAt,
+            Long finalRank,
+            long finalScore
+    ) {
+        static RankingHistoryRow from(RankingHistoryProjection projection) {
+            return new RankingHistoryRow(
+                    projection.getSeasonId(),
+                    projection.getSeasonCode(),
+                    projection.getStartedAt(),
+                    projection.getEndsAt(),
+                    projection.getFinalRank(),
+                    projection.getFinalScore()
+            );
         }
     }
 }

@@ -85,6 +85,36 @@
 }
 ```
 
+## BEA-157 weekly ranking history contract addendum
+
+- Actual endpoint: `GET /api/rankings/history`.
+- Authentication: Access JWT required.
+- Query parameters: `cursor` and `size`; default size is `20`, allowed range is `1..100`.
+- Source: PostgreSQL only. Redis is not read, rebuilt, or used as a fallback source.
+- Scope: the authenticated user's participated `CLOSED WEEKLY` seasons only.
+- Exclusions: `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and entries where `final_rank` or `finalized_at` is missing.
+- Sort: `ranking_season.ends_at DESC, ranking_season.id DESC`.
+- Cursor: opaque URL-safe Base64 over `endsAt|seasonId`.
+- Empty history returns `200` with `content=[]`, `nextCursor=null`, `hasNext=false`.
+- No new DB columns or manual SQL are introduced by BEA-157.
+- Prerequisite: BEA-158 DB changes for `WEEKLY`, `FINALIZING`, `ranking_entry.final_rank`, `ranking_entry.finalized_at`, and BEA-158 constraints/indexes must already be applied.
+
+```json
+{
+  "content": [
+    {
+      "seasonCode": "WEEKLY_20260720",
+      "startedAt": "2026-07-19T15:00:00Z",
+      "endsAt": "2026-07-26T15:00:00Z",
+      "myFinalRank": 7,
+      "myFinalScore": 950
+    }
+  ],
+  "nextCursor": "opaque",
+  "hasNext": true
+}
+```
+
 `userPublicId` 대신 `userId`를 사용한다. 이 값은 UUID `app_user.id`다.
 
 ## 주요 멱등성 계약

@@ -2441,4 +2441,54 @@ Notes:
 - Weekly reset is Monday `00:00` in `Asia/Seoul`.
 - Previous rank is based on `finalRank` from the immediately previous `CLOSED WEEKLY` season.
 - `ALL_TIME` data is retained but is not the source for this screen.
-- BEA-157 history API is not included in this change. It should reuse closed weekly seasons, `startsAt`, `endsAt`, `finalRank`, and `ranking_entry.score`.
+- Ranking history is provided by `GET /api/rankings/history`.
+
+### `GET /api/rankings/history`
+
+Use Access JWT. The endpoint returns only my participated `CLOSED WEEKLY` seasons.
+
+Query:
+
+| Name | Type | Required | Description |
+|---|---|---:|---|
+| `cursor` | String | N | Opaque URL-safe cursor from the previous response. Blank cursor reads the first page. |
+| `size` | Number | N | Default `20`, allowed `1..100`. |
+
+Response fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `data.content[].seasonCode` | String | Weekly season code, for example `WEEKLY_20260720`. |
+| `data.content[].startedAt` | String | Closed weekly season start `Instant`. |
+| `data.content[].endsAt` | String | Closed weekly season end `Instant`. |
+| `data.content[].myFinalRank` | Number | My snapshotted final rank. |
+| `data.content[].myFinalScore` | Number | `ranking_entry.score` from the closed season. |
+| `data.nextCursor` | String/null | Cursor for the next page. |
+| `data.hasNext` | Boolean | Whether another page exists. |
+
+Example:
+
+```json
+{
+  "content": [
+    {
+      "seasonCode": "WEEKLY_20260720",
+      "startedAt": "2026-07-19T15:00:00Z",
+      "endsAt": "2026-07-26T15:00:00Z",
+      "myFinalRank": 7,
+      "myFinalScore": 950
+    }
+  ],
+  "nextCursor": "opaque",
+  "hasNext": true
+}
+```
+
+Notes:
+
+- Sort order is `endsAt DESC, seasonId DESC`.
+- The cursor contains `endsAt` and `seasonId`; it is opaque to clients and is not signed or encrypted.
+- Empty history is a normal `200` response with `content=[]`, `nextCursor=null`, and `hasNext=false`.
+- `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and incomplete final-rank entries are excluded.
+- Redis is not used by this endpoint.
+- BEA-158 DB prerequisites must be applied first: `WEEKLY`, `FINALIZING`, `ranking_entry.final_rank`, `ranking_entry.finalized_at`, and BEA-158 constraints/indexes.

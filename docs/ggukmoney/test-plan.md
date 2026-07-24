@@ -170,6 +170,14 @@ Targeted tests:
 - `RankingQueryServiceTest`: active weekly read, no mutation, previous `finalRank`, `rankChange`, first season nulls, current/previous participant combinations, `limit=100` accepted, `limit=101` rejected, Redis and PostgreSQL response shape alignment.
 - `RankingControllerTest`: `/api/rankings/current` path, auth requirement, Swagger/DTO schema components.
 
+### BEA-157 weekly ranking history
+
+- `RankingHistoryCursorCodecTest`: null and blank cursor, valid URL-safe Base64 encode/decode, invalid Base64, missing delimiter, invalid `Instant`, non-positive `seasonId`, and excessive cursor length.
+- `RankingHistoryRepositoryIntegrationTest`: PostgreSQL native query returns only the authenticated user's completed `CLOSED WEEKLY` entries, excludes `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users, and incomplete final-rank entries, preserves `ranking_entry.score` as `myFinalScore`, orders by `endsAt DESC, seasonId DESC`, and paginates without duplicate or skipped rows.
+- `RankingHistoryServiceTest`: default size `20`, max size `100`, size validation, `size + 1` fetch, `nextCursor` from the last returned row, empty page, second page, and decoded cursor repository arguments.
+- `RankingControllerTest`: `GET /api/rankings/history`, Access JWT requirement, cursor and size query forwarding, `endsAt` response field, 401, 400, Swagger endpoint and query parameter annotations.
+- Regression set: current ranking response, Redis fallback, weekly season service, projection, rollover, and final-rank behavior must not change.
+
 Final verification commands:
 
 ```powershell

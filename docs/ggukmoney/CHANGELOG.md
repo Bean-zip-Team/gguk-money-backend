@@ -151,3 +151,11 @@
 - Newly created active weekly seasons publish `RankingWeeklySeasonActivatedEvent` after commit. The listener backfills current-week scores from `user_tap_daily.valid_tap_count` and rebuilds Redis.
 - Current ranking response adds `season`, `previousRank`, and `rankChange`. `rankChange = previousRank - currentRank`.
 - `RankingType.ALL_TIME` and existing data are retained for compatibility, but the current ranking API, projection, initializer, rebuild, reconciliation, and eligibility paths use `WEEKLY`.
+
+## 2026-07-24 BEA-157 weekly ranking history API
+
+- `GET /api/rankings/history` returns the authenticated user's participated `CLOSED WEEKLY` seasons.
+- Response items expose `seasonCode`, `startedAt`, `endsAt`, `myFinalRank`, and `myFinalScore`; `myFinalScore` is the closed season `ranking_entry.score`.
+- Pagination uses an opaque URL-safe cursor over `endsAt|seasonId`, sorted by `endsAt DESC, seasonId DESC`.
+- `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and incomplete final-rank entries are excluded.
+- Redis is not used, no new DB columns or manual SQL are added, and BEA-158 weekly ranking DB prerequisites remain required.

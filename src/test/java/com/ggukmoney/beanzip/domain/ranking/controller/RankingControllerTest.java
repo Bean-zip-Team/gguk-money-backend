@@ -2,8 +2,11 @@ package com.ggukmoney.beanzip.domain.ranking.controller;
 
 import com.ggukmoney.beanzip.domain.ranking.dto.response.CurrentRankingResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.MyRankingResponse;
+import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingHistoryItemResponse;
+import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingHistoryResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingItemResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingSeasonResponse;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingHistoryService;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingQueryService;
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -16,6 +19,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -37,7 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RankingControllerTest {
 
     private final RankingQueryService rankingQueryService = mock(RankingQueryService.class);
-    private final RankingController rankingController = new RankingController(rankingQueryService);
+    private final RankingHistoryService rankingHistoryService = mock(RankingHistoryService.class);
+    private final RankingController rankingController = new RankingController(rankingQueryService, rankingHistoryService);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(rankingController)
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
@@ -67,6 +72,20 @@ class RankingControllerTest {
 
         Parameter limitParameter = method.getParameters()[1].getAnnotation(Parameter.class);
         assertThat(limitParameter.description()).contains("100");
+
+        Method historyMethod = RankingController.class.getMethod(
+                "getRankingHistory",
+                HttpServletRequest.class,
+                String.class,
+                Integer.class
+        );
+        Operation historyOperation = historyMethod.getAnnotation(Operation.class);
+        assertThat(historyOperation).isNotNull();
+        assertThat(historyMethod.getAnnotation(GetMapping.class).value()).containsExactly("/history");
+        Parameter cursorParameter = historyMethod.getParameters()[1].getAnnotation(Parameter.class);
+        Parameter sizeParameter = historyMethod.getParameters()[2].getAnnotation(Parameter.class);
+        assertThat(cursorParameter.description()).contains("cursor");
+        assertThat(sizeParameter.description()).contains("100");
     }
 
     @Test
@@ -92,6 +111,18 @@ class RankingControllerTest {
                 .isEqualTo("직전 주 최종 순위. 미참가 시 null");
         assertThat(schemaDescription(MyRankingResponse.class, "scoreGapToFirst"))
                 .isEqualTo("1위와 점수 차이");
+    }
+
+    @Test
+    void rankingHistoryResponseDtosHaveOpenApiSchemas() {
+        assertThat(RankingHistoryResponse.class.getAnnotation(Schema.class).description())
+                .isEqualTo("Ranking history page response");
+        assertThat(RankingHistoryItemResponse.class.getAnnotation(Schema.class).description())
+                .isEqualTo("Ranking history item");
+        assertThat(schemaDescription(RankingHistoryItemResponse.class, "endsAt"))
+                .isEqualTo("Season end instant");
+        assertThat(schemaDescription(RankingHistoryResponse.class, "nextCursor"))
+                .isEqualTo("Next page cursor");
     }
 
     @Test
@@ -125,6 +156,45 @@ class RankingControllerTest {
     @Test
     void getCurrentRankingRequiresAccessJwtUser() throws Exception {
         mockMvc.perform(get("/api/rankings/current"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void getRankingHistoryUsesAuthenticatedUserCursorAndSize() throws Exception {
+        UUID userId = UUID.randomUUID();
+        RankingHistoryResponse response = new RankingHistoryResponse(
+                List.of(new RankingHistoryItemResponse(
+                        "WEEKLY_20260720",
+                        Instant.parse("2026-07-19T15:00:00Z"),
+                        Instant.parse("2026-07-26T15:00:00Z"),
+                        7L,
+                        950L
+                )),
+                "next-cursor",
+                true
+        );
+        when(rankingHistoryService.getHistory(userId, "cursor-1", 20)).thenReturn(response);
+
+        mockMvc.perform(get("/api/rankings/history")
+                        .requestAttr(AuthRequestAttributes.USER_ID, userId)
+                        .param("cursor", "cursor-1")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content[0].seasonCode").value("WEEKLY_20260720"))
+                .andExpect(jsonPath("$.data.content[0].endsAt").value("2026-07-26T15:00:00Z"))
+                .andExpect(jsonPath("$.data.content[0].myFinalRank").value(7))
+                .andExpect(jsonPath("$.data.content[0].myFinalScore").value(950))
+                .andExpect(jsonPath("$.data.nextCursor").value("next-cursor"))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+
+        verify(rankingHistoryService).getHistory(userId, "cursor-1", 20);
+    }
+
+    @Test
+    void getRankingHistoryRequiresAccessJwtUser() throws Exception {
+        mockMvc.perform(get("/api/rankings/history"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
     }
