@@ -19,7 +19,7 @@ public class RankingScoreSyncRequestedListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RankingScoreSyncRequestedEvent event) {
         try {
-            rankingProjectionService.syncLatestAllTimeScore(event.userId());
+            rankingProjectionService.syncLatestWeeklyScore(event.userId(), event.occurredAt());
         } catch (RuntimeException exception) {
             log.error("Failed to synchronize ranking projection userId={}", event.userId(), exception);
         }

@@ -210,3 +210,30 @@ tap_batch
 - logout-all은 사용자 revoke marker를 저장하지만 현재 Session 저장 경로가 marker를 확인하지 않는다. logout-all과 신규 로그인 Session 저장 경쟁 차단은 아직 보장되지 않는다.
 - 사용자 요청 탈퇴와 Toss unlink Webhook이 동시에 처리될 때 상태 변경, 개인정보 익명화, Redis Session 폐기가 멱등하게 수렴하는지 동시성 검증이 필요하다.
 - 출금, 탭, 상자, 부스터는 Persistence schema가 있으나 Controller/Service 트랜잭션 구현은 아직 없으므로 위 처리 흐름은 목표 계약이다.
+## BEA-158 weekly ranking architecture addendum
+
+- Current ranking is a weekly projection. `ALL_TIME` remains in the model for compatibility and historical data preservation, but it is not the current ranking source.
+- Business time zone is configured as `app.business-time-zone=Asia/Seoul`. The UTC `Clock` bean remains the source for instants.
+- `TapBatchService` owns business instant/date derivation and passes `LocalDate` to `UserTapDailyService`.
+- `RankingScoreSyncRequestedEvent` carries `occurredAt` to prevent Sunday-late events from being projected into the next weekly season after transaction commit.
+- `RankingSeasonService.ensureCurrentWeeklySeason(Instant now)` is the recovery path for missing current weekly seasons. Query APIs do not call it.
+- `RankingSeasonRolloverScheduler` is the proactive path for rollover.
+- PostgreSQL transaction advisory lock serializes weekly season state changes. Redis is not a season state source of truth.
+- New active weekly season activation is handled after commit:
+
+```text
+RankingWeeklySeasonActivatedEvent
+-> RankingWeeklySeasonActivatedListener
+-> active weekly backfill
+-> Redis rebuild
+```
+
+- Rollover finalization:
+
+```text
+ACTIVE -> FINALIZING at endsAt
+FINALIZING -> CLOSED at endsAt + ranking.weekly.finalization-delay
+```
+
+- Final rank snapshot is stored in `ranking_entry.final_rank` and `ranking_entry.finalized_at`. `ranking_entry.score` is the final score for closed weekly seasons.
+- BEA-157 ranking history should be implemented later from closed weekly seasons and these final snapshot fields.

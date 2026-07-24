@@ -2403,3 +2403,92 @@ Query Parameter 초안:
 2. 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
 3. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
 4. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.
+## BEA-158 weekly ranking current API addendum
+
+### `GET /api/rankings/current`
+
+Use Access JWT. The endpoint returns the active weekly ranking only.
+
+Query:
+
+| Name | Type | Required | Description |
+|---|---|---:|---|
+| `limit` | Number | N | Default `50`, allowed `1..100`. No pagination or infinite scroll. |
+
+Response fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `data.season.startedAt` | String | Weekly season start `Instant`. |
+| `data.season.endsAt` | String | Weekly season end `Instant`. |
+| `data.season.nextResetAt` | String | Same as `endsAt` for this implementation. |
+| `data.season.resetDayOfWeek` | String | `MONDAY`. |
+| `data.season.resetTime` | String | `00:00`. |
+| `data.season.timeZone` | String | `Asia/Seoul`. |
+| `data.items[].rank` | Number | Current rank. |
+| `data.items[].previousRank` | Number/null | Previous closed weekly final rank. |
+| `data.items[].rankChange` | Number/null | `previousRank - rank`. |
+| `data.items[].score` | Number | Current weekly score. |
+| `data.myRank.rank` | Number/null | My current rank. |
+| `data.myRank.previousRank` | Number/null | My previous closed weekly final rank. |
+| `data.myRank.rankChange` | Number/null | `previousRank - rank`; null if either side is missing. |
+| `data.myRank.score` | Number | My current weekly score, `0` if not currently participating. |
+| `data.myRank.scoreGapToFirst` | Number | Current first score minus my current score; `0` when no current participant exists. |
+| `data.totalParticipantCount` | Number | Current weekly participant count. |
+
+Notes:
+
+- Weekly reset is Monday `00:00` in `Asia/Seoul`.
+- Previous rank is based on `finalRank` from the immediately previous `CLOSED WEEKLY` season.
+- `ALL_TIME` data is retained but is not the source for this screen.
+- Ranking history is provided by `GET /api/rankings/history`.
+
+### `GET /api/rankings/history`
+
+Use Access JWT. The endpoint returns only my participated `CLOSED WEEKLY` seasons.
+
+Query:
+
+| Name | Type | Required | Description |
+|---|---|---:|---|
+| `cursor` | String | N | Opaque URL-safe cursor from the previous response. Blank cursor reads the first page. |
+| `size` | Number | N | Default `20`, allowed `1..100`. |
+
+Response fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `data.content[].seasonCode` | String | Weekly season code, for example `WEEKLY_20260720`. |
+| `data.content[].startedAt` | String | Closed weekly season start `Instant`. |
+| `data.content[].endsAt` | String | Closed weekly season end `Instant`. |
+| `data.content[].myFinalRank` | Number | My snapshotted final rank. |
+| `data.content[].myFinalScore` | Number | `ranking_entry.score` from the closed season. |
+| `data.nextCursor` | String/null | Cursor for the next page. |
+| `data.hasNext` | Boolean | Whether another page exists. |
+
+Example:
+
+```json
+{
+  "content": [
+    {
+      "seasonCode": "WEEKLY_20260720",
+      "startedAt": "2026-07-19T15:00:00Z",
+      "endsAt": "2026-07-26T15:00:00Z",
+      "myFinalRank": 7,
+      "myFinalScore": 950
+    }
+  ],
+  "nextCursor": "opaque",
+  "hasNext": true
+}
+```
+
+Notes:
+
+- Sort order is `endsAt DESC, seasonId DESC`.
+- The cursor contains `endsAt` and `seasonId`; it is opaque to clients and is not signed or encrypted.
+- Empty history is a normal `200` response with `content=[]`, `nextCursor=null`, and `hasNext=false`.
+- `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and incomplete final-rank entries are excluded.
+- Redis is not used by this endpoint.
+- BEA-158 DB prerequisites must be applied first: `WEEKLY`, `FINALIZING`, `ranking_entry.final_rank`, `ranking_entry.finalized_at`, and BEA-158 constraints/indexes.

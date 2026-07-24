@@ -15,6 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Getter
@@ -24,6 +25,7 @@ import java.util.UUID;
 public class RankingSeason {
 
     public static final String ALL_TIME_CODE = "ALL_TIME";
+    private static final String WEEKLY_CODE_PREFIX = "WEEKLY_";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -67,9 +69,65 @@ public class RankingSeason {
         return season;
     }
 
-    void close(Instant closedAt) {
+    public static RankingSeason activeWeekly(LocalDate weekStartDate, Instant startsAt, Instant endsAt) {
+        if (weekStartDate == null) {
+            throw new IllegalArgumentException("weekStartDate is required");
+        }
+        if (startsAt == null || endsAt == null) {
+            throw new IllegalArgumentException("weekly season boundaries are required");
+        }
+        if (!startsAt.isBefore(endsAt)) {
+            throw new IllegalArgumentException("startsAt must be before endsAt");
+        }
+        RankingSeason season = new RankingSeason();
+        season.code = weeklyCode(weekStartDate);
+        season.rankingType = RankingType.WEEKLY;
+        season.status = RankingSeasonStatus.ACTIVE;
+        season.startsAt = startsAt;
+        season.endsAt = endsAt;
+        return season;
+    }
+
+    public static String weeklyCode(LocalDate weekStartDate) {
+        if (weekStartDate == null) {
+            throw new IllegalArgumentException("weekStartDate is required");
+        }
+        return WEEKLY_CODE_PREFIX + weekStartDate.toString().replace("-", "");
+    }
+
+    public boolean isWeekly() {
+        return rankingType == RankingType.WEEKLY;
+    }
+
+    public boolean contains(Instant occurredAt) {
+        if (occurredAt == null) {
+            return false;
+        }
+        if (occurredAt.isBefore(startsAt)) {
+            return false;
+        }
+        return endsAt == null || occurredAt.isBefore(endsAt);
+    }
+
+    public void startFinalizing() {
+        if (!isWeekly()) {
+            throw new IllegalStateException("only weekly season can start finalizing");
+        }
+        if (status != RankingSeasonStatus.ACTIVE) {
+            throw new IllegalStateException("only active season can start finalizing");
+        }
+        this.status = RankingSeasonStatus.FINALIZING;
+    }
+
+    public void close(Instant closedAt) {
         if (closedAt == null) {
             throw new IllegalArgumentException("closedAt is required");
+        }
+        if (status == RankingSeasonStatus.CLOSED) {
+            return;
+        }
+        if (isWeekly() && status != RankingSeasonStatus.FINALIZING) {
+            throw new IllegalStateException("weekly season must be finalizing before close");
         }
         this.status = RankingSeasonStatus.CLOSED;
         this.closedAt = closedAt;

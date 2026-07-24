@@ -26,8 +26,11 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -61,11 +64,15 @@ class TapBatchServiceTest {
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final UserService userService = mock(UserService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final Instant acceptedAt = Instant.parse("2026-07-20T15:00:00Z");
+    private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
+    private final Clock clock = Clock.fixed(acceptedAt, ZoneOffset.UTC);
+    private final LocalDate tapDate = LocalDate.of(2026, 7, 21);
 
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, pointAccountService, pointLedgerService,
             keycapBoxAccountService, boosterGrantService, redisService, tapPolicyConfig, userService,
-            eventPublisher
+            eventPublisher, clock, businessZoneId
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -110,7 +117,7 @@ class TapBatchServiceTest {
         assertThat(response.boxesDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
         verify(userService, never()).getById(any());
-        verify(userTapDailyService, never()).getOrCreateToday(any());
+        verify(userTapDailyService, never()).getOrCreate(any(), any());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(eventPublisher, never()).publishEvent(any());
     }
@@ -119,16 +126,15 @@ class TapBatchServiceTest {
     void doesNotAccumulateValidTapsWhenBatchArrivalIntervalsAreSuspiciouslyRegular() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
-        Instant now = Instant.now();
-        TapBatch recent1 = batchWithCreatedAt(now.minusMillis(8000));
-        TapBatch recent2 = batchWithCreatedAt(now.minusMillis(16000));
+        TapBatch recent1 = batchWithCreatedAt(acceptedAt.minusMillis(8000));
+        TapBatch recent2 = batchWithCreatedAt(acceptedAt.minusMillis(16000));
         when(tapBatchRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(PageRequest.class)))
                 .thenReturn(List.of(recent1, recent2));
         stubCommonPolicy();
         when(tapPolicyConfig.botStddevThresholdMs()).thenReturn(JITTER_TOLERANT_STDDEV_THRESHOLD_MS);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
@@ -156,8 +162,8 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.maxPerMinute()).thenReturn(0);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
@@ -173,13 +179,13 @@ class TapBatchServiceTest {
     void capsAcceptedCountByElapsedTimeSinceLastBatch() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
-        TapBatch recent = batchWithCreatedAt(Instant.now().minusMillis(4000));
+        TapBatch recent = batchWithCreatedAt(acceptedAt.minusMillis(4000));
         when(tapBatchRepository.findByUserIdOrderByCreatedAtDesc(eq(userId), any(PageRequest.class)))
                 .thenReturn(List.of(recent));
         stubCommonPolicy();
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pointAccountService.getBalance(userId)).thenReturn(0L);
         when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
@@ -198,9 +204,9 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.maxPerDay()).thenReturn(12000);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         daily.addValidTaps(11_995);
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pointAccountService.getBalance(userId)).thenReturn(0L);
         when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
@@ -219,8 +225,8 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         UserTapProgress progress = UserTapProgress.createFor(user, 100, FAR_AWAY_TARGET);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
@@ -249,7 +255,7 @@ class TapBatchServiceTest {
         inOrder.verify(userTapDailyService).save(daily);
         inOrder.verify(userTapProgressService).save(progress);
         inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId));
+        assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
         verify(redisService).executeScript(any(RedisScript.class), eq(List.of("tap:minute:" + userId)), eq("100"), eq("60"));
     }
@@ -262,8 +268,8 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         UserTapProgress progress = UserTapProgress.createFor(user, 100, FAR_AWAY_TARGET);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
@@ -296,8 +302,8 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         UserTapProgress progress = UserTapProgress.createFor(user, FAR_AWAY_TARGET, 200);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
@@ -329,9 +335,9 @@ class TapBatchServiceTest {
         stubCommonPolicy();
         when(tapPolicyConfig.pointDailyCap()).thenReturn(1);
 
-        UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.now());
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         daily.incrementPointEarned();
-        when(userTapDailyService.getOrCreateToday(eq(user))).thenReturn(daily);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         UserTapProgress progress = UserTapProgress.createFor(user, 50, FAR_AWAY_TARGET);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);

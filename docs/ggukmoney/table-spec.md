@@ -407,3 +407,128 @@ Unique와 Check:
 - 현재 Entity 기준으로 `user_keycap.equipped=true`가 `status=COMPLETED`일 때만 가능하다는 CHECK 제약은 없다.
 - 키캡 장착 API는 서비스 레벨에서 완료 상태를 검증하고 사용자 키캡 행 잠금 후 상태를 변경한다. 실제 공유/개발 DB의 `UNIQUE (user_id) WHERE equipped=true` 존재 여부는 배포 전 확인이 필요하다.
 - `app_config`는 `(config_key, effective_at)` Unique와 인덱스를 갖고, 현재 Repository에는 유효 시각 기준 최신 설정을 조회하는 `findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(...)`가 있다.
+## BEA-158 ranking table addendum
+
+`ranking_season` and `ranking_entry` are part of the ranking feature in the current codebase. Existing `ALL_TIME` rows are retained for compatibility, but the current ranking API and projection use `WEEKLY`.
+
+### ranking_season weekly fields
+
+- `ranking_type`: add/allow `WEEKLY`.
+- `status`: add/allow `FINALIZING`.
+- `code`: weekly season code is `WEEKLY_yyyyMMdd`, where the date is the Monday start date in `Asia/Seoul`.
+- `starts_at`, `ends_at`, `closed_at`: stored as `TIMESTAMPTZ`/`Instant`.
+- Active weekly uniqueness and finalizing weekly uniqueness must allow one `ACTIVE WEEKLY` and one `FINALIZING WEEKLY` at the same time.
+
+### ranking_entry final snapshot fields
+
+- `final_rank BIGINT NULL`: closed-season final rank snapshot.
+- `finalized_at TIMESTAMPTZ NULL`: timestamp when final rank was snapshotted.
+- `ranking_entry.score` is the closed season final score; no separate `final_score` column is introduced.
+
+Required constraints:
+
+```sql
+CHECK (final_rank IS NULL OR final_rank > 0);
+
+CHECK (
+    (final_rank IS NULL AND finalized_at IS NULL)
+ OR (final_rank IS NOT NULL AND finalized_at IS NOT NULL)
+);
+```
+
+### Manual DB SQL checklist for BEA-158
+
+Do not add Flyway/Liquibase for this issue. Confirm the real DB type first:
+
+```sql
+SELECT column_name, data_type, udt_name
+FROM information_schema.columns
+WHERE table_name = 'ranking_season'
+  AND column_name IN ('ranking_type', 'status');
+
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'ranking_season'::regclass
+  AND contype = 'c';
+```
+
+If PostgreSQL enum is used:
+
+```sql
+ALTER TYPE ranking_type ADD VALUE IF NOT EXISTS 'WEEKLY';
+ALTER TYPE ranking_season_status ADD VALUE IF NOT EXISTS 'FINALIZING';
+```
+
+If `VARCHAR` with no CHECK is used, no enum SQL is required.
+
+If `VARCHAR` with CHECK is used, replace the CHECK constraints so `ranking_type` allows `ALL_TIME`, `WEEKLY` and `status` allows `ACTIVE`, `FINALIZING`, `CLOSED`.
+
+Add final snapshot columns and constraints idempotently:
+
+```sql
+ALTER TABLE ranking_entry
+ADD COLUMN IF NOT EXISTS final_rank BIGINT;
+
+ALTER TABLE ranking_entry
+ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_ranking_entry_final_rank_positive'
+          AND conrelid = 'ranking_entry'::regclass
+    ) THEN
+        ALTER TABLE ranking_entry
+        ADD CONSTRAINT ck_ranking_entry_final_rank_positive
+        CHECK (final_rank IS NULL OR final_rank > 0);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_ranking_entry_final_rank_pair'
+          AND conrelid = 'ranking_entry'::regclass
+    ) THEN
+        ALTER TABLE ranking_entry
+        ADD CONSTRAINT ck_ranking_entry_final_rank_pair
+        CHECK (
+            (final_rank IS NULL AND finalized_at IS NULL)
+         OR (final_rank IS NOT NULL AND finalized_at IS NOT NULL)
+        );
+    END IF;
+END $$;
+```
+
+Add partial unique indexes:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ranking_season_active_weekly
+ON ranking_season (ranking_type)
+WHERE ranking_type = 'WEEKLY' AND status = 'ACTIVE';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ranking_season_finalizing_weekly
+ON ranking_season (ranking_type)
+WHERE ranking_type = 'WEEKLY' AND status = 'FINALIZING';
+```
+
+Verification:
+
+```sql
+SELECT ranking_type, status, COUNT(*)
+FROM ranking_season
+WHERE ranking_type = 'WEEKLY'
+GROUP BY ranking_type, status;
+
+SELECT COUNT(*)
+FROM ranking_entry
+WHERE (final_rank IS NULL) <> (finalized_at IS NULL);
+
+SELECT COUNT(*)
+FROM ranking_entry
+WHERE final_rank <= 0;
+```
+
+Rollback caution: keep `ALL_TIME` data. If weekly rollout is reverted, disable BEA-158 application code and route current ranking reads back to the previous compatible branch; do not delete `WEEKLY` seasons or final-rank columns during emergency rollback.

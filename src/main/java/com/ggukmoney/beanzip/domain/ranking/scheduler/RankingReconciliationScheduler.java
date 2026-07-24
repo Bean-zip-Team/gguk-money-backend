@@ -14,7 +14,7 @@ public class RankingReconciliationScheduler {
     private final RankingProperties rankingProperties;
 
     @Scheduled(fixedDelayString = "#{@rankingProperties.reconciliationInterval().toMillis()}")
-    public void reconcileActiveAllTime() {
-        reconciliationService.reconcileActiveAllTime();
+    public void reconcileActiveWeekly() {
+        reconciliationService.reconcileActiveWeekly();
     }
 }

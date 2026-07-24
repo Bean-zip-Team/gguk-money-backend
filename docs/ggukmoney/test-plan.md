@@ -154,3 +154,40 @@
 ```
 
 종료 코드가 실패이면 전체 빌드 성공으로 표현하지 않는다. Docker 또는 외부 환경 문제는 실패 원인으로 분리해 기록한다.
+## BEA-158 weekly ranking test plan addendum
+
+Targeted tests:
+
+- `UserTapDailyServiceTest`: `getOrCreate(AppUser, LocalDate)` uses the provided date and does not call `LocalDate.now()`.
+- `TapBatchServiceTest`: one `acceptedAt` is created from injected `Clock`; rate limit, booster lookup, tap date, and `RankingScoreSyncRequestedEvent.occurredAt` use that same instant.
+- `RankingSeasonServiceTest`: `Asia/Seoul` Monday `00:00` boundaries, `WEEKLY_yyyyMMdd`, advisory lock call, `ACTIVE -> FINALIZING`, current active creation, finalization delay, final backfill, final rank snapshot, and `FINALIZING -> CLOSED`.
+- `RankingSeasonRolloverSchedulerTest`: scheduler delegates with injected `Clock` and configured fixed delay.
+- `RankingProjectionServiceTest`: realtime projection uses the season containing `occurredAt`, does not create past seasons, and does not modify `FINALIZING`/`CLOSED` seasons.
+- `RankingScoreSyncRequestedListenerTest`: AFTER_COMMIT listener calls weekly projection and catches `RuntimeException`.
+- `RankingWeeklySeasonActivatedListenerTest`: AFTER_COMMIT listener backfills new active weekly season and rebuilds Redis; failures do not propagate.
+- `RankingBackfillServiceTest`: active weekly and finalizing-only backfill use `user_tap_daily.valid_tap_count` aggregate sums.
+- `RankingRebuildServiceTest`, `RankingReconciliationServiceTest`, `RankingEligibilityChangeServiceTest`: active current ranking paths use `WEEKLY` and preserve Redis lock/fallback behavior.
+- `RankingQueryServiceTest`: active weekly read, no mutation, previous `finalRank`, `rankChange`, first season nulls, current/previous participant combinations, `limit=100` accepted, `limit=101` rejected, Redis and PostgreSQL response shape alignment.
+- `RankingControllerTest`: `/api/rankings/current` path, auth requirement, Swagger/DTO schema components.
+
+### BEA-157 weekly ranking history
+
+- `RankingHistoryCursorCodecTest`: null and blank cursor, valid URL-safe Base64 encode/decode, invalid Base64, missing delimiter, invalid `Instant`, non-positive `seasonId`, and excessive cursor length.
+- `RankingHistoryRepositoryIntegrationTest`: PostgreSQL native query returns only the authenticated user's completed `CLOSED WEEKLY` entries, excludes `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users, and incomplete final-rank entries, preserves `ranking_entry.score` as `myFinalScore`, orders by `endsAt DESC, seasonId DESC`, and paginates without duplicate or skipped rows.
+- `RankingHistoryServiceTest`: default size `20`, max size `100`, size validation, `size + 1` fetch, `nextCursor` from the last returned row, empty page, second page, and decoded cursor repository arguments.
+- `RankingControllerTest`: `GET /api/rankings/history`, Access JWT requirement, cursor and size query forwarding, `endsAt` response field, 401, 400, Swagger endpoint and query parameter annotations.
+- Regression set: current ranking response, Redis fallback, weekly season service, projection, rollover, and final-rank behavior must not change.
+
+Final verification commands:
+
+```powershell
+.\gradlew.bat clean build
+git diff --check
+git status --short
+```
+
+If Docker/Testcontainers fails, record it separately and run:
+
+```powershell
+.\gradlew.bat compileJava compileTestJava
+```

@@ -142,3 +142,20 @@
 - 상자 개봉 결과를 `keycap_box_open`에 통합했다.
 - 키캡 조각과 완성 상태를 `user_keycap`에 통합했다.
 - Toss 지급 결과를 `cashout_request`에 통합했다.
+## 2026-07-24 BEA-158 weekly ranking implementation
+
+- `GET /api/rankings/current` now uses the active `WEEKLY` ranking season instead of `ALL_TIME`.
+- Weekly seasons use `app.business-time-zone=Asia/Seoul`, reset every Monday at `00:00`, and use codes in the form `WEEKLY_yyyyMMdd`.
+- Season rollover uses `ACTIVE -> FINALIZING -> CLOSED`. At `endsAt`, the expired active season enters `FINALIZING` and the current week active season is ensured. At `endsAt + ranking.weekly.finalization-delay`, final weekly scores are backfilled, `ranking_entry.final_rank` is snapshotted, and the season is closed in the same DB transaction.
+- PostgreSQL transaction advisory lock `ranking.weekly.advisory-lock-key` serializes multi-instance season creation and rollover. Redis locks remain limited to rebuild/reconciliation duplication control.
+- Newly created active weekly seasons publish `RankingWeeklySeasonActivatedEvent` after commit. The listener backfills current-week scores from `user_tap_daily.valid_tap_count` and rebuilds Redis.
+- Current ranking response adds `season`, `previousRank`, and `rankChange`. `rankChange = previousRank - currentRank`.
+- `RankingType.ALL_TIME` and existing data are retained for compatibility, but the current ranking API, projection, initializer, rebuild, reconciliation, and eligibility paths use `WEEKLY`.
+
+## 2026-07-24 BEA-157 weekly ranking history API
+
+- `GET /api/rankings/history` returns the authenticated user's participated `CLOSED WEEKLY` seasons.
+- Response items expose `seasonCode`, `startedAt`, `endsAt`, `myFinalRank`, and `myFinalScore`; `myFinalScore` is the closed season `ranking_entry.score`.
+- Pagination uses an opaque URL-safe cursor over `endsAt|seasonId`, sorted by `endsAt DESC, seasonId DESC`.
+- `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and incomplete final-rank entries are excluded.
+- Redis is not used, no new DB columns or manual SQL are added, and BEA-158 weekly ranking DB prerequisites remain required.
