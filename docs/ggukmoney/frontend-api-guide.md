@@ -179,11 +179,11 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 구현 확인 | 변경된 작업은 새 키 생성 |
 | 400 | `IDEMPOTENCY_KEY_REQUIRED` | 구현 확인 | 같은 작업 재시도에는 기존 키 유지 |
 | 400 | `KEYCAP_BOX_NOT_AVAILABLE` | 구현 확인 | 상자 잔액 부족 안내 |
-| 400 | `FREE_OPEN_TICKET_NOT_AVAILABLE` | 구현 확인 | 무료권 부족 안내 |
-| 400 | `ADVERTISEMENT_OPEN_NOT_SUPPORTED` | 구현 확인 | 광고 개봉 미지원 안내 |
-| 400 | `AD_REWARD_ID_REQUIRED` | 계약상 예정 · 구현 필요 | 광고 보상 식별자 확인 |
-| 409 | `AD_REWARD_ALREADY_USED` | 계약상 예정 · 구현 필요 | 새 광고 보상으로 재시도 |
-| 502 | `AD_REWARD_VERIFICATION_FAILED` | 계약상 예정 · 구현 필요 | 광고 검증 실패 안내 |
+| 429 | `FREE_OPEN_LIMIT_EXCEEDED` | 구현 확인 | 공통 주기 무료 개봉 한도 초과 안내 |
+| 429 | `AD_OPEN_LIMIT_EXCEEDED` | 구현 확인 | 공통 주기 광고 개봉 한도 초과 안내 |
+| 400 | `AD_REWARD_ID_REQUIRED` | 구현 확인 | 광고 보상 식별자 확인 |
+| 409 | `AD_REWARD_ALREADY_USED` | 구현 확인 | 새 광고 보상으로 재시도 |
+| 502 | `AD_REWARD_VERIFICATION_FAILED` | 광고 Provider 검증 범위 제외 | 광고 검증 실패 안내 |
 | 409 | `KEYCAP_REWARD_NOT_AVAILABLE` | 구현 확인 | 보상 후보 없음 안내 |
 | 404 | `ONBOARDING_ATTEMPT_NOT_FOUND` | 구현 확인 | 신규 가입 온보딩 보상 기록 없음 |
 | 409 | `ONBOARDING_ATTEMPT_NOT_OPENED` | 구현 확인 | 신규 가입 온보딩 보상 기록 상태 비정상 |
@@ -228,7 +228,7 @@ Request 예시:
 9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
 10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
 
-온보딩 상자 개봉 API는 `POST /api/v1/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT, `boxBalance`, `freeOpenTicketCount`를 사용하는 로그인 사용자 전용 `POST /api/v1/keycap-boxes/open`과 구분한다.
+온보딩 상자 개봉 API는 `POST /api/v1/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT와 공통 개봉 주기를 사용하는 로그인 사용자 전용 `POST /api/keycap-boxes/open`과 구분한다.
 
 ### 회원가입 전 온보딩 키캡 상자 개봉
 
@@ -1248,17 +1248,17 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ## 키캡 상자
 
-### 13. `GET /api/v1/keycap-boxes/status`
+### 13. `GET /api/keycap-boxes/status`
 
 상태: 구현 확인
 
 #### Description
 
-내 키캡 상자 잔액, 무료 개봉권, 다음 상자 진행도를 조회한다.
+키캡 상자 잔액, 공통 1시간 주기의 무료/광고 개봉 가능 상태, 다음 상자 진행도를 조회한다.
 
-상자 잔액과 무료권 수량은 `KeycapBoxAccount`를 원본으로 사용한다. 상자 진행도는 `UserTapProgress`를 원본으로 사용하며, `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값이다.
+상자 잔액과 공통 개봉 주기는 `KeycapBoxAccount`를 원본으로 사용한다. 상자 진행도는 `UserTapProgress`를 원본으로 사용하며, `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값이다.
 
-무료권 충전 시각(`nextFreeTicketAt`)과 광고 개봉 카운트(`adOpenCount`)는 현재 저장 원본과 정책이 확정되지 않아 이번 응답에서 제외한다.
+상태 화면에는 잔여 횟수를 직접 노출하지 않는다. 무료 2회와 광고 2회를 모두 사용하고 상자가 남아 있으면 `charging=true`와 `nextRechargeAt`을 반환한다. 상자가 없으면 `canFreeOpen=false`, `canAdOpen=false`, `charging=false`, `nextRechargeAt=null`로 충전 중 상태와 구분한다.
 
 #### Request Header
 
@@ -1282,7 +1282,10 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 |---|---|---|
 | `success` | Boolean | 요청 성공 여부 |
 | `data.boxBalance` | Number | 보유 상자 수 |
-| `data.freeOpenTicketCount` | Number | 무료 개봉권 수 |
+| `data.canFreeOpen` | Boolean | 무료 개봉 가능 여부 |
+| `data.canAdOpen` | Boolean | 광고 개봉 가능 여부 |
+| `data.charging` | Boolean | 공통 주기 충전 중 여부 |
+| `data.nextRechargeAt` | String \| null | 충전 중일 때 다음 공통 충전 시각 |
 | `data.boxProgressTapCount` | Number | 현재 누적 유효 탭 수 |
 | `data.nextBoxRequiredTapCount` | Number | 누적 유효 탭 기준 다음 상자 목표값 |
 
@@ -1291,7 +1294,10 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
   "success": true,
   "data": {
     "boxBalance": 2,
-    "freeOpenTicketCount": 1,
+    "canFreeOpen": true,
+    "canAdOpen": true,
+    "charging": false,
+    "nextRechargeAt": null,
     "boxProgressTapCount": 45,
     "nextBoxRequiredTapCount": 100
   }
@@ -1338,7 +1344,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 14. `POST /api/v1/keycap-boxes/open`
+### 14. `POST /api/keycap-boxes/open`
 
 상태: 구현 확인
 
@@ -1351,12 +1357,12 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 자원 소비 규칙:
 
 - 모든 성공 개봉은 `boxBalance`를 1 차감한다.
-- `FREE`: `boxBalance` 1개와 `freeOpenTicketCount` 1개를 차감한다.
-- `ADVERTISEMENT`: `boxBalance` 1개를 차감하고 검증된 `adRewardId`를 소비한다. `freeOpenTicketCount`는 차감하지 않는다.
-- 현재 구현에서 `ADVERTISEMENT` 요청은 미지원 오류로 처리하며 어떤 자원도 차감하지 않는다.
-- 부족 오류 우선순위는 `boxBalance` 부족을 먼저 확인한 뒤, `FREE`는 무료권 부족, `ADVERTISEMENT`는 광고 보상 ID 필수/검증 실패를 확인한다.
+- `FREE`: `boxBalance` 1개를 차감하고 공통 1시간 주기의 무료 개봉 사용 횟수를 1 증가시킨다.
+- `ADVERTISEMENT`: `boxBalance` 1개를 차감하고 공통 1시간 주기의 광고 개봉 사용 횟수를 1 증가시키며 검증된 `adRewardId`를 소비한다.
+- 광고 Provider 신규 검증 구현은 이번 범위에 포함하지 않는다. 현재 요청에서는 `adRewardId` 존재와 중복 사용 방지를 확인한다.
+- 부족 오류 우선순위는 `boxBalance` 부족을 먼저 확인한 뒤, `FREE`는 `FREE_OPEN_LIMIT_EXCEEDED`, `ADVERTISEMENT`는 광고 보상 ID 필수와 `AD_OPEN_LIMIT_EXCEEDED`를 확인한다.
 - 조회나 멱등 재응답 중에는 자원을 다시 차감하지 않는다.
-- 무료권 지급 방식, 자동 충전 주기, 최대 보유량, `nextFreeTicketAt` 계산은 후속 이슈에서 확정한다.
+- 무료와 광고는 순서와 관계없이 같은 1시간 주기를 공유하며, 사용하지 않은 횟수는 다음 주기로 이월하지 않는다.
 - `adRewardId`는 광고 검증 Provider가 발급한 255자 이하 문자열로 저장한다. 실제 형식은 광고 검증 인터페이스 구현 시 확정한다.
 
 보상 규칙:
@@ -1368,7 +1374,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 - MVP에서는 후보 키캡 중 균등 랜덤으로 하나를 선택한다.
 - 기본 지급 조각 수는 1개다.
 - 후보가 없으면 `409 KEYCAP_REWARD_NOT_AVAILABLE`을 반환한다.
-- 후보가 없으면 `boxBalance`, `freeOpenTicketCount`, `adRewardId`를 소비하지 않고 `KeycapBoxOpen` 개봉 이력도 생성하지 않는다.
+- 후보가 없으면 `boxBalance`, 공통 주기 사용 횟수, `adRewardId`를 소비하지 않고 `KeycapBoxOpen` 개봉 이력도 생성하지 않는다.
 - 사용자 보유 키캡이 없으면 `user_keycap`을 생성하고, 있으면 조각을 누적한다.
 - 조각 수는 `requiredShardCount`를 초과 저장하지 않는다.
 - 이번 개봉으로 `IN_PROGRESS`에서 `COMPLETED`가 되면 `completed=true`, `completedAt=now`를 기록한다.
@@ -1376,9 +1382,8 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 부스터 정책:
 
-- 현재 부스터는 포인트 적립 전용이다.
-- 키캡 상자 개봉 조각 수에는 적용하지 않는다.
-- 따라서 MVP 개봉 응답에는 `boostApplied`를 포함하지 않는다.
+- 기존 부스터 배율은 키캡 상자 개봉 조각 수에 적용한다.
+- MVP 개봉 응답에는 `boostApplied`를 포함하지 않는다.
 
 멱등성 규칙:
 
@@ -1393,12 +1398,12 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 1. `Idempotency-Key`와 `requestHash`를 확인한다.
 2. 같은 요청이면 기존 결과를 반환하고, 다른 요청이면 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
-3. `keycap_box_account`를 잠근다.
-4. 개봉 방식별 자원 보유 여부를 검증한다.
+3. `keycap_box_account`를 잠그고 공통 1시간 주기 만료를 반영한다.
+4. 상자 보유 여부와 개봉 방식별 공통 주기 사용 한도를 검증한다.
 5. 미완성 활성 키캡 후보를 조회한다.
 6. 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환한다.
 7. 후보 중 하나를 균등 랜덤으로 선택한다.
-8. 상자, 무료권, 광고 보상 등 필요한 자원을 차감한다.
+8. 상자, 개봉 방식별 사용 횟수, 광고 보상 등 필요한 자원을 차감한다.
 9. `UserKeycap`을 생성하거나 조각을 증가시킨다.
 10. `requiredShardCount` 도달 시 `COMPLETED` 전환과 `completedAt`을 기록한다.
 11. `KeycapBoxOpen`을 저장한다.
@@ -1485,8 +1490,8 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 {
   "success": false,
   "error": {
-    "code": "FREE_OPEN_TICKET_NOT_AVAILABLE",
-    "message": "사용 가능한 무료 개봉권이 없습니다."
+    "code": "FREE_OPEN_LIMIT_EXCEEDED",
+    "message": "무료 개봉 한도를 초과했습니다."
   }
 }
 ```
@@ -1495,8 +1500,8 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 {
   "success": false,
   "error": {
-    "code": "ADVERTISEMENT_OPEN_NOT_SUPPORTED",
-    "message": "광고 개봉은 아직 지원하지 않습니다."
+    "code": "AD_OPEN_LIMIT_EXCEEDED",
+    "message": "광고 개봉 한도를 초과했습니다."
   }
 }
 ```
@@ -1535,7 +1540,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 15. `GET /api/v1/keycap-boxes/history`
+### 15. `GET /api/keycap-boxes/history`
 
 상태: 구현 확인
 

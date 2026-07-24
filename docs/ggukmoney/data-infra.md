@@ -102,7 +102,7 @@ tap_batch
 + user_tap_progress
 ```
 
-상자 상태 조회의 잔액과 무료권 수량은 `keycap_box_account`를 읽고, 상자 진행도는 `user_tap_progress`를 읽어 조합한다. 조회 API는 두 Entity를 생성하거나 저장하지 않는다.
+상자 상태 조회의 잔액과 공통 1시간 개봉 주기는 `keycap_box_account`를 읽고, 상자 진행도는 `user_tap_progress`를 읽어 조합한다. 조회 API는 두 Entity를 생성하거나 저장하지 않는다.
 
 ### 상자 개봉
 
@@ -115,13 +115,13 @@ keycap_box_account
 상자 개봉은 구현됐으며 PostgreSQL `keycap_box_open`을 멱등성 Source of Truth로 사용한다.
 
 - 모든 성공 개봉은 `keycap_box_account.box_balance`를 1 차감한다.
-- `FREE`는 추가로 `keycap_box_account.free_open_ticket_count`를 1 차감한다.
-- `ADVERTISEMENT`는 광고 검증 Service가 구현되기 전에는 미지원 오류로 처리하고 자원을 차감하지 않는다. 검증 구현 후에는 `ad_reward_id`를 필수로 받고 전역 중복 사용을 금지한다.
+- `FREE`는 추가로 공통 1시간 주기의 `keycap_box_account.free_open_used_count`를 1 증가시킨다.
+- `ADVERTISEMENT`는 추가로 공통 1시간 주기의 `keycap_box_account.ad_open_used_count`를 1 증가시키고 `ad_reward_id`를 필수로 받으며 전역 중복 사용을 금지한다. 광고 Provider 신규 검증 구현은 이번 범위에 포함하지 않는다.
 - 보상 후보는 `keycap.active=true` 키캡 중 현재 사용자가 아직 완성하지 않은 키캡이다. `UserKeycap`이 없거나 `status=IN_PROGRESS`이면 후보에 포함하고, `status=COMPLETED`인 키캡과 온보딩으로 완성 지급된 키캡은 제외한다.
 - MVP에서는 후보 중 하나를 균등 랜덤으로 선택한다. 시즌 필터와 가중치는 저장 원본이 없어 후속 결정 사항이다.
-- 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 `box_balance`, `free_open_ticket_count`, `ad_reward_id`를 소비하지 않으며 `keycap_box_open`도 생성하지 않는다.
+- 후보가 없으면 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하고 `box_balance`, `free_open_used_count`, `ad_open_used_count`, `ad_reward_id`를 소비하지 않으며 `keycap_box_open`도 생성하지 않는다.
 - 기본 지급 조각 수는 1개이며, `user_keycap.shard_count`는 `required_shard_count`를 초과 저장하지 않는다.
-- 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에 적용하지 않는다.
+- 기존 부스터 배율은 상자 개봉 조각 수에 적용하지만 응답에는 `boostApplied`를 노출하지 않는다.
 - 현재 구현은 `TransactionTemplate` 경계 안에서 상자 계정을 비관적 쓰기 잠금으로 조회하고, 잠금 후 같은 멱등키를 재조회한다.
 - `DataIntegrityViolationException`이 발생하면 롤백된 뒤 기존 row를 재조회해 같은 요청이면 기존 응답으로 복구한다.
 

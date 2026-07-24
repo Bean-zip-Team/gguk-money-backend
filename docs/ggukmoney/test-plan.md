@@ -61,7 +61,11 @@
 - `KeycapControllerTest`: `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip` Access JWT 필수 정책과 `success/data` 응답 확인
 - `KeycapBoxHistoryCursorCodecTest`: 상자 개봉 이력 cursor의 Base64URL 인코딩/디코딩, 빈 cursor, 잘못된 cursor의 `COMMON_VALIDATION_ERROR` 확인
 - `KeycapBoxHistoryServiceTest`: 빈 이력, 기본 size, `size + 1` 기반 `hasNext`, `nextCursor`, cursor 디코딩 전달, invalid size 차단, 조회 중 저장 미호출 확인
-- `KeycapBoxControllerTest`: `GET /api/v1/keycap-boxes/status`, `POST /api/v1/keycap-boxes/open`, `GET /api/v1/keycap-boxes/history` Access JWT 필수 정책, `Idempotency-Key` 누락, Validation 실패, FREE 성공 응답, `ADVERTISEMENT_OPEN_NOT_SUPPORTED`, 이력 응답 구조와 내부 필드 미노출 확인
+- `KeycapBoxAccountTest`: 무료/광고 공통 1시간 주기 계산, 여러 주기 경과 시 기준점 전진, 상자 없음과 충전 중 상태 구분, 잘못된 정책값 거부 확인
+- `KeycapBoxStatusServiceTest`: `GET /api/keycap-boxes/status`가 read-only 조회로 상태를 조립하고 저장/비관적 잠금을 사용하지 않는지 확인
+- `KeycapBoxOpenServiceTest`: `POST /api/keycap-boxes/open`에서 무료 2회/광고 2회 한도, 멱등 재요청 추가 차감 없음, 광고 보상 ID 중복 시 `AD_REWARD_ALREADY_USED`, 후보 없음 시 미차감, `FREE_OPEN_LIMIT_EXCEEDED`, `AD_OPEN_LIMIT_EXCEEDED`, 부스터 배율과 개봉 이력 시각 확인
+- `KeycapBoxControllerTest`: `GET /api/keycap-boxes/status`, `POST /api/keycap-boxes/open`, `GET /api/keycap-boxes/history` Access JWT 필수 정책, `Idempotency-Key` 누락, Validation 실패, FREE 성공 응답, Swagger `Idempotency-Key` 최대 100자와 429 응답, 이력 응답 구조와 내부 필드 미노출 확인
+- `KeycapBoxPolicyConfigTest`: `keycapBox.openCycle.durationSeconds`, `keycapBox.freeOpen.limit`, `keycapBox.adOpen.limit` 기본값, app_config override, 잘못된 값의 기본값 fallback과 last-known-good 유지 확인
 - `TapBatchServiceTest`: 탭 배치 처리, 포인트 적립, 상자 지급, 부스터 배율 적용, 중복 요청 재처리 방지 확인
 - `BoosterGrantServiceTest`: 부스터 활성화, 중복 활성화 차단, 일일 제한, 현재 상태, 활성 배율 조회 확인
 - `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인

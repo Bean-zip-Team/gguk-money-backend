@@ -1,5 +1,13 @@
 # 수정 내역
 
+## 2026-07-24 키캡 상자 무료/광고 공통 주기 정책 반영
+
+- 일반 키캡 상자 API 실제 경로를 `GET /api/keycap-boxes/status`, `POST /api/keycap-boxes/open`, `GET /api/keycap-boxes/history`로 정정했다.
+- 상태 응답을 `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`, `boxProgressTapCount`, `nextBoxRequiredTapCount` 기준으로 정리했다.
+- 무료 2회와 광고 2회가 같은 1시간 주기를 공유하고, 모두 사용하면 `charging=true`와 다음 공통 충전 시각을 반환하도록 문서화했다.
+- `FREE_OPEN_LIMIT_EXCEEDED`, `AD_OPEN_LIMIT_EXCEEDED`를 429 오류로 추가하고, 광고 보상 중복은 `AD_REWARD_ALREADY_USED` 409로 처리하도록 정리했다.
+- `keycap_box_account` 신규 컬럼과 app_config 신규 키 수동 적용 순서를 문서화하고 구 컬럼은 이번 배포에서 제거하지 않는 것으로 정리했다.
+
 ## 2026-07-15 Toss 회원가입 온보딩 보상 귀속 구현
 
 - `POST /api/v1/auth/toss/login` Request에 `onboardingAttemptId` 선택 필드를 추가하고 Response에 `onboardingRewardApplied`를 추가했다.
@@ -18,7 +26,7 @@
 
 ## 2026-07-15 키캡 상자 개봉 이력 API 구현
 
-- `GET /api/v1/keycap-boxes/history`를 Access JWT 필수 구현 확인 API로 추가했다.
+- `GET /api/keycap-boxes/history`를 Access JWT 필수 구현 확인 API로 추가했다.
 - 이력 목록은 `cursor`/`size` 기반으로 조회하며 `openedAt DESC`, 내부 PK DESC 순서로 안정 정렬한다.
 - 응답은 `content`, `nextCursor`, `hasNext`와 각 항목의 `boxOpenId`, `openMethod`, `keycapId`, `shardCount`, `completed`, `openedAt`만 노출한다.
 - 내부 BIGINT ID, 사용자 ID, 멱등키, 요청 해시, 광고 보상 ID, `boostApplied`는 이력 응답에 포함하지 않는다.
@@ -26,7 +34,7 @@
 
 ## 2026-07-14 멱등 키캡 상자 개봉 API 구현
 
-- `POST /api/v1/keycap-boxes/open`을 Access JWT와 `Idempotency-Key` 필수 API로 구현했다.
+- `POST /api/keycap-boxes/open`을 Access JWT와 `Idempotency-Key` 필수 API로 구현했다.
 - `FREE` 개봉은 상자 잔액과 무료권을 각각 1개 차감하고, 미완성 활성 키캡 후보 중 균등 랜덤으로 1조각을 지급하도록 정리했다.
 - 같은 사용자와 같은 멱등키의 같은 요청은 기존 결과를 반환하고, 다른 요청 hash는 `IDEMPOTENCY_KEY_REUSED`로 차단하도록 반영했다.
 - `ADVERTISEMENT`는 광고 검증 Service 부재로 `ADVERTISEMENT_OPEN_NOT_SUPPORTED`를 반환하며 자원을 차감하지 않는 상태를 유지했다.
@@ -35,19 +43,19 @@
 
 ## 2026-07-14 키캡 상자 개봉 계약 확정
 
-- `POST /api/v1/keycap-boxes/open`의 문서 계약을 현재 코드 상태와 후속 구현 범위에 맞춰 정리했다.
+- `POST /api/keycap-boxes/open`의 문서 계약을 현재 코드 상태와 후속 구현 범위에 맞춰 정리했다.
 - 모든 성공 개봉은 상자 잔액을 1 차감하고, `FREE` 개봉은 추가로 무료 개봉권 1개를 차감하는 것으로 확정했다.
 - `ADVERTISEMENT` 개봉은 광고 검증 Service 구현 전에는 미지원 오류로 처리하며 자원을 차감하지 않는다. 구현 후에는 `adRewardId` 필수와 전역 중복 방지 제약을 사용하도록 정리했다.
 - 상자 개봉 멱등성은 PostgreSQL `(user_id, idempotency_key)` Unique와 `request_hash` 비교를 Source of Truth로 사용하도록 확정했다.
 - 일반 상자 보상 후보는 활성 키캡 중 현재 사용자가 아직 완성하지 않은 키캡으로 제한하고, 후보가 없으면 자원 차감과 개봉 이력 생성 없이 `KEYCAP_REWARD_NOT_AVAILABLE`을 반환하도록 확정했다.
 - 보상은 후보 중 균등 랜덤으로 기본 1조각을 지급하고, 초과 조각 저장 없이 완성 전환 시 `completed_at`을 기록하는 방향으로 정리했다.
-- 현재 부스터는 포인트 적립 전용이므로 상자 개봉 조각 수에는 적용하지 않는 것으로 정리했다.
+- 기존 부스터 배율은 상자 개봉 조각 수에 적용하지만 응답에는 노출하지 않는 것으로 정리했다.
 - 온보딩 키캡 상자는 일반 상자와 분리하고, 회원가입 전 개봉 결과를 `onboardingAttemptId`에 연결한 뒤 신규 Toss 로그인 시 서버가 재검증해 포인트와 완성 키캡을 한 번만 귀속하는 MVP 권장안으로 정리했다.
 
 ## 2026-07-14 키캡 상자 상태 조회 API 구현
 
-- `GET /api/v1/keycap-boxes/status`를 Access JWT 필수 구현 확인 API로 추가했다.
-- 응답은 현재 저장 원본이 확인되는 `boxBalance`, `freeOpenTicketCount`, `boxProgressTapCount`, `nextBoxRequiredTapCount` 4개 필드만 반환한다.
+- `GET /api/keycap-boxes/status`를 Access JWT 필수 구현 확인 API로 추가했다.
+- 응답은 현재 저장 원본이 확인되는 `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`, `boxProgressTapCount`, `nextBoxRequiredTapCount` 7개 필드만 반환한다.
 - 상자 잔액과 무료권 수량은 `KeycapBoxAccount`, 상자 진행도는 `UserTapProgress`를 원본으로 사용하도록 정리했다.
 - `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값으로 기록했다.
 - 무료권 충전 시각과 광고 개봉 카운트는 저장 원본과 정책이 없어 후속 이슈로 분리했다.

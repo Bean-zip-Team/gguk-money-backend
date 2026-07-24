@@ -14,10 +14,17 @@ import org.mapstruct.ReportingPolicy;
 public interface KeycapBoxMapper {
 
     @Mapping(target = "boxBalance", source = "account.boxBalance")
-    @Mapping(target = "freeOpenTicketCount", source = "account.freeOpenTicketCount")
+    @Mapping(target = "canFreeOpen", source = "cycleSnapshot.canFreeOpen")
+    @Mapping(target = "canAdOpen", source = "cycleSnapshot.canAdOpen")
+    @Mapping(target = "charging", source = "cycleSnapshot.charging")
+    @Mapping(target = "nextRechargeAt", source = "cycleSnapshot.nextRechargeAt")
     @Mapping(target = "boxProgressTapCount", source = "progress.cumulativeValidTapCount")
     @Mapping(target = "nextBoxRequiredTapCount", source = "progress.nextBoxTarget")
-    KeycapBoxStatusResponse mapToStatusResponse(KeycapBoxAccount account, BoxProgressSnapshot progress);
+    KeycapBoxStatusResponse mapToStatusResponse(
+            KeycapBoxAccount account,
+            KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot,
+            BoxProgressSnapshot progress
+    );
 
     @Mapping(target = "boxOpenId", source = "publicId")
     @Mapping(target = "keycapId", source = "keycap.publicId")
