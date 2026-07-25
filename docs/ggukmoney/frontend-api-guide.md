@@ -1258,7 +1258,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 상자 잔액과 공통 개봉 주기는 `KeycapBoxAccount`를 원본으로 사용한다. 상자 진행도는 `UserTapProgress`를 원본으로 사용하며, `nextBoxRequiredTapCount`는 남은 탭 수가 아니라 누적 유효 탭 기준 다음 상자 목표값이다.
 
-상태 화면에는 잔여 횟수를 직접 노출하지 않는다. 무료 2회와 광고 2회를 모두 사용하고 상자가 남아 있으면 `charging=true`와 `nextRechargeAt`을 반환한다. 상자가 없으면 `canFreeOpen=false`, `canAdOpen=false`, `charging=false`, `nextRechargeAt=null`로 충전 중 상태와 구분한다.
+상태 화면에는 잔여 횟수를 직접 노출하지 않는다. `canFreeOpen`과 `canAdOpen`은 상자 보유 여부와 각 방식의 개봉 한도를 함께 판단한다. `charging`은 상자 보유 여부와 무관하게 무료 2회와 광고 2회를 모두 사용해 공통 개봉 주기가 소진됐는지 나타낸다. `charging=true`이면 `nextRechargeAt`에 다음 공통 충전 시각을 반환하고, 그렇지 않으면 `nextRechargeAt=null`이다.
 
 #### Request Header
 

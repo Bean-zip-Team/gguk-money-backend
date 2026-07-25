@@ -3,8 +3,14 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
+import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
@@ -12,7 +18,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Constructor;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,18 +32,62 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class KeycapBoxHistoryServiceTest {
+class KeycapBoxQueryServiceTest {
 
-    private final KeycapBoxOpenRepository keycapBoxOpenRepository = mock(KeycapBoxOpenRepository.class);
+    private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
+    private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
     private final KeycapBoxMapper keycapBoxMapper = mock(KeycapBoxMapper.class);
+    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
+    private final Clock clock = Clock.fixed(Instant.parse("2026-07-16T00:10:00Z"), ZoneOffset.UTC);
+    private final KeycapBoxOpenRepository keycapBoxOpenRepository = mock(KeycapBoxOpenRepository.class);
     private final KeycapBoxHistoryCursorCodec cursorCodec = new KeycapBoxHistoryCursorCodec();
-    private final KeycapBoxHistoryService service = new KeycapBoxHistoryService(
-            keycapBoxOpenRepository,
+    private final KeycapBoxQueryService service = new KeycapBoxQueryService(
+            keycapBoxAccountService,
+            userTapProgressService,
             keycapBoxMapper,
+            keycapBoxPolicyConfig,
+            clock,
+            keycapBoxOpenRepository,
             cursorCodec
     );
 
     private final UUID userId = UUID.randomUUID();
+
+    @Test
+    void getsStatusFromOrdinaryAccountLookupAndTapProgress() {
+        KeycapBoxAccount account = keycapBoxAccount(userId, 2, 1, 0);
+        BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
+        KeycapBoxAccount.OpenCycleSnapshot snapshot =
+                new KeycapBoxAccount.OpenCycleSnapshot(true, true, false, null);
+        KeycapBoxStatusResponse mapped = new KeycapBoxStatusResponse(2, true, true, false, null, 45, 100);
+        when(keycapBoxAccountService.getForUser(userId)).thenReturn(account);
+        when(userTapProgressService.getBoxProgress(userId)).thenReturn(progress);
+        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofHours(1));
+        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
+        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
+        when(keycapBoxMapper.mapToStatusResponse(account, snapshot, progress)).thenReturn(mapped);
+
+        KeycapBoxStatusResponse response = service.getStatus(userId);
+
+        assertThat(response).isEqualTo(mapped);
+        verify(keycapBoxAccountService).getForUser(userId);
+        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
+        verify(userTapProgressService).getBoxProgress(userId);
+        verify(keycapBoxMapper).mapToStatusResponse(account, snapshot, progress);
+    }
+
+    @Test
+    void propagatesMissingBoxAccountWithoutLoadingTapProgress() {
+        when(keycapBoxAccountService.getForUser(userId))
+                .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+
+        assertThatThrownBy(() -> service.getStatus(userId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
+
+        verify(userTapProgressService, never()).getBoxProgress(userId);
+    }
 
     @Test
     void returnsEmptyHistoryWithoutCursorWhenUserHasNoBoxOpens() {
@@ -51,7 +103,7 @@ class KeycapBoxHistoryServiceTest {
     }
 
     @Test
-    void usesDefaultSizeAndReturnsNextCursorWithSizePlusOneFetch() {
+    void returnsNextCursorFromLastReturnedItemAfterSizePlusOneFetch() {
         Instant firstOpenedAt = Instant.parse("2026-07-15T01:00:00Z");
         Instant secondOpenedAt = Instant.parse("2026-07-15T00:00:00Z");
         KeycapBoxOpen first = open(20L, firstOpenedAt);
@@ -73,7 +125,7 @@ class KeycapBoxHistoryServiceTest {
     }
 
     @Test
-    void decodesCursorAndPassesCursorValuesToRepository() {
+    void decodesCursorAndPassesCursorValuesToHistoryRepository() {
         Instant openedAt = Instant.parse("2026-07-15T00:00:00Z");
         String cursor = cursorCodec.encode(openedAt, 15L);
         ArgumentCaptor<Instant> openedAtCaptor = ArgumentCaptor.forClass(Instant.class);
@@ -92,7 +144,7 @@ class KeycapBoxHistoryServiceTest {
     }
 
     @Test
-    void rejectsInvalidSize() {
+    void rejectsHistorySizeOutsideAllowedRange() {
         assertThatThrownBy(() -> service.getHistory(userId, null, 0))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
@@ -113,6 +165,24 @@ class KeycapBoxHistoryServiceTest {
         ReflectionTestUtils.setField(open, "id", id);
         ReflectionTestUtils.setField(open, "openedAt", openedAt);
         return open;
+    }
+
+    private static KeycapBoxAccount keycapBoxAccount(
+            UUID userId,
+            int boxBalance,
+            int freeOpenUsedCount,
+            int adOpenUsedCount
+    ) {
+        AppUser user = AppUser.createActive("Bean", null);
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        KeycapBoxAccount account = newInstance(KeycapBoxAccount.class);
+        ReflectionTestUtils.setField(account, "user", user);
+        ReflectionTestUtils.setField(account, "boxBalance", boxBalance);
+        ReflectionTestUtils.setField(account, "freeOpenUsedCount", freeOpenUsedCount);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", adOpenUsedCount);
+        ReflectionTestUtils.setField(account, "openCycleStartedAt", Instant.parse("2026-07-16T00:00:00Z"));
+        return account;
     }
 
     private static <T> T newInstance(Class<T> type) {

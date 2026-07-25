@@ -131,7 +131,8 @@ public class KeycapBoxAccount {
         boolean hasAvailableBox = hasBox();
         boolean canFreeOpen = hasAvailableBox && cycleState.freeOpenUsedCount() < freeLimit;
         boolean canAdOpen = hasAvailableBox && cycleState.adOpenUsedCount() < adLimit;
-        boolean charging = hasAvailableBox && !canFreeOpen && !canAdOpen;
+        boolean charging = cycleState.freeOpenUsedCount() >= freeLimit
+                && cycleState.adOpenUsedCount() >= adLimit;
         Instant nextRechargeAt = charging ? cycleState.openCycleStartedAt().plus(cycleDuration) : null;
         return new OpenCycleSnapshot(canFreeOpen, canAdOpen, charging, nextRechargeAt);
     }
