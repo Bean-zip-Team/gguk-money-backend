@@ -25,7 +25,7 @@ class TapPolicyConfigTest {
         tapPolicyConfig.refresh();
 
         assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(20);
-        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(200);
+        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(20);
         assertThat(tapPolicyConfig.boosterDurationSeconds()).isEqualTo(300);
         assertThat(tapPolicyConfig.boosterDailyLimit()).isEqualTo(3);
     }
@@ -38,7 +38,7 @@ class TapPolicyConfigTest {
         tapPolicyConfig.refresh();
 
         assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(20);
-        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(200);
+        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(20);
         assertThat(tapPolicyConfig.boosterDurationSeconds()).isEqualTo(300);
         assertThat(tapPolicyConfig.boosterDailyLimit()).isEqualTo(3);
     }
