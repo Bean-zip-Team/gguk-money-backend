@@ -147,7 +147,7 @@ class KeycapBoxControllerTest {
         UUID keycapId = UUID.randomUUID();
         Instant openedAt = Instant.parse("2026-07-14T00:00:00Z");
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
-                .thenReturn(new KeycapBoxOpenResponse(boxOpenId, keycapId, 1, false, openedAt));
+                .thenReturn(new KeycapBoxOpenResponse(boxOpenId, keycapId, "https://example.com/keycaps/cheer.webp", 1, false, openedAt));
 
         mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -162,6 +162,7 @@ class KeycapBoxControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.boxOpenId").value(boxOpenId.toString()))
                 .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
+                .andExpect(jsonPath("$.data.imageUrl").value("https://example.com/keycaps/cheer.webp"))
                 .andExpect(jsonPath("$.data.shardCount").value(1))
                 .andExpect(jsonPath("$.data.completed").value(false))
                 .andExpect(jsonPath("$.data.openedAt").value("2026-07-14T00:00:00Z"))

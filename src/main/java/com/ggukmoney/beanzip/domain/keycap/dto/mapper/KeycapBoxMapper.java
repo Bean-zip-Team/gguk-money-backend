@@ -28,6 +28,7 @@ public interface KeycapBoxMapper {
 
     @Mapping(target = "boxOpenId", source = "publicId")
     @Mapping(target = "keycapId", source = "keycap.publicId")
+    @Mapping(target = "imageUrl", source = "keycap.imageUrl")
     KeycapBoxOpenResponse mapToOpenResponse(KeycapBoxOpen boxOpen);
 
     @Mapping(target = "boxOpenId", source = "publicId")

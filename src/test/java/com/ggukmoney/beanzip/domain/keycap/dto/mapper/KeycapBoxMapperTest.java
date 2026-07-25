@@ -64,6 +64,7 @@ class KeycapBoxMapperTest {
 
         assertThat(response.boxOpenId()).isEqualTo(boxOpenId);
         assertThat(response.keycapId()).isEqualTo(keycapId);
+        assertThat(response.imageUrl()).isEqualTo("https://example.com/keycaps/cheer.webp");
         assertThat(response.shardCount()).isEqualTo(1);
         assertThat(response.completed()).isTrue();
         assertThat(response.openedAt()).isEqualTo(openedAt);
@@ -73,7 +74,7 @@ class KeycapBoxMapperTest {
     void openResponseDoesNotExposeInternalIdsOrBoostApplied() {
         assertThat(com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse.class.getRecordComponents())
                 .extracting(component -> component.getName())
-                .containsExactly("boxOpenId", "keycapId", "shardCount", "completed", "openedAt");
+                .containsExactly("boxOpenId", "keycapId", "imageUrl", "shardCount", "completed", "openedAt");
     }
 
     @Test
@@ -124,6 +125,7 @@ class KeycapBoxMapperTest {
     private static KeycapBoxOpen boxOpen(UUID boxOpenId, UUID keycapId, Instant openedAt, boolean completed) {
         Keycap keycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(keycap, "publicId", keycapId);
+        ReflectionTestUtils.setField(keycap, "imageUrl", "https://example.com/keycaps/cheer.webp");
 
         KeycapBoxOpen open = newInstance(KeycapBoxOpen.class);
         ReflectionTestUtils.setField(open, "publicId", boxOpenId);

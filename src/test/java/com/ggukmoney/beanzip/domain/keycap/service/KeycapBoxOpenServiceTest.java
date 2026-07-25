@@ -507,7 +507,7 @@ class KeycapBoxOpenServiceTest {
     }
 
     private static KeycapBoxOpenResponse response(boolean completed) {
-        return new KeycapBoxOpenResponse(UUID.randomUUID(), UUID.randomUUID(), 1, completed, Instant.now());
+        return new KeycapBoxOpenResponse(UUID.randomUUID(), UUID.randomUUID(), "https://example.com/keycap.webp", 1, completed, Instant.now());
     }
 
     private static KeycapBoxOpen existingOpen(String requestHash) {
