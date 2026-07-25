@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.keycap.controller;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
 import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
+import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
@@ -13,6 +14,7 @@ import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
 import com.ggukmoney.beanzip.global.interceptor.AuthInterceptor;
 import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -218,7 +220,7 @@ class KeycapBoxControllerTest {
         Method method = KeycapBoxController.class.getDeclaredMethod(
                 "open",
                 String.class,
-                com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest.class,
+                KeycapBoxOpenRequest.class,
                 jakarta.servlet.http.HttpServletRequest.class
         );
 
@@ -230,6 +232,19 @@ class KeycapBoxControllerTest {
         assertThat(responses.value())
                 .extracting(io.swagger.v3.oas.annotations.responses.ApiResponse::responseCode)
                 .contains("429");
+    }
+
+    @Test
+    void openRequestSwaggerDocumentsAdRewardIdAsOptionalProviderVerificationField() throws Exception {
+        Schema adRewardIdSchema = KeycapBoxOpenRequest.class
+                .getRecordComponents()[1]
+                .getAccessor()
+                .getAnnotation(Schema.class);
+
+        assertThat(adRewardIdSchema.description()).contains("선택");
+        assertThat(adRewardIdSchema.description()).contains("광고 Provider 검증");
+        assertThat(adRewardIdSchema.description()).doesNotContain("필수");
+        assertThat(adRewardIdSchema.example()).isBlank();
     }
 
     @Test

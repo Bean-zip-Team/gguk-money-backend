@@ -208,20 +208,28 @@ class KeycapBoxOpenServiceTest {
     }
 
     @Test
-    void rejectsAdvertisementOpenWhenAdRewardIdMissing() {
+    void opensAdvertisementBoxWhenAdRewardIdMissing() {
         AppUser user = user(userId);
         KeycapBoxAccount account = account(user, 1, 0);
+        Keycap keycap = keycap(10);
+        KeycapBoxOpenResponse mapped = response(false);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
         when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(mapped);
 
-        assertThatThrownBy(() -> service.open(userId, idempotencyKey,
-                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, null)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("AD_REWARD_ID_REQUIRED");
+        KeycapBoxOpenResponse response = service.open(userId, idempotencyKey,
+                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, null));
 
-        verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+        assertThat(response).isEqualTo(mapped);
+        assertThat(account.getBoxBalance()).isZero();
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(1);
     }
 
     @Test

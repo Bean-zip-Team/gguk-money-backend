@@ -55,7 +55,7 @@ public class KeycapBoxController {
         )));
     }
 
-    @Operation(summary = "키캡 상자 개봉", description = "보유 상자와 무료 개봉권을 사용해 키캡 조각을 지급합니다.")
+    @Operation(summary = "키캡 상자 개봉", description = "보유 상자를 무료 또는 광고 방식으로 개봉해 키캡 조각을 지급합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "개봉 성공 또는 멱등 재응답"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락, 개봉 불가, 요청 값 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),

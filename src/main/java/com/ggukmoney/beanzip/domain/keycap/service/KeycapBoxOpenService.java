@@ -216,10 +216,8 @@ public class KeycapBoxOpenService {
         if (!account.canUseAdOpen(keycapBoxPolicyConfig.adOpenLimit())) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_LIMIT_EXCEEDED");
         }
-        if (!StringUtils.hasText(request.adRewardId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AD_REWARD_ID_REQUIRED");
-        }
-        if (keycapBoxOpenRepository.existsByAdRewardId(normalizeAdRewardId(request.adRewardId()))) {
+        String adRewardId = normalizeAdRewardId(request.adRewardId());
+        if (StringUtils.hasText(adRewardId) && keycapBoxOpenRepository.existsByAdRewardId(adRewardId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "AD_REWARD_ALREADY_USED");
         }
     }
