@@ -32,7 +32,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/notifications")
-@Tag(name = "Notifications", description = "Apps-in-Toss Smart Message notification preferences")
+@Tag(name = "Notifications", description = "Apps-in-Toss Smart Message 알림 설정 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class NotificationPreferenceController {
 
@@ -40,20 +40,20 @@ public class NotificationPreferenceController {
 
     @GetMapping("/preferences")
     @Operation(
-            summary = "List notification preferences",
-            description = "Returns only notification types with a configured Apps-in-Toss campaign code. Use each item templateCode with requestNotificationAgreement."
+            summary = "알림 설정 조회",
+            description = "Apps-in-Toss 캠페인 코드가 설정된 알림 타입만 반환합니다. 각 항목의 templateCode를 requestNotificationAgreement에 사용합니다."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "Preferences returned",
+                    description = "알림 설정 조회 성공",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"items":[{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true}]}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "Authentication required",
+                    description = "인증 필요",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
@@ -66,25 +66,25 @@ public class NotificationPreferenceController {
 
     @PatchMapping("/preferences")
     @Operation(
-            summary = "Save notification agreement result",
-            description = "Saves one notification type result from Apps-in-Toss requestNotificationAgreement. The client does not call this endpoint when the user chooses later."
+            summary = "알림 동의 결과 저장",
+            description = "Apps-in-Toss requestNotificationAgreement의 결과를 해당 알림 타입에 저장합니다. 사용자가 나중에를 선택하면 호출하지 않습니다."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "Agreement result saved",
+                    description = "알림 동의 결과 저장 성공",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
-                    description = "Invalid agreement result",
+                    description = "지원하지 않는 동의 결과",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "Authentication required",
+                    description = "인증 필요",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
@@ -104,25 +104,25 @@ public class NotificationPreferenceController {
 
     @PatchMapping("/preferences/enabled")
     @Operation(
-            summary = "Update notification preference enabled state",
-            description = "Changes one agreed notification type. Enabling a notification requires prior agreement for that type."
+            summary = "알림 활성화 상태 변경",
+            description = "동의한 알림 타입 하나의 활성화 상태를 변경합니다. 알림을 켜려면 해당 타입의 사전 동의가 필요합니다."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "Preference updated",
+                    description = "알림 활성화 상태 변경 성공",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"type":"BOOSTER_RECHARGED","enabled":false,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "Authentication required",
+                    description = "인증 필요",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "Agreement required before enabling",
+                    description = "알림 활성화 전 동의 필요",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
