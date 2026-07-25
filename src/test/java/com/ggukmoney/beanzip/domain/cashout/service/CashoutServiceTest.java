@@ -214,7 +214,7 @@ class CashoutServiceTest {
         stubTossIdentity();
         when(tossPromotionClient.getKey("toss-user-key-1")).thenReturn("promo-key-1");
         when(tossPromotionClient.executePromotion("TEST_PROMO", "promo-key-1", 93L))
-                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112"));
+                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112", "예산 부족"));
 
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 

@@ -269,7 +269,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
         when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
-                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112"));
+                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112", "예산 부족"));
 
         mockMvc.perform(post("/api/cashouts")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
