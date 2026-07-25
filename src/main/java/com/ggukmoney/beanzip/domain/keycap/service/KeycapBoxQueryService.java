@@ -3,8 +3,13 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
+import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -12,19 +17,37 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class KeycapBoxHistoryService {
+public class KeycapBoxQueryService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
-    private final KeycapBoxOpenRepository keycapBoxOpenRepository;
+    private final KeycapBoxAccountService keycapBoxAccountService;
+    private final UserTapProgressService userTapProgressService;
     private final KeycapBoxMapper keycapBoxMapper;
+    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
+    private final Clock clock;
+    private final KeycapBoxOpenRepository keycapBoxOpenRepository;
     private final KeycapBoxHistoryCursorCodec cursorCodec;
+
+    @Transactional(readOnly = true)
+    public KeycapBoxStatusResponse getStatus(UUID userId) {
+        KeycapBoxAccount account = keycapBoxAccountService.getForUser(userId);
+        KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot = account.calculateOpenCycleSnapshot(
+                clock.instant(),
+                keycapBoxPolicyConfig.openCycleDuration(),
+                keycapBoxPolicyConfig.freeOpenLimit(),
+                keycapBoxPolicyConfig.adOpenLimit()
+        );
+        BoxProgressSnapshot progress = userTapProgressService.getBoxProgress(userId);
+        return keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress);
+    }
 
     @Transactional(readOnly = true)
     public KeycapBoxHistoryResponse getHistory(UUID userId, String cursor, Integer size) {

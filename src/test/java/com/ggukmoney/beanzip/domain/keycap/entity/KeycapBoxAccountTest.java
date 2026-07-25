@@ -46,9 +46,27 @@ class KeycapBoxAccountTest {
     }
 
     @Test
-    void distinguishesMissingBoxFromChargingState() {
+    void reportsChargingWhenBothLimitsAreUsedEvenWithoutBox() {
         Instant cycleStartedAt = Instant.parse("2026-07-16T00:00:00Z");
         KeycapBoxAccount account = accountWithCycle(0, 2, 2, cycleStartedAt);
+
+        KeycapBoxAccount.OpenCycleSnapshot snapshot = account.calculateOpenCycleSnapshot(
+                cycleStartedAt.plusSeconds(10),
+                ONE_HOUR,
+                2,
+                2
+        );
+
+        assertThat(snapshot.canFreeOpen()).isFalse();
+        assertThat(snapshot.canAdOpen()).isFalse();
+        assertThat(snapshot.charging()).isTrue();
+        assertThat(snapshot.nextRechargeAt()).isEqualTo(cycleStartedAt.plus(ONE_HOUR));
+    }
+
+    @Test
+    void doesNotReportChargingWhenBoxIsMissingButOpenQuotaRemains() {
+        Instant cycleStartedAt = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithCycle(0, 1, 2, cycleStartedAt);
 
         KeycapBoxAccount.OpenCycleSnapshot snapshot = account.calculateOpenCycleSnapshot(
                 cycleStartedAt.plusSeconds(10),
@@ -64,7 +82,7 @@ class KeycapBoxAccountTest {
     }
 
     @Test
-    void reportsChargingOnlyWhenBothLimitsAreUsedAndBoxExists() {
+    void reportsChargingWhenBothLimitsAreUsedAndBoxExists() {
         Instant cycleStartedAt = Instant.parse("2026-07-16T00:00:00Z");
         KeycapBoxAccount account = accountWithCycle(1, 2, 2, cycleStartedAt);
 

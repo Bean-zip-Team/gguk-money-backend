@@ -4,9 +4,8 @@ import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxHistoryService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxStatusService;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxQueryService;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -15,6 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -38,19 +38,57 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class KeycapBoxController {
 
-    private final KeycapBoxStatusService keycapBoxStatusService;
+    private final KeycapBoxQueryService keycapBoxQueryService;
     private final KeycapBoxOpenService keycapBoxOpenService;
-    private final KeycapBoxHistoryService keycapBoxHistoryService;
 
     @Operation(summary = "키캡 상자 상태 조회")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "조회 성공",
+                    content = @Content(examples = {
+                            @ExampleObject(
+                                    name = "상자 없음 - 개봉 횟수 남음",
+                                    value = """
+                                            {
+                                              "success": true,
+                                              "data": {
+                                                "boxBalance": 0,
+                                                "canFreeOpen": false,
+                                                "canAdOpen": false,
+                                                "charging": false,
+                                                "nextRechargeAt": null,
+                                                "boxProgressTapCount": 45,
+                                                "nextBoxRequiredTapCount": 100
+                                              }
+                                            }
+                                            """
+                            ),
+                            @ExampleObject(
+                                    name = "상자 없음 - 공통 주기 충전 중",
+                                    value = """
+                                            {
+                                              "success": true,
+                                              "data": {
+                                                "boxBalance": 0,
+                                                "canFreeOpen": false,
+                                                "canAdOpen": false,
+                                                "charging": true,
+                                                "nextRechargeAt": "2026-07-26T01:00:00Z",
+                                                "boxProgressTapCount": 45,
+                                                "nextBoxRequiredTapCount": 100
+                                              }
+                                            }
+                                            """
+                            )
+                    })
+            ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 또는 탭 진행도 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping("/status")
     public ResponseEntity<ApiResponse<KeycapBoxStatusResponse>> getStatus(@Parameter(hidden = true) HttpServletRequest httpServletRequest) {
-        return ResponseEntity.ok(ApiResponse.success(keycapBoxStatusService.getStatus(
+        return ResponseEntity.ok(ApiResponse.success(keycapBoxQueryService.getStatus(
                 AuthRequestAttributes.getRequiredUserId(httpServletRequest)
         )));
     }
@@ -92,7 +130,7 @@ public class KeycapBoxController {
             @RequestParam(required = false) Integer size,
             @Parameter(hidden = true) HttpServletRequest httpServletRequest
     ) {
-        return ResponseEntity.ok(ApiResponse.success(keycapBoxHistoryService.getHistory(
+        return ResponseEntity.ok(ApiResponse.success(keycapBoxQueryService.getHistory(
                 AuthRequestAttributes.getRequiredUserId(httpServletRequest),
                 cursor,
                 size
