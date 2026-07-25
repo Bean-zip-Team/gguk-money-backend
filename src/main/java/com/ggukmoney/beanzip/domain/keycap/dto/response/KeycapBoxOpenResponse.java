@@ -11,6 +11,8 @@ public record KeycapBoxOpenResponse(
         UUID boxOpenId,
         @Schema(description = "지급된 키캡 ID", example = "22222222-2222-2222-2222-222222222222")
         UUID keycapId,
+        @Schema(description = "이미지 URL", example = "https://example.com/keycaps/cheer.webp")
+        String imageUrl,
         @Schema(description = "지급 조각 수", example = "1")
         int shardCount,
         @Schema(description = "이번 개봉으로 키캡이 완성되었는지 여부", example = "false")
