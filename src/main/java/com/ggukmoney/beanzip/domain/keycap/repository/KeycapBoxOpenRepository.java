@@ -27,6 +27,8 @@ public interface KeycapBoxOpenRepository extends JpaRepository<KeycapBoxOpen, Lo
             @Param("idempotencyKey") String idempotencyKey
     );
 
+    boolean existsByAdRewardId(String adRewardId);
+
     @Query("""
             select boxOpen
             from KeycapBoxOpen boxOpen

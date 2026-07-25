@@ -176,23 +176,103 @@ Unique와 인덱스:
 | `public_id` | UUID | N | Java 생성 | UNIQUE |
 | `user_id` | UUID | N | | FK, UNIQUE `app_user(id)` |
 | `box_balance` | INTEGER | N | 0 | CHECK `>= 0` |
-| `free_open_ticket_count` | INTEGER | N | 0 | CHECK `>= 0` |
+| `free_open_used_count` | INTEGER | N | 0 | CHECK `>= 0` |
+| `ad_open_used_count` | INTEGER | N | 0 | CHECK `>= 0` |
+| `open_cycle_started_at` | TIMESTAMPTZ | N | 정책 배포 적용 시각 | 무료/광고 공통 1시간 주기 기준점 |
+| `free_open_ticket_count` | INTEGER | N | 0 | Deprecated. 구 무료권 정책 호환 컬럼 |
+| `last_free_ticket_granted_at` | TIMESTAMPTZ | N | | Deprecated. 구 무료권 정책 호환 컬럼 |
+| `ad_open_count` | INTEGER | N | 0 | Deprecated. 구 광고 일일 카운터 호환 컬럼 |
+| `ad_open_count_date` | DATE | Y | | Deprecated. 구 광고 일일 카운터 호환 컬럼 |
 | `version` | BIGINT | N | 0 | 동시성 제어 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
 현재 구현에서 상자 진행도는 `keycap_box_account`가 아니라 `user_tap_progress.cumulative_valid_tap_count`, `user_tap_progress.next_box_target`을 원본으로 사용한다.
 
-아래 컬럼은 무료권 충전과 광고 개봉 정책이 확정될 때 후속 설계로 분리한다. 현재 Entity와 조회 API 구현 완료 컬럼으로 보지 않는다.
+BEA-156 배포 시 Flyway/Liquibase를 새로 도입하지 않고 공유/개발 DB에 수동 SQL을 먼저 적용한다. 기존 광고 카운터는 일 단위이고 신규 카운터는 한 시간 단위이므로 억지 변환하지 않는다.
 
-| 후속 설계 후보 컬럼 | 타입 | 설명 |
-|---|---|---|
-| `next_free_ticket_at` | TIMESTAMPTZ | 다음 무료권 충전 시각 |
-| `ad_open_date` | DATE | 광고 개봉 카운트 기준일 |
-| `ad_open_count` | INTEGER | 광고 개봉 횟수 |
-| `box_progress_tap_count` | INTEGER | `user_tap_progress`와 중복 저장 여부 결정 필요 |
-| `next_box_required_tap_count` | INTEGER | `user_tap_progress.next_box_target`과 중복 저장 여부 결정 필요 |
+```sql
+ALTER TABLE keycap_box_account
+    ADD COLUMN IF NOT EXISTS free_open_used_count INTEGER,
+    ADD COLUMN IF NOT EXISTS ad_open_used_count INTEGER,
+    ADD COLUMN IF NOT EXISTS open_cycle_started_at TIMESTAMPTZ;
 
+UPDATE keycap_box_account
+SET free_open_used_count = 0,
+    ad_open_used_count = 0,
+    open_cycle_started_at = TIMESTAMPTZ '2026-07-24 00:00:00+09'
+WHERE free_open_used_count IS NULL
+   OR ad_open_used_count IS NULL
+   OR open_cycle_started_at IS NULL;
+
+ALTER TABLE keycap_box_account
+    ALTER COLUMN free_open_used_count SET NOT NULL,
+    ALTER COLUMN ad_open_used_count SET NOT NULL,
+    ALTER COLUMN open_cycle_started_at SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_keycap_box_account_free_open_used_count_non_negative'
+          AND conrelid = 'keycap_box_account'::regclass
+    ) THEN
+        ALTER TABLE keycap_box_account
+            ADD CONSTRAINT ck_keycap_box_account_free_open_used_count_non_negative
+            CHECK (free_open_used_count >= 0);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_keycap_box_account_ad_open_used_count_non_negative'
+          AND conrelid = 'keycap_box_account'::regclass
+    ) THEN
+        ALTER TABLE keycap_box_account
+            ADD CONSTRAINT ck_keycap_box_account_ad_open_used_count_non_negative
+            CHECK (ad_open_used_count >= 0);
+    END IF;
+END $$;
+```
+
+`TIMESTAMPTZ '2026-07-24 00:00:00+09'` 값은 예시이며 실제 적용 시 정책 배포 적용 시각으로 치환한다. Entity 배포 전 신규 컬럼과 `app_config` 신규 키를 먼저 적용하고, 구 컬럼은 이번 배포에서 제거하지 않는다.
+
+신규 `app_config` 값도 Entity 배포 전에 등록 여부를 확인한다. 기존 키는 즉시 삭제하지 않고 deprecated로 보존한다.
+
+```sql
+INSERT INTO app_config (config_key, config_value, effective_at, created_at, updated_at)
+VALUES
+    ('keycapBox.openCycle.durationSeconds', '3600', TIMESTAMPTZ '2026-07-24 00:00:00+09', now(), now()),
+    ('keycapBox.freeOpen.limit', '2', TIMESTAMPTZ '2026-07-24 00:00:00+09', now(), now()),
+    ('keycapBox.adOpen.limit', '2', TIMESTAMPTZ '2026-07-24 00:00:00+09', now(), now())
+ON CONFLICT (config_key, effective_at) DO UPDATE
+SET config_value = EXCLUDED.config_value,
+    updated_at = now();
+```
+
+Deprecated 키: `keycapBox.freeTicket.refillPerHour`, `keycapBox.freeTicket.cap`, `keycapBox.adOpen.dailyLimit`.
+
+배포 전후 검증 쿼리:
+
+```sql
+SELECT COUNT(*) AS missing_cycle_columns
+FROM keycap_box_account
+WHERE free_open_used_count IS NULL
+   OR ad_open_used_count IS NULL
+   OR open_cycle_started_at IS NULL;
+
+SELECT config_key, config_value
+FROM app_config
+WHERE config_key IN (
+    'keycapBox.openCycle.durationSeconds',
+    'keycapBox.freeOpen.limit',
+    'keycapBox.adOpen.limit'
+)
+ORDER BY config_key, effective_at DESC;
+```
+
+롤백 시에는 애플리케이션을 구 버전으로 되돌리고 deprecated app_config 키 값을 구 정책 기준으로 복구한다. 신규 컬럼은 롤백 즉시 제거하지 않는다.
 ## 7. keycap_box_open
 
 | 컬럼 | 타입 | NULL | 기본값 | 제약과 설명 |
@@ -217,7 +297,7 @@ Unique와 인덱스:
 - `UNIQUE (ad_reward_id) WHERE ad_reward_id IS NOT NULL`
 - `ix_keycap_box_open_user_time(user_id, opened_at DESC)`
 
-현재 부스터는 포인트 적립 전용이므로 상자 개봉 MVP 명세에는 `boost_applied`를 포함하지 않는다. 키캡 조각 부스터가 도입되면 별도 설계와 Migration으로 추가한다.
+기존 부스터 배율은 상자 개봉 조각 수에 적용한다. 상자 개봉 MVP 응답에는 `boost_applied` 또는 `boostApplied`를 포함하지 않는다.
 
 ## 8. onboarding_reward_attempt
 

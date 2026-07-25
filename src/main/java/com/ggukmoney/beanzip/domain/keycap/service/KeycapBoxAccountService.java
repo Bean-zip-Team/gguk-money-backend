@@ -9,7 +9,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.UUID;
 
 @Service
@@ -18,9 +20,10 @@ public class KeycapBoxAccountService {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
+    private final Clock clock;
 
     public KeycapBoxAccount createFor(AppUser user) {
-        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
     }
 
     public KeycapBoxAccount addBoxes(UUID userId, int count) {
@@ -37,7 +40,23 @@ public class KeycapBoxAccountService {
     public KeycapBoxAccount refillFreeTickets(UUID userId) {
         KeycapBoxAccount account = keycapBoxAccountRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
-        account.grantElapsedFreeTickets(Instant.now(), keycapBoxPolicyConfig.refillPerHour(), keycapBoxPolicyConfig.cap());
+        account.grantElapsedFreeTickets(clock.instant(), keycapBoxPolicyConfig.refillPerHour(), keycapBoxPolicyConfig.cap());
         return keycapBoxAccountRepository.save(account);
+    }
+
+    public KeycapBoxAccount getForUser(UUID userId) {
+        return keycapBoxAccountRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+    }
+
+    public KeycapBoxAccount getForUserForUpdate(UUID userId) {
+        return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+    }
+
+    public KeycapBoxAccount refreshOpenCycleForUpdate(UUID userId, Instant now, Duration cycleDuration) {
+        KeycapBoxAccount account = getForUserForUpdate(userId);
+        account.refreshOpenCycle(now, cycleDuration);
+        return account;
     }
 }

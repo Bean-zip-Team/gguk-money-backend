@@ -10,6 +10,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Constructor;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,8 +25,9 @@ class KeycapBoxAccountServiceTest {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
+    private final Clock clock = Clock.fixed(Instant.parse("2026-07-16T00:00:00Z"), ZoneOffset.UTC);
     private final KeycapBoxAccountService keycapBoxAccountService =
-            new KeycapBoxAccountService(keycapBoxAccountRepository, keycapBoxPolicyConfig);
+            new KeycapBoxAccountService(keycapBoxAccountRepository, keycapBoxPolicyConfig, clock);
 
     private final UUID userId = UUID.randomUUID();
 
@@ -36,7 +39,7 @@ class KeycapBoxAccountServiceTest {
 
     @Test
     void refillsElapsedFreeTicketsAndSaves() {
-        Instant threeHoursAgo = Instant.now().minusSeconds(3 * 3600);
+        Instant threeHoursAgo = clock.instant().minusSeconds(3 * 3600);
         KeycapBoxAccount account = accountWithTicket(0, threeHoursAgo);
         when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
         when(keycapBoxAccountRepository.save(account)).thenReturn(account);

@@ -20,6 +20,7 @@ import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -29,8 +30,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,6 +63,9 @@ class KeycapBoxOpenServiceTest {
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final BoosterGrantService boosterGrantService = mock(BoosterGrantService.class);
+    private static final Instant FIXED_NOW = Instant.parse("2026-07-16T00:10:00Z");
+    private static final Duration OPEN_CYCLE_DURATION = Duration.ofHours(1);
+    private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     private final KeycapBoxOpenService service = new KeycapBoxOpenService(
             keycapBoxAccountService,
             keycapBoxOpenRepository,
@@ -74,7 +80,8 @@ class KeycapBoxOpenServiceTest {
             pointAccountService,
             pointLedgerService,
             boosterGrantService,
-            new NoOpTransactionManager()
+            new NoOpTransactionManager(),
+            clock
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -82,7 +89,9 @@ class KeycapBoxOpenServiceTest {
 
     @BeforeEach
     void stubPolicyDefaults() {
-        when(keycapBoxPolicyConfig.adOpenDailyLimit()).thenReturn(2);
+        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(OPEN_CYCLE_DURATION);
+        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
+        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
         when(shardCountGenerator.generate()).thenReturn(1);
         when(boosterGrantService.findActiveMultiplier(any(UUID.class), any(Instant.class))).thenReturn(BigDecimal.ONE);
     }
@@ -96,7 +105,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenResponse mapped = response(false);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -109,9 +118,12 @@ class KeycapBoxOpenServiceTest {
 
         assertThat(response).isEqualTo(mapped);
         assertThat(account.getBoxBalance()).isEqualTo(1);
-        assertThat(account.getFreeOpenTicketCount()).isZero();
+        assertThat(account.getFreeOpenUsedCount()).isEqualTo(2);
         verify(userKeycapRepository).save(any(UserKeycap.class));
-        verify(keycapBoxOpenRepository).save(any(KeycapBoxOpen.class));
+        ArgumentCaptor<KeycapBoxOpen> captor = ArgumentCaptor.forClass(KeycapBoxOpen.class);
+        verify(keycapBoxOpenRepository).save(captor.capture());
+        assertThat(captor.getValue().getOpenedAt()).isEqualTo(FIXED_NOW);
+        verify(boosterGrantService).findActiveMultiplier(userId, FIXED_NOW);
     }
 
     @Test
@@ -124,7 +136,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -152,7 +164,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenResponse response = service.open(userId, idempotencyKey, request);
 
         assertThat(response).isEqualTo(mapped);
-        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
+        verify(keycapBoxAccountService, never()).refreshOpenCycleForUpdate(any(UUID.class), any(Instant.class), any(Duration.class));
         verify(keycapBoxOpenRepository, never()).save(any());
     }
 
@@ -178,7 +190,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenResponse mapped = response(false);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -191,8 +203,8 @@ class KeycapBoxOpenServiceTest {
 
         assertThat(response).isEqualTo(mapped);
         assertThat(account.getBoxBalance()).isEqualTo(1);
-        assertThat(account.getFreeOpenTicketCount()).isEqualTo(1);
-        assertThat(account.getAdOpenCount()).isEqualTo(1);
+        assertThat(account.getFreeOpenUsedCount()).isEqualTo(1);
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(1);
     }
 
     @Test
@@ -201,7 +213,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 1, 0);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, null)))
@@ -213,20 +225,81 @@ class KeycapBoxOpenServiceTest {
     }
 
     @Test
-    void rejectsAdvertisementOpenWhenDailyLimitReached() {
+    void rejectsDuplicateAdvertisementRewardIdBeforeConsumingResources() {
         AppUser user = user(userId);
         KeycapBoxAccount account = account(user, 1, 0);
-        ReflectionTestUtils.setField(account, "adOpenCount", 2);
-        ReflectionTestUtils.setField(account, "adOpenCountDate", LocalDate.now());
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
+        when(keycapBoxOpenRepository.existsByAdRewardId("ad-1")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.open(userId, idempotencyKey,
+                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, " ad-1 ")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("AD_REWARD_ALREADY_USED");
+
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getAdOpenUsedCount()).isZero();
+        verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+        verify(keycapBoxOpenRepository, never()).save(any());
+    }
+
+    @Test
+    void translatesConcurrentAdvertisementRewardIdUniqueConflictToAlreadyUsed() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 0);
+        Keycap keycap = keycap(10);
+        KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, "ad-1");
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
+        when(keycapBoxOpenRepository.existsByAdRewardId("ad-1")).thenReturn(false, true);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate ad reward id"));
+
+        assertThatThrownBy(() -> service.open(userId, idempotencyKey, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("AD_REWARD_ALREADY_USED");
+    }
+
+    @Test
+    void rejectsAdvertisementOpenWhenCycleLimitReached() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 0);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", 2);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, "ad-1")))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("AD_OPEN_DAILY_LIMIT_EXCEEDED");
+                .isEqualTo("AD_OPEN_LIMIT_EXCEEDED");
+
+        verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+    }
+
+    @Test
+    void rejectsAdvertisementOpenWithoutBoxBeforeCheckingAdRewardId() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 0, 0);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
+
+        assertThatThrownBy(() -> service.open(userId, idempotencyKey,
+                new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.ADVERTISEMENT, null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("KEYCAP_BOX_NOT_AVAILABLE");
 
         verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
     }
@@ -237,7 +310,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 1, 1);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
@@ -247,7 +320,7 @@ class KeycapBoxOpenServiceTest {
                 .isEqualTo("KEYCAP_REWARD_NOT_AVAILABLE");
 
         assertThat(account.getBoxBalance()).isEqualTo(1);
-        assertThat(account.getFreeOpenTicketCount()).isEqualTo(1);
+        assertThat(account.getFreeOpenUsedCount()).isEqualTo(1);
         verify(userKeycapRepository, never()).save(any());
         verify(keycapBoxOpenRepository, never()).save(any());
     }
@@ -258,7 +331,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxAccount account = account(user, 0, 1);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null)))
@@ -272,16 +345,16 @@ class KeycapBoxOpenServiceTest {
     @Test
     void rejectsMissingFreeTicketBeforeRewardSelection() {
         AppUser user = user(userId);
-        KeycapBoxAccount account = account(user, 1, 0);
+        KeycapBoxAccount account = account(user, 1, 2);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
 
         assertThatThrownBy(() -> service.open(userId, idempotencyKey,
                 new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("FREE_OPEN_TICKET_NOT_AVAILABLE");
+                .isEqualTo("FREE_OPEN_LIMIT_EXCEEDED");
 
         verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
     }
@@ -296,7 +369,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(shardCountGenerator.generate()).thenReturn(3);
@@ -322,7 +395,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(shardCountGenerator.generate()).thenReturn(2);
@@ -351,7 +424,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(shardCountGenerator.generate()).thenReturn(2);
@@ -380,7 +453,7 @@ class KeycapBoxOpenServiceTest {
         PointAccount pointAccount = mock(PointAccount.class);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -407,7 +480,7 @@ class KeycapBoxOpenServiceTest {
         KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
-        when(keycapBoxAccountService.refillFreeTickets(userId)).thenReturn(account);
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
         when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
         when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
@@ -435,11 +508,13 @@ class KeycapBoxOpenServiceTest {
         return open;
     }
 
-    private static KeycapBoxAccount account(AppUser user, int boxBalance, int freeOpenTicketCount) {
+    private static KeycapBoxAccount account(AppUser user, int boxBalance, int freeOpenUsedCount) {
         KeycapBoxAccount account = newInstance(KeycapBoxAccount.class);
         ReflectionTestUtils.setField(account, "user", user);
         ReflectionTestUtils.setField(account, "boxBalance", boxBalance);
-        ReflectionTestUtils.setField(account, "freeOpenTicketCount", freeOpenTicketCount);
+        ReflectionTestUtils.setField(account, "freeOpenUsedCount", freeOpenUsedCount);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", 0);
+        ReflectionTestUtils.setField(account, "openCycleStartedAt", Instant.parse("2026-07-16T00:00:00Z"));
         return account;
     }
 

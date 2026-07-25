@@ -23,12 +23,17 @@ class KeycapBoxMapperTest {
     @Test
     void mapsBoxAccountAndProgressSnapshotToStatusResponse() {
         KeycapBoxAccount account = keycapBoxAccount(UUID.randomUUID(), 2, 1);
+        KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot =
+                new KeycapBoxAccount.OpenCycleSnapshot(true, false, false, null);
         BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
 
-        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, progress);
+        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress);
 
         assertThat(response.boxBalance()).isEqualTo(2);
-        assertThat(response.freeOpenTicketCount()).isEqualTo(1);
+        assertThat(response.canFreeOpen()).isTrue();
+        assertThat(response.canAdOpen()).isFalse();
+        assertThat(response.charging()).isFalse();
+        assertThat(response.nextRechargeAt()).isNull();
         assertThat(response.boxProgressTapCount()).isEqualTo(45);
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(100);
     }
@@ -39,7 +44,10 @@ class KeycapBoxMapperTest {
                 .extracting(component -> component.getName())
                 .containsExactly(
                         "boxBalance",
-                        "freeOpenTicketCount",
+                        "canFreeOpen",
+                        "canAdOpen",
+                        "charging",
+                        "nextRechargeAt",
                         "boxProgressTapCount",
                         "nextBoxRequiredTapCount"
                 );

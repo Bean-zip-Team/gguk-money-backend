@@ -89,6 +89,17 @@ class KeycapBoxOpenRepositoryTest {
                 });
     }
 
+    @Test
+    void checksExistingAdvertisementRewardId() {
+        AppUser user = appUserRepository.save(AppUser.createActive("current", null));
+        Keycap keycap = keycapRepository.save(keycap("AD_REWARD_001"));
+        keycapBoxOpenRepository.save(adOpen(user, keycap, "ad-key", "hash-1", "ad-reward-1"));
+        keycapBoxOpenRepository.save(open(user, keycap, "free-key", "hash-2"));
+
+        assertThat(keycapBoxOpenRepository.existsByAdRewardId("ad-reward-1")).isTrue();
+        assertThat(keycapBoxOpenRepository.existsByAdRewardId("ad-reward-2")).isFalse();
+    }
+
     private static KeycapBoxOpen open(AppUser user, Keycap keycap, String idempotencyKey, String requestHash) {
         return open(user, keycap, idempotencyKey, requestHash, Instant.now());
     }
@@ -110,6 +121,26 @@ class KeycapBoxOpenRepositoryTest {
                 null,
                 false,
                 openedAt
+        );
+    }
+
+    private static KeycapBoxOpen adOpen(
+            AppUser user,
+            Keycap keycap,
+            String idempotencyKey,
+            String requestHash,
+            String adRewardId
+    ) {
+        return KeycapBoxOpen.createFor(
+                user,
+                KeycapBoxOpen.OpenMethod.ADVERTISEMENT,
+                keycap,
+                1,
+                idempotencyKey,
+                requestHash,
+                adRewardId,
+                false,
+                Instant.now()
         );
     }
 

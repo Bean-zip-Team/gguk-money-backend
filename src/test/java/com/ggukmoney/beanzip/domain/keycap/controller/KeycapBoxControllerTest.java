@@ -12,6 +12,8 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxStatusService;
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
 import com.ggukmoney.beanzip.global.interceptor.AuthInterceptor;
 import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,7 +56,7 @@ class KeycapBoxControllerTest {
     @Test
     void getStatusPassesAuthenticatedUserIdToService() {
         UUID userId = UUID.randomUUID();
-        KeycapBoxStatusResponse response = new KeycapBoxStatusResponse(2, 1, 45, 100);
+        KeycapBoxStatusResponse response = new KeycapBoxStatusResponse(2, true, true, false, null, 45, 100);
         when(keycapBoxStatusService.getStatus(userId)).thenReturn(response);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute(AuthRequestAttributes.USER_ID, userId);
@@ -66,21 +69,25 @@ class KeycapBoxControllerTest {
     }
 
     @Test
-    void authenticatedGetStatusReturnsFinalFourFields() throws Exception {
+    void authenticatedGetStatusReturnsCycleStateFields() throws Exception {
         stubAuthenticatedAccessToken("access-token");
         when(keycapBoxStatusService.getStatus(authenticatedUserId()))
-                .thenReturn(new KeycapBoxStatusResponse(2, 1, 45, 100));
+                .thenReturn(new KeycapBoxStatusResponse(2, true, false, false, null, 45, 100));
 
         mockMvc.perform(get("/api/keycap-boxes/status")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.boxBalance").value(2))
-                .andExpect(jsonPath("$.data.freeOpenTicketCount").value(1))
+                .andExpect(jsonPath("$.data.canFreeOpen").value(true))
+                .andExpect(jsonPath("$.data.canAdOpen").value(false))
+                .andExpect(jsonPath("$.data.charging").value(false))
+                .andExpect(jsonPath("$.data.nextRechargeAt").doesNotExist())
                 .andExpect(jsonPath("$.data.boxProgressTapCount").value(45))
                 .andExpect(jsonPath("$.data.nextBoxRequiredTapCount").value(100))
                 .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.publicId").doesNotExist())
+                .andExpect(jsonPath("$.data.freeOpenTicketCount").doesNotExist())
                 .andExpect(jsonPath("$.data.nextFreeTicketAt").doesNotExist())
                 .andExpect(jsonPath("$.data.adOpenCount").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
@@ -189,7 +196,7 @@ class KeycapBoxControllerTest {
     void openAdvertisementDailyLimitExceededResponse() throws Exception {
         stubAuthenticatedAccessToken("access-token");
         when(keycapBoxOpenService.open(eq(authenticatedUserId()), eq("idem-key"), any()))
-                .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_DAILY_LIMIT_EXCEEDED"));
+                .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "AD_OPEN_LIMIT_EXCEEDED"));
 
         mockMvc.perform(post("/api/keycap-boxes/open")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -203,7 +210,26 @@ class KeycapBoxControllerTest {
                                 """))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("AD_OPEN_DAILY_LIMIT_EXCEEDED"));
+                .andExpect(jsonPath("$.error.code").value("AD_OPEN_LIMIT_EXCEEDED"));
+    }
+
+    @Test
+    void openSwaggerDocumentsIdempotencyKeyLengthAndRateLimitResponse() throws Exception {
+        Method method = KeycapBoxController.class.getDeclaredMethod(
+                "open",
+                String.class,
+                com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest.class,
+                jakarta.servlet.http.HttpServletRequest.class
+        );
+
+        Parameter parameter = method.getParameters()[0].getAnnotation(Parameter.class);
+        ApiResponses responses = method.getAnnotation(ApiResponses.class);
+
+        assertThat(parameter.description()).contains("최대 100자");
+        assertThat(parameter.description()).doesNotContain("128");
+        assertThat(responses.value())
+                .extracting(io.swagger.v3.oas.annotations.responses.ApiResponse::responseCode)
+                .contains("429");
     }
 
     @Test
