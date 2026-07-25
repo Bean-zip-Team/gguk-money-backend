@@ -19,12 +19,16 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -57,6 +61,7 @@ public class CashoutService {
     private final TossPromotionClient tossPromotionClient;
     private final UserService userService;
     private final CashoutPolicyConfig cashoutPolicyConfig;
+    private final PlatformTransactionManager transactionManager;
 
     @Value("${app.cashout.toss.promotion-code:}")
     private String promotionCode;
@@ -77,13 +82,40 @@ public class CashoutService {
         );
     }
 
-    @Transactional
     public CashoutSubmitResponse submit(UUID userId, UUID idempotencyKey) {
-        Optional<CashoutRequest> existing = cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
-        if (existing.isPresent()) {
-            return toResponse(existing.get());
+        Optional<CashoutSubmitResponse> replay = findReplay(userId, idempotencyKey);
+        if (replay.isPresent()) {
+            return replay.get();
         }
 
+        CashoutRequest request;
+        try {
+            TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+            request = transactionTemplate.execute(status -> createRequestAndDebit(userId, idempotencyKey));
+        } catch (DataIntegrityViolationException exception) {
+            return findReplay(userId, idempotencyKey).orElseThrow(() -> exception);
+        } catch (OptimisticLockingFailureException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "CASHOUT_ALREADY_PROCESSING", exception);
+        }
+
+        AppUser user = userService.getById(userId);
+        submitToToss(request, userId, user, request.getPointAmount(), idempotencyKey);
+
+        return toResponse(request);
+    }
+
+    private Optional<CashoutSubmitResponse> findReplay(UUID userId, UUID idempotencyKey) {
+        return cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
+                .map(this::toResponse);
+    }
+
+    /**
+     * 잔액 차감 + 출금 신청 row 생성만 담당하는 짧은 트랜잭션. Toss 호출은 이 트랜잭션이 끝난 뒤
+     * {@link #submitToToss}에서 별도로 수행한다 — DB 커넥션을 외부 API 응답 대기 동안 물고 있지
+     * 않기 위함이자, Toss 호출 성공 이후 로컬 커밋 실패로 인한 롤백(이중지급 위험)을 피하기 위함이다.
+     */
+    @Transactional
+    CashoutRequest createRequestAndDebit(UUID userId, UUID idempotencyKey) {
         if (cashoutRequestRepository.existsByUserIdAndStatusIn(
                 userId, List.of(CashoutRequest.Status.REQUESTED, CashoutRequest.Status.PROCESSING))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "CASHOUT_ALREADY_PROCESSING");
@@ -101,13 +133,9 @@ public class CashoutService {
         PointAccount account = pointAccountService.debit(userId, balance);
         pointLedgerService.recordDebit(account, user, balance, DEBIT_REASON_CASHOUT, idempotencyKey);
 
-        CashoutRequest request = cashoutRequestRepository.save(
+        return cashoutRequestRepository.save(
                 CashoutRequest.createFor(user, balance, tossPointAmount, idempotencyKey)
         );
-
-        submitToToss(request, userId, user, balance, idempotencyKey);
-
-        return toResponse(cashoutRequestRepository.save(request));
     }
 
     /**
@@ -123,8 +151,7 @@ public class CashoutService {
                 .orElse(null);
         if (identity == null) {
             log.error("출금 신청에 연결된 Toss 계정이 없음: cashoutId={}", request.getPublicId());
-            request.markFailed();
-            reverseDebit(request, user, balance, idempotencyKey);
+            persistFailedAndReverse(request, user, balance, idempotencyKey);
             return;
         }
 
@@ -133,8 +160,7 @@ public class CashoutService {
             key = tossPromotionClient.getKey(identity.getProviderUserId());
         } catch (RuntimeException exception) {
             log.error("Toss get-key 호출 실패, 환불 처리: cashoutId={}", request.getPublicId(), exception);
-            request.markFailed();
-            reverseDebit(request, user, balance, idempotencyKey);
+            persistFailedAndReverse(request, user, balance, idempotencyKey);
             return;
         }
 
@@ -142,17 +168,29 @@ public class CashoutService {
             TossPromotionClient.PromotionExecutionOutcome outcome =
                     tossPromotionClient.executePromotion(promotionCode, key, request.getTossPointAmount());
             if (outcome.succeeded()) {
-                request.markProcessing(key);
+                persistProcessing(request, key);
             } else {
                 log.warn("Toss execute-promotion 명시적 실패, 환불 처리: cashoutId={} errorCode={}",
                         request.getPublicId(), outcome.tossErrorCode());
-                request.markFailed();
-                reverseDebit(request, user, balance, idempotencyKey);
+                persistFailedAndReverse(request, user, balance, idempotencyKey);
             }
         } catch (TossPromotionClient.AmbiguousTossFailureException exception) {
             log.error("Toss execute-promotion 결과 불명 — 수동 확인 필요: cashoutId={}", request.getPublicId(), exception);
-            // REQUESTED 상태 유지, 자동 환불하지 않음
+            // REQUESTED 상태 유지, 자동 환불하지 않음 (트랜잭션 A에서 이미 REQUESTED로 저장돼 있음)
         }
+    }
+
+    @Transactional
+    void persistProcessing(CashoutRequest request, String tossPromotionKey) {
+        request.markProcessing(tossPromotionKey);
+        cashoutRequestRepository.save(request);
+    }
+
+    @Transactional
+    void persistFailedAndReverse(CashoutRequest request, AppUser user, long amount, UUID idempotencyKey) {
+        request.markFailed();
+        reverseDebit(request, user, amount, idempotencyKey);
+        cashoutRequestRepository.save(request);
     }
 
     /**
