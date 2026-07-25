@@ -37,16 +37,12 @@ public class NotificationDeliveryService {
     private final TossSmartMessageClient smartMessageClient;
 
     public Optional<NotificationDelivery> handleWeeklyRewardAvailable(WeeklyRewardAvailableEvent event) {
-        if (!isSendable(event.userId(), NotificationType.WEEKLY_REWARD_AVAILABLE)) {
-            return Optional.empty();
-        }
-        return dispatch(persistenceService.createPending(
+        return send(
                 event.userId(),
                 NotificationType.WEEKLY_REWARD_AVAILABLE,
                 "WEEKLY_REWARD_AVAILABLE:" + event.userId() + ":" + event.rewardCycleKey(),
-                templateProperties.templateSetCode(NotificationType.WEEKLY_REWARD_AVAILABLE),
                 "{\"rewardCycleKey\":\"%s\",\"availableAt\":\"%s\"}".formatted(event.rewardCycleKey(), event.availableAt())
-        ));
+        );
     }
 
     public Optional<NotificationDelivery> evaluateRankChange(UUID userId) {
@@ -127,24 +123,22 @@ public class NotificationDeliveryService {
     }
 
     private Optional<NotificationDelivery> sendBoosterRechargedToUser(UUID userId, LocalDate today) {
-        if (boosterGrantRepository.countByUserIdAndGrantDate(userId, today) > 0
-                || !isSendable(userId, NotificationType.BOOSTER_RECHARGED)) {
+        if (boosterGrantRepository.countByUserIdAndGrantDate(userId, today) > 0) {
             return Optional.empty();
         }
-        return dispatch(persistenceService.createPending(
+        return send(
                 userId,
                 NotificationType.BOOSTER_RECHARGED,
                 "BOOSTER_RECHARGED:" + userId + ":" + today.toString().replace("-", ""),
-                templateProperties.templateSetCode(NotificationType.BOOSTER_RECHARGED),
                 "{}"
-        ));
+        );
     }
 
     private Optional<NotificationDelivery> send(UUID userId, NotificationType type, String dedupeKey, String contextJson) {
-        if (!isSendable(userId, type)) {
+        if (!templateProperties.isConfigured(type) || !isSendable(userId, type)) {
             return Optional.empty();
         }
-        return dispatch(persistenceService.createPending(userId, type, dedupeKey, templateProperties.templateSetCode(type), contextJson));
+        return dispatch(persistenceService.createPending(userId, type, dedupeKey, templateProperties.campaignCode(type), contextJson));
     }
 
     private Optional<NotificationDelivery> dispatch(Optional<NotificationDelivery> pending) {

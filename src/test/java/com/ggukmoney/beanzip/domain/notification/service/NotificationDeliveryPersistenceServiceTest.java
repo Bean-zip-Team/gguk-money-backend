@@ -43,7 +43,7 @@ class NotificationDeliveryPersistenceServiceTest {
             rankStateRepository,
             rankingSeasonService,
             rankingEntryRepository,
-            new NotificationTemplateProperties("WEEKLY", "WEEKLY_SET", "RANK", "RANK_SET", "BOOSTER", "BOOSTER_SET"),
+            new NotificationTemplateProperties("WEEKLY", "RANK_SET", "BOOSTER", null, null),
             Clock.fixed(Instant.parse("2026-07-25T10:00:00Z"), ZoneOffset.UTC)
     );
 

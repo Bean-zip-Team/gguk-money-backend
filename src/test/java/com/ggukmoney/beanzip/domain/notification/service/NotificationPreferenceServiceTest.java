@@ -1,7 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
-import com.ggukmoney.beanzip.domain.notification.dto.request.NotificationAgreementRequest;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
+import com.ggukmoney.beanzip.domain.notification.dto.request.UpdateNotificationPreferenceAgreementRequest;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,12 +23,11 @@ class NotificationPreferenceServiceTest {
 
     private final NotificationPreferenceRepository preferenceRepository = mock(NotificationPreferenceRepository.class);
     private final NotificationTemplateProperties templateProperties = new NotificationTemplateProperties(
-            "TPL_WEEKLY_CODE",
-            "TPL_WEEKLY_SET",
-            "TPL_RANK_CODE",
-            "TPL_RANK_SET",
-            "TPL_BOOST_CODE",
-            "TPL_BOOST_SET"
+            null,
+            "clickmoney-asfasf",
+            "clickmoney-box",
+            null,
+            null
     );
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
     private final NotificationPreferenceService service =
@@ -48,53 +48,65 @@ class NotificationPreferenceServiceTest {
     }
 
     @Test
-    void listReturnsTemplateCodeNotTemplateSetCode() {
+    void listReturnsOnlyConfiguredCampaignTypesWithCampaignCodeAsTemplateCode() {
         UUID userId = UUID.randomUUID();
         stubMissingPreferences();
         when(persistenceService.isRankPromptEligible(userId)).thenReturn(true);
 
         var response = service.list(userId);
 
-        assertThat(response.items()).hasSize(5);
+        assertThat(response.items()).hasSize(2);
         assertThat(response.items().stream()
                 .filter(item -> item.type() == NotificationType.RANK_CHANGE)
                 .findFirst()
                 .orElseThrow()
-                .templateCode()).isEqualTo("TPL_RANK_CODE");
+                .templateCode()).isEqualTo("clickmoney-asfasf");
     }
 
     @Test
-    void globalAgreementStoresAllPreferencesAndCapturesRankBaseline() {
+    void rankAgreementChangesOnlyRankPreferenceAndCapturesRankBaseline() {
         UUID userId = UUID.randomUUID();
         stubMissingPreferences();
 
         var response = service.agree(
                 userId,
-                new NotificationAgreementRequest("alreadyAgreed")
+                new UpdateNotificationPreferenceAgreementRequest(NotificationType.RANK_CHANGE, "alreadyAgreed")
         );
 
+        assertThat(response.type()).isEqualTo(NotificationType.RANK_CHANGE);
         assertThat(response.enabled()).isTrue();
         assertThat(response.agreementStatus()).isEqualTo(NotificationAgreementStatus.AGREED);
-        assertThat(response.items()).allSatisfy(item -> {
-            assertThat(item.enabled()).isTrue();
-            assertThat(item.agreementStatus()).isEqualTo(NotificationAgreementStatus.AGREED);
-        });
+        assertThat(response.templateCode()).isEqualTo("clickmoney-asfasf");
         verify(persistenceService).captureRankBaselineOnAgreement(userId);
+        Arrays.stream(NotificationType.values())
+                .filter(type -> type != NotificationType.RANK_CHANGE)
+                .forEach(type -> verify(preferenceRepository, org.mockito.Mockito.never()).findByUserIdAndType(userId, type));
     }
 
     @Test
-    void rejectedGlobalAgreementDisablesAllPreferences() {
+    void boosterAgreementDoesNotCaptureRankBaseline() {
         UUID userId = UUID.randomUUID();
         stubMissingPreferences();
 
         var response = service.agree(
                 userId,
-                new NotificationAgreementRequest("agreementRejected")
+                new UpdateNotificationPreferenceAgreementRequest(NotificationType.BOOSTER_RECHARGED, "agreementRejected")
         );
 
+        assertThat(response.type()).isEqualTo(NotificationType.BOOSTER_RECHARGED);
         assertThat(response.enabled()).isFalse();
         assertThat(response.agreementStatus()).isEqualTo(NotificationAgreementStatus.REJECTED);
-        assertThat(response.items()).allSatisfy(item -> assertThat(item.enabled()).isFalse());
+        org.mockito.Mockito.verifyNoInteractions(persistenceService);
+    }
+
+    @Test
+    void enabledCannotBeTurnedOnBeforeAgreement() {
+        UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
+
+        assertThatThrownBy(() -> service.updateEnabled(userId, NotificationType.RANK_CHANGE, true))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("NOTIFICATION_AGREEMENT_REQUIRED");
     }
 
     private void stubMissingPreferences() {

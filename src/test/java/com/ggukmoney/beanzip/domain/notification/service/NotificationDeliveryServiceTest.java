@@ -43,12 +43,11 @@ class NotificationDeliveryServiceTest {
     private final UserTapDailyRepository userTapDailyRepository = mock(UserTapDailyRepository.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final NotificationTemplateProperties templateProperties = new NotificationTemplateProperties(
-            "TPL_AGREEMENT",
-            "TPL_WEEKLY_CODE", "TPL_WEEKLY_SET",
-            "TPL_RANK_CODE", "TPL_RANK_SET",
-            "TPL_BOOST_CODE", "TPL_BOOST_SET",
-            "TPL_DAILY_CODE", "TPL_DAILY_SET",
-            "TPL_UNUSED_CODE", "TPL_UNUSED_SET"
+            "TPL_WEEKLY",
+            "clickmoney-asfasf",
+            "clickmoney-box",
+            "TPL_DAILY",
+            "TPL_UNUSED"
     );
     private final TossSmartMessageClient smartMessageClient = mock(TossSmartMessageClient.class);
     private final NotificationDeliveryService service = new NotificationDeliveryService(
@@ -87,13 +86,35 @@ class NotificationDeliveryServiceTest {
                     userId,
                     NotificationType.WEEKLY_REWARD_AVAILABLE,
                     "WEEKLY_REWARD_AVAILABLE:" + userId + ":2026-W30",
-                    "TPL_WEEKLY_SET",
+                    "TPL_WEEKLY",
                     "{\"rewardCycleKey\":\"2026-W30\",\"availableAt\":\"2026-07-25T00:00:00Z\"}"
             )).thenReturn(Optional.of(pending));
 
             stubSuccessfulToss(userId, pending);
 
             assertThat(service.handleWeeklyRewardAvailable(event)).contains(pending);
+        }
+
+        @Test
+        void unconfiguredCampaignDoesNotCreatePendingDeliveryOrCallToss() {
+            UUID userId = UUID.randomUUID();
+            WeeklyRewardAvailableEvent event = new WeeklyRewardAvailableEvent(userId, "2026-W30", Instant.parse("2026-07-25T00:00:00Z"));
+            NotificationDeliveryService unconfiguredService = new NotificationDeliveryService(
+                    persistenceService,
+                    preferenceRepository,
+                    authIdentityRepository,
+                    boosterGrantRepository,
+                    userTapDailyRepository,
+                    tapPolicyConfig,
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", "clickmoney-box", null, null),
+                    smartMessageClient
+            );
+            stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
+
+            assertThat(unconfiguredService.handleWeeklyRewardAvailable(event)).isEmpty();
+
+            verify(persistenceService, never()).createPending(any(), any(), anyString(), any(), anyString());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
         }
     }
 
@@ -129,7 +150,7 @@ class NotificationDeliveryServiceTest {
             when(persistenceService.prepareRankChange(userId)).thenReturn(Optional.of(pending));
             AuthIdentity identity = AuthIdentity.toss(AppUser.createActive("me", null), "toss-user-1");
             when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)).thenReturn(Optional.of(identity));
-            when(smartMessageClient.sendMessage("toss-user-1", "TPL_RANK_SET", "{}"))
+            when(smartMessageClient.sendMessage("toss-user-1", "clickmoney-asfasf", "{}"))
                     .thenReturn(new TossSmartMessageClient.SendResult(false, null, "RATE_LIMITED", "temporary", true, "{\"error\":true}"));
             when(persistenceService.markRetryWaiting(pending.getId(), "RATE_LIMITED", "temporary", "{\"error\":true}"))
                     .thenReturn(pending);
@@ -156,7 +177,7 @@ class NotificationDeliveryServiceTest {
                     userId,
                     NotificationType.BOOSTER_RECHARGED,
                     "BOOSTER_RECHARGED:" + userId + ":20260725",
-                    "TPL_BOOST_SET",
+                    "clickmoney-box",
                     "{}"
             )).thenReturn(Optional.of(pending));
             stubSuccessfulToss(userId, pending);
@@ -195,13 +216,13 @@ class NotificationDeliveryServiceTest {
         when(preferenceRepository.findSendableUserIdsByType(NotificationType.DAILY_REMINDER)).thenReturn(List.of(userId));
         stubAgreed(userId, NotificationType.BOOSTER_RECHARGED);
         when(persistenceService.createPending(userId, NotificationType.BOOSTER_RECHARGED,
-                "BOOSTER_RECHARGED:" + userId + ":20260725", "TPL_BOOST_SET", "{}"))
+                "BOOSTER_RECHARGED:" + userId + ":20260725", "clickmoney-box", "{}"))
                 .thenReturn(Optional.of(pending));
         stubSuccessfulToss(userId, pending);
 
         assertThat(service.sendMorningNotifications(today)).containsExactly(pending);
         verify(persistenceService, never()).createPending(userId, NotificationType.DAILY_REMINDER,
-                "DAILY_REMINDER:" + userId + ":20260725", "TPL_DAILY_SET", "{}");
+                "DAILY_REMINDER:" + userId + ":20260725", "TPL_DAILY", "{}");
     }
 
     @Test
@@ -216,7 +237,7 @@ class NotificationDeliveryServiceTest {
         when(boosterGrantRepository.countByUserIdAndGrantDate(userId, today)).thenReturn(1L);
         stubAgreed(userId, NotificationType.BOOSTER_UNUSED);
         when(persistenceService.createPending(userId, NotificationType.BOOSTER_UNUSED,
-                "BOOSTER_UNUSED:" + userId + ":20260725", "TPL_UNUSED_SET", "{}"))
+                "BOOSTER_UNUSED:" + userId + ":20260725", "TPL_UNUSED", "{}"))
                 .thenReturn(Optional.of(pending));
         stubSuccessfulToss(userId, pending);
 
@@ -241,11 +262,11 @@ class NotificationDeliveryServiceTest {
 
     private NotificationDelivery pending(UUID userId, NotificationType type, String dedupeKey) {
         NotificationDelivery delivery = NotificationDelivery.pending(userId, type, dedupeKey, switch (type) {
-            case WEEKLY_REWARD_AVAILABLE -> "TPL_WEEKLY_SET";
-            case RANK_CHANGE -> "TPL_RANK_SET";
-            case BOOSTER_RECHARGED -> "TPL_BOOST_SET";
-            case DAILY_REMINDER -> "TPL_DAILY_SET";
-            case BOOSTER_UNUSED -> "TPL_UNUSED_SET";
+            case WEEKLY_REWARD_AVAILABLE -> "TPL_WEEKLY";
+            case RANK_CHANGE -> "clickmoney-asfasf";
+            case BOOSTER_RECHARGED -> "clickmoney-box";
+            case DAILY_REMINDER -> "TPL_DAILY";
+            case BOOSTER_UNUSED -> "TPL_UNUSED";
         }, Instant.now());
         ReflectionTestUtils.setField(delivery, "id", Math.abs(dedupeKey.hashCode()) + 1L);
         return delivery;
