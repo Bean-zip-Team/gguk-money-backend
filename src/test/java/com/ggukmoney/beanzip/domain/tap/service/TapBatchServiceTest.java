@@ -250,6 +250,7 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isEqualTo(1);
         assertThat(response.boxesDropped()).isZero();
         assertThat(response.balance()).isEqualTo(1L);
+        assertThat(response.pointDailyCapReached()).isFalse();
         assertThat(progress.getNextPointTarget()).isEqualTo(400);
         assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
@@ -356,6 +357,7 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.boxesDropped()).isZero();
         assertThat(response.balance()).isEqualTo(7L);
+        assertThat(response.pointDailyCapReached()).isTrue();
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapDailyService).save(daily);
         verify(userTapProgressService).save(progress);

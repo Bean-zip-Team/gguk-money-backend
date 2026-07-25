@@ -11,6 +11,8 @@ public record TapBatchSubmitResponse(
         @Schema(description = "드롭된 키캡 상자 수", example = "0")
         int boxesDropped,
         @Schema(description = "제출 후 포인트 잔액", example = "15")
-        long balance
+        long balance,
+        @Schema(description = "오늘 포인트 지급 한도에 도달했는지 여부", example = "false")
+        boolean pointDailyCapReached
 ) {
 }

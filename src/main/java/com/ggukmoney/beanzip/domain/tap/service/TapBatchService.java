@@ -83,7 +83,7 @@ public class TapBatchService {
         Optional<TapBatch> existing = tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, request.tapSessionId(), request.sequence());
         if (existing.isPresent()) {
             long balance = pointAccountService.getBalance(userId);
-            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), 0, 0, balance);
+            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), 0, 0, balance, false);
         }
 
         AppUser user = userService.getById(userId);
@@ -158,7 +158,8 @@ public class TapBatchService {
             eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
-        return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, boxesDropped, balance);
+        boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();
+        return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, boxesDropped, balance, pointDailyCapReached);
     }
 
     private int calculateAcceptedCount(
