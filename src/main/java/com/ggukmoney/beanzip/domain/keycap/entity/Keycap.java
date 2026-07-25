@@ -71,6 +71,7 @@ public class Keycap {
             int requiredShardCount,
             int season,
             String imageUrl,
+            String soundUrl,
             int sortOrder
     ) {
         Keycap keycap = new Keycap();
@@ -80,6 +81,7 @@ public class Keycap {
         keycap.requiredShardCount = requiredShardCount;
         keycap.season = season;
         keycap.imageUrl = imageUrl;
+        keycap.soundUrl = soundUrl;
         keycap.sortOrder = sortOrder;
         return keycap;
     }
