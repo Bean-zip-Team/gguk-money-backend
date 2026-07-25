@@ -185,6 +185,9 @@ public class TapBatchService {
     }
 
     private boolean isSuspicious(List<Instant> timestampsMostRecentFirst, TapPolicyConfig config) {
+        if (!config.botDetectionEnabled()) {
+            return false;
+        }
         if (timestampsMostRecentFirst.size() < MIN_BOT_SAMPLE_SIZE) {
             return false;
         }
