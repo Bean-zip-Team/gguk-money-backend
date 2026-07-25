@@ -1,6 +1,8 @@
 package com.ggukmoney.beanzip.domain.ranking.controller;
 
 import com.ggukmoney.beanzip.domain.ranking.dto.response.CurrentRankingResponse;
+import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingHistoryResponse;
+import com.ggukmoney.beanzip.domain.ranking.service.RankingHistoryService;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingQueryService;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RankingController {
 
     private final RankingQueryService rankingQueryService;
+    private final RankingHistoryService rankingHistoryService;
 
     @Operation(
             summary = "현재 전체 랭킹 조회",
@@ -47,6 +50,30 @@ public class RankingController {
         return ApiResponse.success(rankingQueryService.getCurrentRanking(
                 AuthRequestAttributes.getRequiredUserId(request),
                 limit
+        ));
+    }
+
+    @Operation(
+            summary = "Weekly ranking history",
+            description = "Returns my closed weekly ranking history."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 cursor 또는 size", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @GetMapping("/history")
+    public ApiResponse<RankingHistoryResponse> getRankingHistory(
+            @Parameter(hidden = true) HttpServletRequest request,
+            @Parameter(description = "다음 페이지 cursor", example = "MjAyNi0wNy0yNlQxNTowMDowMFp8MTIz")
+            @RequestParam(required = false) String cursor,
+            @Parameter(description = "조회할 히스토리 개수. 1 이상 100 이하", example = "20")
+            @RequestParam(required = false) Integer size
+    ) {
+        return ApiResponse.success(rankingHistoryService.getHistory(
+                AuthRequestAttributes.getRequiredUserId(request),
+                cursor,
+                size
         ));
     }
 }

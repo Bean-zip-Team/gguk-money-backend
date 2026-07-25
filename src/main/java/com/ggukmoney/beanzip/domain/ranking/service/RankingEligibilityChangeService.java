@@ -23,7 +23,12 @@ public class RankingEligibilityChangeService {
 
     @Transactional
     public void publishAllTimeEligibilityChanged(AppUser user) {
-        seasonService.findActiveAllTimeSeason()
+        publishWeeklyEligibilityChanged(user);
+    }
+
+    @Transactional
+    public void publishWeeklyEligibilityChanged(AppUser user) {
+        seasonService.findActiveWeeklySeason()
                 .flatMap(season -> entryRepository.findBySeasonAndUserId(season, user.getId()))
                 .ifPresent(this::publish);
     }

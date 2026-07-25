@@ -23,11 +23,16 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -62,6 +67,12 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
     @Autowired
     private TapBatchRepository tapBatchRepository;
 
+    @Autowired
+    private Clock clock;
+
+    @Autowired
+    private ZoneId businessZoneId;
+
     @MockitoBean
     private RankingProjectionService rankingProjectionService;
 
@@ -73,24 +84,26 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
     @Test
     void afterCommitListenerRunsOnlyAfterRealCommit() {
         UUID userId = UUID.randomUUID();
+        Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
 
         transactionTemplate().executeWithoutResult(status ->
-                eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId))
+                eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, occurredAt))
         );
 
-        verify(rankingProjectionService).syncLatestAllTimeScore(userId);
+        verify(rankingProjectionService).syncLatestWeeklyScore(userId, occurredAt);
     }
 
     @Test
     void afterCommitListenerDoesNotRunWhenTransactionRollsBack() {
         UUID userId = UUID.randomUUID();
+        Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
 
         assertThatThrownBy(() -> transactionTemplate().executeWithoutResult(status -> {
-            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId));
+            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, occurredAt));
             throw new IllegalStateException("rollback");
         })).isInstanceOf(IllegalStateException.class);
 
-        verify(rankingProjectionService, never()).syncLatestAllTimeScore(userId);
+        verify(rankingProjectionService, never()).syncLatestWeeklyScore(userId, occurredAt);
     }
 
     @Test
@@ -99,7 +112,7 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
         UUID sessionId = UUID.randomUUID();
         doThrow(new IllegalStateException("projection failed"))
                 .when(rankingProjectionService)
-                .syncLatestAllTimeScore(user.getId());
+                .syncLatestWeeklyScore(eq(user.getId()), any(Instant.class));
 
         TapBatchSubmitResponse response = tapBatchService.submitBatch(
                 user.getId(),
@@ -109,12 +122,13 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
         assertThat(response.acceptedCount()).isEqualTo(10);
         assertThat(userTapProgressRepository.findByUserId(user.getId()).orElseThrow().getCumulativeValidTapCount())
                 .isEqualTo(10L);
-        assertThat(userTapDailyRepository.findByUserIdAndTapDate(user.getId(), LocalDate.now()).orElseThrow().getValidTapCount())
+        LocalDate tapDate = LocalDate.ofInstant(clock.instant(), businessZoneId);
+        assertThat(userTapDailyRepository.findByUserIdAndTapDate(user.getId(), tapDate).orElseThrow().getValidTapCount())
                 .isEqualTo(10);
         assertThat(pointAccountRepository.findByUserId(user.getId()).orElseThrow().getBalance()).isEqualTo(1L);
         assertThat(keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow().getBoxBalance()).isEqualTo(1);
         assertThat(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(user.getId(), sessionId, 1L)).isPresent();
-        verify(rankingProjectionService).syncLatestAllTimeScore(user.getId());
+        verify(rankingProjectionService).syncLatestWeeklyScore(eq(user.getId()), any(Instant.class));
     }
 
     private TransactionTemplate transactionTemplate() {

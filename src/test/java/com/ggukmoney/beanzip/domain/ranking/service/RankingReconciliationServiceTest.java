@@ -12,6 +12,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -60,7 +61,7 @@ class RankingReconciliationServiceTest {
         );
         RankingEntry first = entry(season, UUID.randomUUID(), 100L, sameUpdatedAt, 41L);
         RankingEntry second = entry(season, UUID.randomUUID(), 90L, sameUpdatedAt, 42L);
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(redisRepository.findMeta(1L)).thenReturn(Optional.of(meta));
         when(redisRepository.tryAcquireReconciliationLock(eq(1L), anyString(), eq(properties.reconciliationLockTtl())))
                 .thenReturn(true);
@@ -71,7 +72,7 @@ class RankingReconciliationServiceTest {
                 eq(PageRequest.of(0, properties.pageSize()))
         )).thenReturn(List.of(first, second));
 
-        service.reconcileActiveAllTime();
+        service.reconcileActiveWeekly();
 
         verify(redisRepository).recordReconciliationSuccess(
                 1L,
@@ -91,7 +92,7 @@ class RankingReconciliationServiceTest {
         List<RankingEntry> firstPage = entries(season, pageOneUpdatedAt, 11L, properties.pageSize());
         RankingEntry lastEntry = entry(season, UUID.randomUUID(), 100L, pageTwoUpdatedAt, 600L);
         AtomicInteger page = new AtomicInteger();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(redisRepository.findMeta(1L)).thenReturn(Optional.of(meta));
         when(redisRepository.tryAcquireReconciliationLock(eq(1L), anyString(), eq(properties.reconciliationLockTtl())))
                 .thenReturn(true);
@@ -107,7 +108,7 @@ class RankingReconciliationServiceTest {
                     return List.of();
                 });
 
-        service.reconcileActiveAllTime();
+        service.reconcileActiveWeekly();
 
         verify(redisRepository).recordReconciliationSuccess(
                 1L,
@@ -121,12 +122,12 @@ class RankingReconciliationServiceTest {
     @Test
     void skipsCycleWhenReconciliationLockIsAlreadyHeld() {
         RankingSeason season = season();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(redisRepository.findMeta(1L)).thenReturn(Optional.of(readyMeta(Instant.parse("2026-07-19T00:29:00Z"), 10L)));
         when(redisRepository.tryAcquireReconciliationLock(eq(1L), anyString(), eq(properties.reconciliationLockTtl())))
                 .thenReturn(false);
 
-        service.reconcileActiveAllTime();
+        service.reconcileActiveWeekly();
 
         verify(entryRepository, never()).findChangedEntries(any(), any(), any(), any());
         verify(redisRepository, never()).recordReconciliationSuccess(any(), any(Integer.class), any(), any(Long.class), any());
@@ -146,7 +147,7 @@ class RankingReconciliationServiceTest {
                 10L
         );
         RankingEntry entry = entry(season, UUID.randomUUID(), 100L, Instant.parse("2026-07-19T00:30:00Z"), 41L);
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(redisRepository.findMeta(1L)).thenReturn(Optional.of(meta));
         when(redisRepository.tryAcquireReconciliationLock(eq(1L), anyString(), eq(properties.reconciliationLockTtl())))
                 .thenReturn(true);
@@ -155,7 +156,7 @@ class RankingReconciliationServiceTest {
                 .when(redisRepository)
                 .updateScore(eq(1L), any(), eq(100L), any(), any());
 
-        service.reconcileActiveAllTime();
+        service.reconcileActiveWeekly();
 
         verify(redisRepository, never()).recordReconciliationSuccess(any(), any(Integer.class), any(), any(Long.class), any());
         verify(redisRepository).recordReconciliationFailure(1L, Instant.parse("2026-07-19T01:00:00Z"));
@@ -164,13 +165,13 @@ class RankingReconciliationServiceTest {
     @Test
     void releasesReconciliationLockWithOwnerTokenAfterCycle() {
         RankingSeason season = season();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(redisRepository.findMeta(1L)).thenReturn(Optional.of(readyMeta(Instant.parse("2026-07-19T00:29:00Z"), 10L)));
         when(redisRepository.tryAcquireReconciliationLock(eq(1L), anyString(), eq(properties.reconciliationLockTtl())))
                 .thenReturn(true);
         when(entryRepository.findChangedEntries(any(), any(), any(), any())).thenReturn(List.of());
 
-        service.reconcileActiveAllTime();
+        service.reconcileActiveWeekly();
 
         verify(redisRepository).releaseReconciliationLock(eq(1L), anyString());
     }
@@ -189,7 +190,11 @@ class RankingReconciliationServiceTest {
     }
 
     private RankingSeason season() {
-        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingSeason season = RankingSeason.activeWeekly(
+                LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"),
+                Instant.parse("2026-07-26T15:00:00Z")
+        );
         ReflectionTestUtils.setField(season, "id", 1L);
         return season;
     }

@@ -12,6 +12,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,11 +41,11 @@ class RankingEligibilityChangeServiceTest {
         UUID userId = UUID.randomUUID();
         AppUser user = AppUser.createActive("me", null);
         ReflectionTestUtils.setField(user, "id", userId);
-        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingSeason season = weeklySeason();
         ReflectionTestUtils.setField(season, "id", 1L);
         RankingEntry entry = RankingEntry.createFor(season, user, 100L, null, Instant.parse("2026-07-19T00:00:00Z"));
         user.withdraw();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
         when(entryRepository.save(entry)).thenReturn(entry);
 
@@ -63,11 +64,11 @@ class RankingEligibilityChangeServiceTest {
         UUID userId = UUID.randomUUID();
         AppUser user = AppUser.createActive("me", null);
         ReflectionTestUtils.setField(user, "id", userId);
-        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingSeason season = weeklySeason();
         ReflectionTestUtils.setField(season, "id", 1L);
         RankingEntry entry = RankingEntry.createFor(season, user, 100L, null, Instant.parse("2026-07-19T00:00:00Z"));
         user.suspend();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
         when(entryRepository.save(entry)).thenReturn(entry);
 
@@ -85,15 +86,23 @@ class RankingEligibilityChangeServiceTest {
         UUID userId = UUID.randomUUID();
         AppUser user = AppUser.createActive("me", null);
         ReflectionTestUtils.setField(user, "id", userId);
-        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingSeason season = weeklySeason();
         ReflectionTestUtils.setField(season, "id", 1L);
         user.withdraw();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.of(season));
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.empty());
 
         service.publishAllTimeEligibilityChanged(user);
 
         verify(entryRepository, never()).save(org.mockito.ArgumentMatchers.any());
         verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    private RankingSeason weeklySeason() {
+        return RankingSeason.activeWeekly(
+                LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"),
+                Instant.parse("2026-07-26T15:00:00Z")
+        );
     }
 }

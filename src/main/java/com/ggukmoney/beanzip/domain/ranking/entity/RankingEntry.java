@@ -61,6 +61,12 @@ public class RankingEntry {
     @Column(name = "score_updated_at", nullable = false)
     private Instant scoreUpdatedAt;
 
+    @Column(name = "final_rank")
+    private Long finalRank;
+
+    @Column(name = "finalized_at")
+    private Instant finalizedAt;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
@@ -102,8 +108,30 @@ public class RankingEntry {
         return user.getStatus() == AppUser.Status.ACTIVE && score > 0;
     }
 
+    public void finalizeRank(long finalRank, Instant finalizedAt) {
+        if (finalRank <= 0) {
+            throw new IllegalArgumentException("finalRank must be positive");
+        }
+        if (finalizedAt == null) {
+            throw new IllegalArgumentException("finalizedAt is required");
+        }
+        if (this.finalRank != null && !this.finalRank.equals(finalRank)) {
+            throw new IllegalStateException("finalRank cannot be overwritten with a different value");
+        }
+        if (this.finalizedAt != null && !this.finalizedAt.equals(finalizedAt)) {
+            throw new IllegalStateException("finalizedAt cannot be overwritten with a different value");
+        }
+        this.finalRank = finalRank;
+        this.finalizedAt = finalizedAt;
+    }
+
+    public boolean hasFinalRankSnapshot() {
+        return finalRank != null && finalizedAt != null;
+    }
+
     @PrePersist
     void prePersist() {
+        validateFinalRankSnapshot();
         Instant now = Instant.now();
         if (publicId == null) {
             publicId = UUID.randomUUID();
@@ -119,10 +147,20 @@ public class RankingEntry {
 
     @PreUpdate
     void preUpdate() {
+        validateFinalRankSnapshot();
         updatedAt = Instant.now();
     }
 
     private String normalizeRegionCode(String regionCode) {
         return regionCode == null || regionCode.isBlank() ? null : regionCode.trim();
+    }
+
+    private void validateFinalRankSnapshot() {
+        if (finalRank != null && finalRank <= 0) {
+            throw new IllegalStateException("finalRank must be positive");
+        }
+        if ((finalRank == null) != (finalizedAt == null)) {
+            throw new IllegalStateException("finalRank and finalizedAt must be both null or both present");
+        }
     }
 }

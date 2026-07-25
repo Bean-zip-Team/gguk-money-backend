@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
@@ -38,7 +39,7 @@ class RankingInitializerTest {
 
     @Test
     void redisFailureDoesNotFailApplicationStartup() {
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.empty());
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.empty());
         when(redisRepository.tryAcquireInitializationLock(anyString(), eq(properties.initializationLockTtl())))
                 .thenThrow(new IllegalStateException("redis down"));
 
@@ -58,7 +59,7 @@ class RankingInitializerTest {
                 Instant.parse("2026-07-19T00:58:00Z"),
                 10L
         );
-        when(seasonService.findActiveAllTimeSeason())
+        when(seasonService.findActiveWeeklySeason())
                 .thenReturn(Optional.of(season))
                 .thenReturn(Optional.of(season));
         when(redisRepository.findReadyMeta(1L, 1, properties.maxStaleness(), clock.instant()))
@@ -69,27 +70,33 @@ class RankingInitializerTest {
 
         initializer.run();
 
-        verify(backfillService, never()).backfillActiveAllTimeFromTapProgress();
+        verify(backfillService, never()).backfillActiveWeeklySeason(season);
         verify(rebuildService, never()).rebuild(season, "startup-initializer");
     }
 
     @Test
     void backfillsAndRebuildsWhenInitializationIsNeeded() {
         RankingSeason season = season();
-        when(seasonService.findActiveAllTimeSeason()).thenReturn(Optional.empty());
-        when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
+        when(seasonService.findActiveWeeklySeason()).thenReturn(Optional.empty());
+        when(seasonService.ensureCurrentWeeklySeason(clock.instant())).thenReturn(season);
         when(redisRepository.tryAcquireInitializationLock(anyString(), eq(properties.initializationLockTtl())))
                 .thenReturn(true);
+        when(redisRepository.findReadyMeta(1L, 1, properties.maxStaleness(), clock.instant()))
+                .thenReturn(Optional.empty());
         when(rebuildService.rebuild(season, "startup-initializer")).thenReturn(true);
 
         initializer.run();
 
-        verify(backfillService).backfillActiveAllTimeFromTapProgress();
+        verify(backfillService).backfillActiveWeeklySeason(season);
         verify(rebuildService).rebuild(season, "startup-initializer");
     }
 
     private RankingSeason season() {
-        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingSeason season = RankingSeason.activeWeekly(
+                LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"),
+                Instant.parse("2026-07-26T15:00:00Z")
+        );
         ReflectionTestUtils.setField(season, "id", 1L);
         return season;
     }

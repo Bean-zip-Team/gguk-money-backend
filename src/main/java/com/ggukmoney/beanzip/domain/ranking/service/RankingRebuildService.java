@@ -29,6 +29,14 @@ public class RankingRebuildService {
     private final Clock clock;
 
     @Transactional(readOnly = true)
+    public boolean rebuildActiveWeekly(String reason) {
+        return seasonService.findActiveWeeklySeason()
+                .filter(value -> rebuild(value, reason))
+                .isPresent();
+    }
+
+    @Deprecated
+    @Transactional(readOnly = true)
     public boolean rebuildActiveAllTime(String reason) {
         return seasonService.findActiveAllTimeSeason()
                 .filter(value -> rebuild(value, reason))

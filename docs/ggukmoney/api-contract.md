@@ -85,6 +85,36 @@
 }
 ```
 
+## BEA-157 weekly ranking history contract addendum
+
+- Actual endpoint: `GET /api/rankings/history`.
+- Authentication: Access JWT required.
+- Query parameters: `cursor` and `size`; default size is `20`, allowed range is `1..100`.
+- Source: PostgreSQL only. Redis is not read, rebuilt, or used as a fallback source.
+- Scope: the authenticated user's participated `CLOSED WEEKLY` seasons only.
+- Exclusions: `ACTIVE`, `FINALIZING`, `ALL_TIME`, other users' entries, and entries where `final_rank` or `finalized_at` is missing.
+- Sort: `ranking_season.ends_at DESC, ranking_season.id DESC`.
+- Cursor: opaque URL-safe Base64 over `endsAt|seasonId`.
+- Empty history returns `200` with `content=[]`, `nextCursor=null`, `hasNext=false`.
+- No new DB columns or manual SQL are introduced by BEA-157.
+- Prerequisite: BEA-158 DB changes for `WEEKLY`, `FINALIZING`, `ranking_entry.final_rank`, `ranking_entry.finalized_at`, and BEA-158 constraints/indexes must already be applied.
+
+```json
+{
+  "content": [
+    {
+      "seasonCode": "WEEKLY_20260720",
+      "startedAt": "2026-07-19T15:00:00Z",
+      "endsAt": "2026-07-26T15:00:00Z",
+      "myFinalRank": 7,
+      "myFinalScore": 950
+    }
+  ],
+  "nextCursor": "opaque",
+  "hasNext": true
+}
+```
+
 `userPublicId` 대신 `userId`를 사용한다. 이 값은 UUID `app_user.id`다.
 
 ## 주요 멱등성 계약
@@ -199,3 +229,48 @@ Header 기반 멱등성과 업무 키 기반 멱등성을 구분한다. 자연 �
 - 친구 초대
 - 서버 분석 이벤트 수집
 - 법적 문서 버전과 동의 이력 조회
+## BEA-158 weekly ranking contract addendum
+
+- Actual endpoint: `GET /api/rankings/current`.
+- This endpoint intentionally does not use `/api/v1`; do not change global API prefix as part of BEA-158.
+- Authentication: Access JWT required.
+- Query parameter: `limit`, default `50`, allowed range `1..100`. `limit=100` remains valid for backward compatibility; pagination/infinite scroll is not provided.
+- Source season: active `RankingType.WEEKLY` only. The query path must not call `ensureCurrentWeeklySeason`, rollover, backfill, Redis rebuild, DB save, or final-rank snapshot.
+- If no active weekly season exists, return `RANKING_SEASON_NOT_FOUND` with 404.
+- Season policy: `Asia/Seoul`, Monday `00:00`, stored as UTC `Instant`, score range `startsAt <= occurredAt < endsAt`.
+- Previous rank source: immediately previous `CLOSED WEEKLY` season, ordered by `endsAt DESC`, using `ranking_entry.final_rank`.
+- `rankChange = previousRank - currentRank`. Previous non-participant or first weekly season returns `previousRank=null`, `rankChange=null`.
+- Redis-ready path, missing meta, stale meta, missing ZSET, and PostgreSQL fallback must return the same response shape.
+
+```json
+{
+  "season": {
+    "startedAt": "2026-07-19T15:00:00Z",
+    "endsAt": "2026-07-26T15:00:00Z",
+    "nextResetAt": "2026-07-26T15:00:00Z",
+    "resetDayOfWeek": "MONDAY",
+    "resetTime": "00:00",
+    "timeZone": "Asia/Seoul"
+  },
+  "items": [
+    {
+      "rank": 1,
+      "previousRank": 3,
+      "rankChange": 2,
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "nickname": "Bean",
+      "profileImageUrl": null,
+      "score": 1200,
+      "isMe": false
+    }
+  ],
+  "myRank": {
+    "rank": 7,
+    "previousRank": 10,
+    "rankChange": 3,
+    "score": 950,
+    "scoreGapToFirst": 250
+  },
+  "totalParticipantCount": 124
+}
+```
