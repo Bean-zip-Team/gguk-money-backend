@@ -26,7 +26,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
         assertThat(config.freeOpenLimit()).isEqualTo(2);
         assertThat(config.adOpenLimit()).isEqualTo(2);
     }
@@ -74,7 +74,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
     }
 
     @Test
@@ -119,7 +119,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
     }
 
     @Test
@@ -201,7 +201,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
         assertThat(config.freeOpenLimit()).isEqualTo(1);
         assertThat(config.adOpenLimit()).isEqualTo(3);
     }

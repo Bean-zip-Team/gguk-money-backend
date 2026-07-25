@@ -30,7 +30,7 @@ public class KeycapBoxPolicyConfig {
             Map.entry(KEY_FREE_TICKET_REFILL_PER_HOUR, "1"),
             Map.entry(KEY_FREE_TICKET_CAP, "8"),
             Map.entry(KEY_AD_OPEN_DAILY_LIMIT, "2"),
-            Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "3600"),
+            Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "60"),
             Map.entry(KEY_FREE_OPEN_LIMIT, "2"),
             Map.entry(KEY_AD_OPEN_LIMIT, "2")
     );
