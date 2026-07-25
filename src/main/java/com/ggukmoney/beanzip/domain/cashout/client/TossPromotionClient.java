@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.cashout.client;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
@@ -23,6 +25,8 @@ import java.net.http.HttpClient;
 @Component
 public class TossPromotionClient {
 
+    private static final Logger log = LoggerFactory.getLogger(TossPromotionClient.class);
+
     private static final String GET_KEY_PATH =
             "/api-partner/v1/apps-in-toss/promotion/execute-promotion/get-key";
     private static final String EXECUTE_PROMOTION_PATH =
@@ -33,6 +37,7 @@ public class TossPromotionClient {
 
     private final RestClient restClient;
     private final String baseUrl;
+    private final boolean mtlsEnabled;
 
     public TossPromotionClient(
             @Value("${app.cashout.toss.base-url:}") String baseUrl,
@@ -42,10 +47,13 @@ public class TossPromotionClient {
         RestClient.Builder builder = StringUtils.hasText(this.baseUrl)
                 ? RestClient.builder().baseUrl(this.baseUrl)
                 : RestClient.builder();
-        if (sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME)) {
+        this.mtlsEnabled = sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME);
+        if (mtlsEnabled) {
             builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
         }
         this.restClient = builder.build();
+        log.info("TossPromotionClient initialized: baseUrl={} mtlsBundle={} mtlsEnabled={} availableBundles={}",
+                this.baseUrl, MTLS_BUNDLE_NAME, mtlsEnabled, sslBundles.getBundleNames());
     }
 
     private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
@@ -61,23 +69,35 @@ public class TossPromotionClient {
      */
     public String getKey(String tossUserKey) {
         requireConfigured();
+        String headerName = "x-anon-key";
+        String headerValue = requireText(tossUserKey);
+        log.info("Toss get-key request: url={}{} header={} value={} mtlsEnabled={}",
+                baseUrl, GET_KEY_PATH, headerName, mask(headerValue), mtlsEnabled);
         try {
             TossPromotionKeyResponse response = restClient.post()
                     .uri(GET_KEY_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .header("x-toss-user-key", requireText(tossUserKey))
+                    .header(headerName, headerValue)
                     .retrieve()
                     .body(TossPromotionKeyResponse.class);
+
+            log.info("Toss get-key response: resultType={} keyPresent={} error={}",
+                    response == null ? null : response.resultType(),
+                    response != null && response.success() != null && StringUtils.hasText(response.success().key()),
+                    response == null ? null : response.error());
 
             if (response == null || response.success() == null || !StringUtils.hasText(response.success().key())) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
             }
             return response.success().key();
         } catch (RestClientResponseException exception) {
+            log.warn("Toss get-key HTTP error: status={} body={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString(), exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.error("Toss get-key unexpected failure", exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         }
     }
@@ -93,13 +113,21 @@ public class TossPromotionClient {
      */
     public PromotionExecutionOutcome executePromotion(String promotionCode, String key, long amount) {
         requireConfigured();
+        String safePromotionCode = requireText(promotionCode);
+        String safeKey = requireText(key);
+        log.info("Toss execute-promotion request: url={}{} promotionCode={} key={} amount={} mtlsEnabled={}",
+                baseUrl, EXECUTE_PROMOTION_PATH, safePromotionCode, mask(safeKey), amount, mtlsEnabled);
         try {
             TossPromotionExecuteResponse response = restClient.post()
                     .uri(EXECUTE_PROMOTION_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new TossPromotionExecuteRequest(requireText(promotionCode), requireText(key), amount))
+                    .body(new TossPromotionExecuteRequest(safePromotionCode, safeKey, amount))
                     .retrieve()
                     .body(TossPromotionExecuteResponse.class);
+
+            log.info("Toss execute-promotion response: resultType={} error={}",
+                    response == null ? null : response.resultType(),
+                    response == null ? null : response.error());
 
             if (response == null) {
                 throw new AmbiguousTossFailureException("execute-promotion 응답이 비어 있음");
@@ -112,6 +140,8 @@ public class TossPromotionClient {
                     response.error() == null ? null : response.error().reason()
             );
         } catch (RestClientResponseException exception) {
+            log.warn("Toss execute-promotion HTTP error: status={} body={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString());
             if (exception.getStatusCode().is4xxClientError()) {
                 TossPromotionError error = extractError(exception);
                 return PromotionExecutionOutcome.failed(
@@ -123,6 +153,7 @@ public class TossPromotionClient {
         } catch (AmbiguousTossFailureException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.error("Toss execute-promotion 네트워크 오류", exception);
             throw new AmbiguousTossFailureException("execute-promotion 네트워크 오류", exception);
         }
     }
@@ -173,6 +204,13 @@ public class TossPromotionClient {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TOSS_REQUEST_INVALID");
         }
         return value.trim();
+    }
+
+    private String mask(String value) {
+        if (value.length() <= 8) {
+            return "***(len=" + value.length() + ")";
+        }
+        return value.substring(0, 4) + "***" + value.substring(value.length() - 4) + "(len=" + value.length() + ")";
     }
 
     private record TossPromotionExecuteRequest(String promotionCode, String key, long amount) {
