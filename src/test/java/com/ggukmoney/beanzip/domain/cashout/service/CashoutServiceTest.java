@@ -16,11 +16,17 @@ import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -50,7 +56,8 @@ class CashoutServiceTest {
     private final CashoutPolicyConfig cashoutPolicyConfig = mock(CashoutPolicyConfig.class);
     private final CashoutService cashoutService = new CashoutService(
             pointAccountService, pointLedgerService, cashoutRequestRepository,
-            authIdentityRepository, tossPromotionClient, userService, cashoutPolicyConfig);
+            authIdentityRepository, tossPromotionClient, userService, cashoutPolicyConfig,
+            new NoOpTransactionManager());
 
     private final UUID userId = UUID.randomUUID();
     private final UUID idempotencyKey = UUID.randomUUID();
@@ -282,6 +289,48 @@ class CashoutServiceTest {
     }
 
     @Test
+    void replaysWinningRequestWhenConcurrentSubmissionWithSameIdempotencyKeyRaces() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(userService.getById(userId)).thenReturn(user);
+        CashoutRequest winningRequest = CashoutRequest.createFor(user, 134L, 93L, idempotencyKey);
+
+        when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey))
+                .thenReturn(Optional.empty(), Optional.of(winningRequest));
+        when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
+        when(pointAccountService.getBalance(userId)).thenReturn(134L);
+        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(cashoutRequestRepository.save(any(CashoutRequest.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+
+        CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
+
+        assertThat(response.pointAmount()).isEqualTo(134L);
+        assertThat(response.tossPointAmount()).isEqualTo(93L);
+        verify(tossPromotionClient, never()).getKey(any());
+    }
+
+    @Test
+    void returnsConflictWhenConcurrentDebitLosesOptimisticLock() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(userService.getById(userId)).thenReturn(user);
+
+        when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
+        when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
+        when(pointAccountService.getBalance(userId)).thenReturn(134L);
+        when(pointAccountService.debit(userId, 134L))
+                .thenThrow(new OptimisticLockingFailureException("version conflict"));
+
+        assertThatThrownBy(() -> cashoutService.submit(userId, idempotencyKey))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("CASHOUT_ALREADY_PROCESSING");
+
+        verify(cashoutRequestRepository, never()).save(any());
+        verify(tossPromotionClient, never()).getKey(any());
+    }
+
+    @Test
     void returnsHasMoreFalseWhenFetchedCountEqualsPageSize() {
         List<CashoutRequest> requests = List.of(
                 cashoutRequestFixture(3L, CashoutRequest.Status.REQUESTED),
@@ -385,5 +434,20 @@ class CashoutServiceTest {
         ReflectionTestUtils.setField(request, "createdAt", Instant.now());
         ReflectionTestUtils.setField(request, "updatedAt", Instant.now());
         return request;
+    }
+
+    private static class NoOpTransactionManager implements PlatformTransactionManager {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+            return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {
+        }
+
+        @Override
+        public void rollback(TransactionStatus status) {
+        }
     }
 }

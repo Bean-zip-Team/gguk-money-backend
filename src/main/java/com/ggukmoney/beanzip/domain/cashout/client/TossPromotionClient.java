@@ -1,13 +1,19 @@
 package com.ggukmoney.beanzip.domain.cashout.client;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.net.http.HttpClient;
 
 /**
  * 서버-투-서버 연동 스펙(https://developers-apps-in-toss.toss.im/bedrock/reference/framework/비게임/promotion.html).
@@ -23,17 +29,30 @@ public class TossPromotionClient {
             "/api-partner/v1/apps-in-toss/promotion/execute-promotion";
     private static final String EXECUTION_RESULT_PATH =
             "/api-partner/v1/apps-in-toss/promotion/execution-result";
+    private static final String MTLS_BUNDLE_NAME = "toss-promotion";
 
     private final RestClient restClient;
     private final String baseUrl;
 
     public TossPromotionClient(
-            @Value("${app.cashout.toss.base-url:}") String baseUrl
+            @Value("${app.cashout.toss.base-url:}") String baseUrl,
+            SslBundles sslBundles
     ) {
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
-        this.restClient = StringUtils.hasText(this.baseUrl)
-                ? RestClient.builder().baseUrl(this.baseUrl).build()
-                : RestClient.builder().build();
+        RestClient.Builder builder = StringUtils.hasText(this.baseUrl)
+                ? RestClient.builder().baseUrl(this.baseUrl)
+                : RestClient.builder();
+        if (sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME)) {
+            builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
+        }
+        this.restClient = builder.build();
+    }
+
+    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .sslContext(sslBundle.createSslContext())
+                .build();
+        return new JdkClientHttpRequestFactory(httpClient);
     }
 
     /**
