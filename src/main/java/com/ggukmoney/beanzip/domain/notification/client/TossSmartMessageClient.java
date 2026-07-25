@@ -1,0 +1,163 @@
+package com.ggukmoney.beanzip.domain.notification.client;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
+import java.net.http.HttpClient;
+import java.util.List;
+
+@Component
+public class TossSmartMessageClient {
+
+    private static final String SEND_MESSAGE_PATH = "/api-partner/v1/apps-in-toss/messenger/send-message";
+    private static final String DEFAULT_BASE_URL = "https://apps-in-toss-api.toss.im";
+
+    private final RestClient restClient;
+    private final ObjectMapper objectMapper;
+
+    @Autowired
+    public TossSmartMessageClient(
+            ObjectMapper objectMapper,
+            @Value("${app.smart-message.toss.base-url:" + DEFAULT_BASE_URL + "}") String baseUrl,
+            SslBundles sslBundles,
+            @Value("${app.smart-message.toss.mtls-bundle-name:toss-auth}") String mtlsBundleName
+    ) {
+        this(objectMapper, baseUrl, sslBundles, mtlsBundleName, RestClient.builder());
+    }
+
+    TossSmartMessageClient(
+            ObjectMapper objectMapper,
+            String baseUrl,
+            SslBundles sslBundles,
+            String mtlsBundleName,
+            RestClient.Builder builder
+    ) {
+        this.objectMapper = objectMapper;
+        String normalizedBaseUrl = StringUtils.hasText(baseUrl) ? baseUrl.trim() : DEFAULT_BASE_URL;
+        RestClient.Builder configuredBuilder = builder.baseUrl(normalizedBaseUrl);
+        if (sslBundles != null && StringUtils.hasText(mtlsBundleName) && sslBundles.getBundleNames().contains(mtlsBundleName.trim())) {
+            configuredBuilder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(mtlsBundleName.trim())));
+        }
+        this.restClient = configuredBuilder.build();
+    }
+
+    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
+        HttpClient httpClient = HttpClient.newBuilder().sslContext(sslBundle.createSslContext()).build();
+        return new JdkClientHttpRequestFactory(httpClient);
+    }
+
+    public SendResult sendMessage(String tossUserKey, String templateSetCode) {
+        try {
+            TossSmartMessageResponse response = restClient.post()
+                    .uri(SEND_MESSAGE_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("x-toss-user-key", requireText(tossUserKey))
+                    .body(new TossSmartMessageRequest(requireText(templateSetCode)))
+                    .retrieve()
+                    .body(TossSmartMessageResponse.class);
+            if (response == null || response.success() == null || !StringUtils.hasText(response.success().contentId())) {
+                TossSmartMessageError error = response == null ? null : response.error();
+                return SendResult.failed(error == null ? "TOSS_SMART_MESSAGE_FAILED" : error.errorCode(),
+                        error == null ? null : error.reason(), false, toResponseBody(response));
+            }
+            if (!hasSuccessfulChannel(response.success())) {
+                return SendResult.failed("TOSS_SMART_MESSAGE_CHANNEL_FAILED", "No successful smart message channel result", true, toResponseBody(response));
+            }
+            return SendResult.succeeded(response.success().contentId(), toResponseBody(response));
+        } catch (RestClientResponseException exception) {
+            TossSmartMessageError error = extractError(exception.getResponseBodyAsString());
+            return SendResult.failed(error == null ? "TOSS_SMART_MESSAGE_FAILED" : error.errorCode(),
+                    error == null ? exception.getMessage() : error.reason(), isRetryableStatus(exception), exception.getResponseBodyAsString());
+        } catch (RuntimeException exception) {
+            return SendResult.failed("TOSS_SMART_MESSAGE_FAILED", exception.getMessage(), true, null);
+        }
+    }
+
+    private boolean isRetryableStatus(RestClientResponseException exception) {
+        int statusCode = exception.getStatusCode().value();
+        return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+    }
+
+    private boolean hasSuccessfulChannel(TossSmartMessageSuccess success) {
+        List<TossChannelResult> channelResults = success.channelResults();
+        if (channelResults == null || channelResults.isEmpty()) {
+            channelResults = success.results();
+        }
+        if (channelResults == null || channelResults.isEmpty()) {
+            return StringUtils.hasText(success.contentId());
+        }
+        return channelResults.stream().anyMatch(TossChannelResult::isSuccessful);
+    }
+
+    private String toResponseBody(TossSmartMessageResponse response) {
+        if (response == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (JacksonException exception) {
+            return null;
+        }
+    }
+
+    private TossSmartMessageError extractError(String responseBody) {
+        if (!StringUtils.hasText(responseBody)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(responseBody, TossSmartMessageResponse.class).error();
+        } catch (JacksonException exception) {
+            return null;
+        }
+    }
+
+    private String requireText(String value) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException("value is required");
+        }
+        return value.trim();
+    }
+
+    private record TossSmartMessageRequest(String templateSetCode) {
+    }
+
+    public record TossSmartMessageResponse(String resultType, TossSmartMessageSuccess success, TossSmartMessageError error) {
+    }
+
+    public record TossSmartMessageSuccess(String contentId, List<TossChannelResult> channelResults, List<TossChannelResult> results) {
+    }
+
+    public record TossChannelResult(String channel, Boolean success, String resultType, String status, String contentId, TossSmartMessageError error) {
+        boolean isSuccessful() {
+            return Boolean.TRUE.equals(success) || isSuccessText(resultType) || isSuccessText(status) || StringUtils.hasText(contentId);
+        }
+
+        private boolean isSuccessText(String value) {
+            return "SUCCESS".equalsIgnoreCase(value) || "SENT".equalsIgnoreCase(value) || "SUCCEEDED".equalsIgnoreCase(value);
+        }
+    }
+
+    public record TossSmartMessageError(String errorCode, String reason) {
+    }
+
+    public record SendResult(boolean succeeded, String contentId, String errorCode, String reason, boolean retryable, String responseBody) {
+        static SendResult succeeded(String contentId, String responseBody) {
+            return new SendResult(true, contentId, null, null, false, responseBody);
+        }
+
+        static SendResult failed(String errorCode, String reason, boolean retryable, String responseBody) {
+            return new SendResult(false, null, errorCode, reason, retryable, responseBody);
+        }
+    }
+}
