@@ -170,8 +170,8 @@ public class CashoutService {
             if (outcome.succeeded()) {
                 persistProcessing(request, key);
             } else {
-                log.warn("Toss execute-promotion 명시적 실패, 환불 처리: cashoutId={} errorCode={}",
-                        request.getPublicId(), outcome.tossErrorCode());
+                log.warn("Toss execute-promotion 명시적 실패, 환불 처리: cashoutId={} errorCode={} reason={}",
+                        request.getPublicId(), outcome.tossErrorCode(), outcome.reason());
                 persistFailedAndReverse(request, user, balance, idempotencyKey);
             }
         } catch (TossPromotionClient.AmbiguousTossFailureException exception) {

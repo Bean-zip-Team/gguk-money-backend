@@ -86,7 +86,7 @@ public class TossPromotionClient {
      * 발급받은 Key로 실제 지급을 실행한다. 응답은 "접수 성공/실패"만 의미하고, 최종 지급 여부는
      * {@link #getExecutionResult(String)}로 별도 확인해야 한다.
      *
-     * <p>Toss가 명시적으로 거절한 경우(4xx + 파싱 가능한 에러 바디)는 {@link PromotionExecutionOutcome#failed()}로
+     * <p>Toss가 명시적으로 거절한 경우(4xx + 파싱 가능한 에러 바디)는 {@link PromotionExecutionOutcome#failed(String, String)}로
      * 반환한다 — 이 경우 Toss 쪽에서 아무 일도 일어나지 않았음이 확실하므로 호출자가 안전하게 환불 처리할 수 있다.
      * 반면 네트워크 오류·5xx·타임아웃처럼 Toss가 실제로 처리했는지 알 수 없는 경우는
      * {@link AmbiguousTossFailureException}을 던진다 — 호출자는 이 경우 자동 환불하면 안 된다.
@@ -107,10 +107,17 @@ public class TossPromotionClient {
             if ("SUCCESS".equalsIgnoreCase(response.resultType())) {
                 return PromotionExecutionOutcome.success();
             }
-            return PromotionExecutionOutcome.failed(response.error() == null ? null : response.error().errorCode());
+            return PromotionExecutionOutcome.failed(
+                    response.error() == null ? null : response.error().errorCode(),
+                    response.error() == null ? null : response.error().reason()
+            );
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().is4xxClientError()) {
-                return PromotionExecutionOutcome.failed(extractErrorCode(exception));
+                TossPromotionError error = extractError(exception);
+                return PromotionExecutionOutcome.failed(
+                        error == null ? null : error.errorCode(),
+                        error == null ? null : error.reason()
+                );
             }
             throw new AmbiguousTossFailureException("execute-promotion 5xx 응답", exception);
         } catch (AmbiguousTossFailureException exception) {
@@ -146,10 +153,10 @@ public class TossPromotionClient {
         }
     }
 
-    private String extractErrorCode(RestClientResponseException exception) {
+    private TossPromotionError extractError(RestClientResponseException exception) {
         try {
             TossPromotionExecuteResponse body = exception.getResponseBodyAs(TossPromotionExecuteResponse.class);
-            return body == null || body.error() == null ? null : body.error().errorCode();
+            return body == null ? null : body.error();
         } catch (RuntimeException parseException) {
             return null;
         }
@@ -195,13 +202,13 @@ public class TossPromotionClient {
         FAILED
     }
 
-    public record PromotionExecutionOutcome(boolean succeeded, String tossErrorCode) {
+    public record PromotionExecutionOutcome(boolean succeeded, String tossErrorCode, String reason) {
         public static PromotionExecutionOutcome success() {
-            return new PromotionExecutionOutcome(true, null);
+            return new PromotionExecutionOutcome(true, null, null);
         }
 
-        public static PromotionExecutionOutcome failed(String tossErrorCode) {
-            return new PromotionExecutionOutcome(false, tossErrorCode);
+        public static PromotionExecutionOutcome failed(String tossErrorCode, String reason) {
+            return new PromotionExecutionOutcome(false, tossErrorCode, reason);
         }
     }
 
