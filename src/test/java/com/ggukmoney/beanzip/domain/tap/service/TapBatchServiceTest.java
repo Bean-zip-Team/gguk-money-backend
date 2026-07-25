@@ -84,6 +84,7 @@ class TapBatchServiceTest {
                 .thenReturn(1L);
         lenient().when(redisService.get(anyString())).thenReturn(Optional.empty());
         when(tapPolicyConfig.minIntervalMs()).thenReturn(80);
+        lenient().when(tapPolicyConfig.rateLimitEnabled()).thenReturn(true);
         lenient().when(tapPolicyConfig.botDetectionEnabled()).thenReturn(true);
         when(tapPolicyConfig.botSampleSize()).thenReturn(10);
         when(tapPolicyConfig.botStddevThresholdMs()).thenReturn(12.0);

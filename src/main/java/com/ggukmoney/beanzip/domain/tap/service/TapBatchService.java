@@ -75,7 +75,8 @@ public class TapBatchService {
     public TapBatchSubmitResponse submitBatch(UUID userId, TapBatchSubmitRequest request) {
         Instant acceptedAt = clock.instant();
         LocalDate tapDate = LocalDate.ofInstant(acceptedAt, businessZoneId);
-        if (!tryConsumeRateLimit(userId, tapPolicyConfig.rateLimitCapacity(), tapPolicyConfig.rateLimitRefillPerSecond(), acceptedAt)) {
+        if (tapPolicyConfig.rateLimitEnabled()
+                && !tryConsumeRateLimit(userId, tapPolicyConfig.rateLimitCapacity(), tapPolicyConfig.rateLimitRefillPerSecond(), acceptedAt)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "TAP_RATE_LIMITED");
         }
 

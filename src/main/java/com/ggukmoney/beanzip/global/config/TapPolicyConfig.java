@@ -30,6 +30,7 @@ public class TapPolicyConfig {
     public static final String KEY_BOT_ENABLED = "tap.bot.enabled";
     public static final String KEY_BOT_SAMPLE_SIZE = "tap.bot.sampleSize";
     public static final String KEY_BOT_STDDEV_THRESHOLD_MS = "tap.bot.stddevThresholdMs";
+    public static final String KEY_RATE_LIMIT_ENABLED = "tap.rateLimit.enabled";
     public static final String KEY_RATE_LIMIT_CAPACITY = "tap.rateLimit.capacity";
     public static final String KEY_RATE_LIMIT_REFILL_PER_SECOND = "tap.rateLimit.refillPerSecond";
     public static final String KEY_BOX_DROP_BASE = "tap.box.dropBase";
@@ -50,6 +51,7 @@ public class TapPolicyConfig {
             Map.entry(KEY_BOT_ENABLED, "false"),
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
             Map.entry(KEY_BOT_STDDEV_THRESHOLD_MS, "12"),
+            Map.entry(KEY_RATE_LIMIT_ENABLED, "false"),
             Map.entry(KEY_RATE_LIMIT_CAPACITY, "8"),
             Map.entry(KEY_RATE_LIMIT_REFILL_PER_SECOND, "0.125"),
             Map.entry(KEY_BOX_DROP_BASE, "20"),
@@ -122,6 +124,10 @@ public class TapPolicyConfig {
 
     public double botStddevThresholdMs() {
         return getDouble(KEY_BOT_STDDEV_THRESHOLD_MS);
+    }
+
+    public boolean rateLimitEnabled() {
+        return getBoolean(KEY_RATE_LIMIT_ENABLED);
     }
 
     public int rateLimitCapacity() {
