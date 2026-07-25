@@ -46,7 +46,14 @@ public class NotificationDeliveryPersistenceService {
             String dedupeKey,
             String templateSetCode
     ) {
-        return createPendingInternal(userId, type, dedupeKey, templateSetCode);
+        return createPendingInternal(userId, type, dedupeKey, templateSetCode, "{}");
+    }
+
+    @Transactional
+    public Optional<NotificationDelivery> createPending(
+            UUID userId, NotificationType type, String dedupeKey, String templateSetCode, String contextJson
+    ) {
+        return createPendingInternal(userId, type, dedupeKey, templateSetCode, contextJson);
     }
 
     @Transactional
@@ -75,7 +82,9 @@ public class NotificationDeliveryPersistenceService {
                     userId,
                     NotificationType.RANK_CHANGE,
                     "RANK_CHANGE:%d:%s:%d:%d".formatted(rank.season().getId(), userId, previousRank, rank.rank()),
-                    templateProperties.templateSetCode(NotificationType.RANK_CHANGE)
+                    templateProperties.templateSetCode(NotificationType.RANK_CHANGE),
+                    "{\"currentRank\":%d,\"rankChange\":%d,\"direction\":\"%s\"}".formatted(
+                            rank.rank(), Math.abs(previousRank - rank.rank()), previousRank > rank.rank() ? "UP" : "DOWN")
             );
         }
 
@@ -124,7 +133,8 @@ public class NotificationDeliveryPersistenceService {
             UUID userId,
             NotificationType type,
             String dedupeKey,
-            String templateSetCode
+            String templateSetCode,
+            String contextJson
     ) {
         if (!StringUtils.hasText(templateSetCode)) {
             return Optional.empty();
@@ -138,6 +148,7 @@ public class NotificationDeliveryPersistenceService {
                     type.name(),
                     dedupeKey,
                     templateSetCode,
+                    contextJson,
                     now
             );
             if (inserted == 0) {

@@ -1,6 +1,6 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
-import com.ggukmoney.beanzip.domain.notification.dto.request.UpdateNotificationPreferenceRequest;
+import com.ggukmoney.beanzip.domain.notification.dto.request.NotificationAgreementRequest;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 class NotificationPreferenceServiceTest {
 
@@ -38,20 +39,23 @@ class NotificationPreferenceServiceTest {
                 .containsExactly(
                         NotificationType.WEEKLY_REWARD_AVAILABLE,
                         NotificationType.RANK_CHANGE,
-                        NotificationType.BOOSTER_RECHARGED
+                        NotificationType.BOOSTER_RECHARGED,
+                        NotificationType.DAILY_REMINDER,
+                        NotificationType.BOOSTER_UNUSED
                 );
         assertThat(Arrays.stream(NotificationType.values()).map(Enum::name))
-                .doesNotContain("DAILY_REMINDER", "RANK_DROP", "BOOSTER_UNUSED");
+                .doesNotContain("RANK_DROP");
     }
 
     @Test
     void listReturnsTemplateCodeNotTemplateSetCode() {
         UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
         when(persistenceService.isRankPromptEligible(userId)).thenReturn(true);
 
         var response = service.list(userId);
 
-        assertThat(response.items()).hasSize(3);
+        assertThat(response.items()).hasSize(5);
         assertThat(response.items().stream()
                 .filter(item -> item.type() == NotificationType.RANK_CHANGE)
                 .findFirst()
@@ -60,35 +64,41 @@ class NotificationPreferenceServiceTest {
     }
 
     @Test
-    void updateStoresAgreementAndCapturesRankBaseline() {
+    void globalAgreementStoresAllPreferencesAndCapturesRankBaseline() {
         UUID userId = UUID.randomUUID();
-        NotificationPreference preference = NotificationPreference.defaultOf(userId, NotificationType.RANK_CHANGE);
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
-                .thenReturn(Optional.of(preference));
+        stubMissingPreferences();
 
-        var response = service.update(
+        var response = service.agree(
                 userId,
-                new UpdateNotificationPreferenceRequest(NotificationType.RANK_CHANGE, true, "alreadyAgreed")
+                new NotificationAgreementRequest("alreadyAgreed")
         );
 
         assertThat(response.enabled()).isTrue();
         assertThat(response.agreementStatus()).isEqualTo(NotificationAgreementStatus.AGREED);
+        assertThat(response.items()).allSatisfy(item -> {
+            assertThat(item.enabled()).isTrue();
+            assertThat(item.agreementStatus()).isEqualTo(NotificationAgreementStatus.AGREED);
+        });
         verify(persistenceService).captureRankBaselineOnAgreement(userId);
     }
 
     @Test
-    void rejectedAgreementDisablesPreference() {
+    void rejectedGlobalAgreementDisablesAllPreferences() {
         UUID userId = UUID.randomUUID();
-        NotificationPreference preference = NotificationPreference.defaultOf(userId, NotificationType.BOOSTER_RECHARGED);
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.BOOSTER_RECHARGED))
-                .thenReturn(Optional.of(preference));
+        stubMissingPreferences();
 
-        var response = service.update(
+        var response = service.agree(
                 userId,
-                new UpdateNotificationPreferenceRequest(NotificationType.BOOSTER_RECHARGED, true, "agreementRejected")
+                new NotificationAgreementRequest("agreementRejected")
         );
 
         assertThat(response.enabled()).isFalse();
         assertThat(response.agreementStatus()).isEqualTo(NotificationAgreementStatus.REJECTED);
+        assertThat(response.items()).allSatisfy(item -> assertThat(item.enabled()).isFalse());
+    }
+
+    private void stubMissingPreferences() {
+        when(preferenceRepository.findByUserIdAndType(any(), any())).thenReturn(Optional.empty());
+        when(preferenceRepository.save(any(NotificationPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 }

@@ -106,6 +106,7 @@ class NotificationDeliveryPersistenceServiceTest {
                 org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
                 org.mockito.ArgumentMatchers.eq("RANK_CHANGE:1:" + userId + ":8:5"),
                 org.mockito.ArgumentMatchers.eq("RANK_SET"),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any()
         )).thenReturn(1);
         when(deliveryRepository.findByDedupeKey("RANK_CHANGE:1:" + userId + ":8:5")).thenReturn(Optional.of(pending));
@@ -130,7 +131,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
         )).thenReturn(0);
 
         assertThat(service.prepareRankChange(userId)).isEmpty();
@@ -155,7 +156,7 @@ class NotificationDeliveryPersistenceServiceTest {
 
         verify(deliveryRepository, org.mockito.Mockito.never()).insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
         );
         verify(rankStateRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(state -> state.getBaselineRank() == 5L));
     }
@@ -178,7 +179,7 @@ class NotificationDeliveryPersistenceServiceTest {
         assertThat(state.getBaselineRank()).isEqualTo(18L);
         verify(deliveryRepository, org.mockito.Mockito.never()).insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
         );
     }
 
@@ -197,7 +198,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
-                org.mockito.ArgumentMatchers.eq("RANK_CHANGE:1:" + userId + ":11:10"), org.mockito.ArgumentMatchers.eq("RANK_SET"),
+                org.mockito.ArgumentMatchers.eq("RANK_CHANGE:1:" + userId + ":11:10"), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any()
         )).thenReturn(1);
         when(deliveryRepository.findByDedupeKey("RANK_CHANGE:1:" + userId + ":11:10")).thenReturn(Optional.of(pending));
@@ -210,7 +211,7 @@ class NotificationDeliveryPersistenceServiceTest {
         UUID userId = UUID.randomUUID();
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
-                org.mockito.ArgumentMatchers.eq("dedupe"), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.eq("dedupe"), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
         )).thenThrow(new org.springframework.dao.DataIntegrityViolationException("other constraint"));
 
         assertThatThrownBy(() -> service.createPending(userId, NotificationType.RANK_CHANGE, "dedupe", "RANK_SET"))

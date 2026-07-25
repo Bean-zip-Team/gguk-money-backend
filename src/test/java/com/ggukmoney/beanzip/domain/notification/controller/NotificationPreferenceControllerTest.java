@@ -1,7 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ggukmoney.beanzip.domain.notification.dto.request.UpdateNotificationPreferenceRequest;
+import com.ggukmoney.beanzip.domain.notification.dto.request.NotificationAgreementRequest;
 import com.ggukmoney.beanzip.domain.notification.dto.response.NotificationPreferenceListResponse;
 import com.ggukmoney.beanzip.domain.notification.dto.response.NotificationPreferenceResponse;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementStatus;
@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.RequestMapping;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 import java.util.UUID;
@@ -48,14 +49,26 @@ class NotificationPreferenceControllerTest {
         RequestMapping mapping = NotificationPreferenceController.class.getAnnotation(RequestMapping.class);
 
         org.assertj.core.api.Assertions.assertThat(mapping.value())
-                .containsExactly("/api/notifications/preferences")
-                .doesNotContain("/api/v1/notifications/preferences");
+                .containsExactly("/api/notifications")
+                .doesNotContain("/api/v1/notifications");
+    }
+
+    @Test
+    void notificationEndpointsExposeSwaggerTag() {
+        Tag tag = NotificationPreferenceController.class.getAnnotation(Tag.class);
+
+        org.assertj.core.api.Assertions.assertThat(tag).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(tag.name()).isEqualTo("Notifications");
     }
 
     @Test
     void getPreferencesReturnsEnvelopeItems() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(notificationPreferenceService.list(userId)).thenReturn(new NotificationPreferenceListResponse(List.of(
+        when(notificationPreferenceService.list(userId)).thenReturn(new NotificationPreferenceListResponse(
+                "TPL_AGREEMENT",
+                NotificationAgreementStatus.AGREED,
+                true,
+                List.of(
                 new NotificationPreferenceResponse(
                         NotificationType.RANK_CHANGE,
                         true,
@@ -68,6 +81,7 @@ class NotificationPreferenceControllerTest {
         mockMvc.perform(get("/api/notifications/preferences").requestAttr(AuthRequestAttributes.USER_ID, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.agreementTemplateCode").value("TPL_AGREEMENT"))
                 .andExpect(jsonPath("$.data.items[0].type").value("RANK_CHANGE"))
                 .andExpect(jsonPath("$.data.items[0].templateCode").value("TPL_RANK"))
                 .andExpect(jsonPath("$.data.items[0].promptEligible").value(true));
@@ -76,28 +90,25 @@ class NotificationPreferenceControllerTest {
     }
 
     @Test
-    void patchPreferenceStoresAgreementResult() throws Exception {
+    void patchAgreementStoresGlobalAgreementResult() throws Exception {
         UUID userId = UUID.randomUUID();
-        UpdateNotificationPreferenceRequest request =
-                new UpdateNotificationPreferenceRequest(NotificationType.RANK_CHANGE, true, "newAgreement");
-        when(notificationPreferenceService.update(userId, request)).thenReturn(new NotificationPreferenceResponse(
-                NotificationType.RANK_CHANGE,
-                true,
+        NotificationAgreementRequest request = new NotificationAgreementRequest("newAgreement");
+        when(notificationPreferenceService.agree(userId, request)).thenReturn(new NotificationPreferenceListResponse(
+                "TPL_AGREEMENT",
                 NotificationAgreementStatus.AGREED,
-                "TPL_RANK",
-                true
+                true,
+                List.of()
         ));
 
-        mockMvc.perform(patch("/api/notifications/preferences")
+        mockMvc.perform(patch("/api/notifications/agreement")
                         .requestAttr(AuthRequestAttributes.USER_ID, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("RANK_CHANGE"))
                 .andExpect(jsonPath("$.data.enabled").value(true))
                 .andExpect(jsonPath("$.data.agreementStatus").value("AGREED"));
 
-        verify(notificationPreferenceService).update(userId, request);
+        verify(notificationPreferenceService).agree(userId, request);
     }
 }
