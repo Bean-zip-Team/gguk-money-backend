@@ -4,17 +4,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 
-@Schema(description = "Ranking history item")
+@Schema(description = "주간 랭킹 히스토리 항목")
 public record RankingHistoryItemResponse(
-        @Schema(description = "Weekly season code", example = "WEEKLY_20260720")
+        @Schema(description = "주간 시즌 코드", example = "WEEKLY_20260720")
         String seasonCode,
-        @Schema(description = "Season start instant", example = "2026-07-19T15:00:00Z")
+        @Schema(description = "시즌 시작 시각", example = "2026-07-19T15:00:00Z")
         Instant startedAt,
-        @Schema(description = "Season end instant", example = "2026-07-26T15:00:00Z")
+        @Schema(description = "시즌 종료 시각", example = "2026-07-26T15:00:00Z")
         Instant endsAt,
-        @Schema(description = "My final rank in the closed weekly season", example = "7")
+        @Schema(description = "해당 주간 시즌에서 확정된 내 순위", example = "7")
         Long myFinalRank,
-        @Schema(description = "My final score in the closed weekly season", example = "950")
+        @Schema(description = "해당 주간 시즌에서 확정된 내 랭킹 점수", example = "950")
         long myFinalScore
 ) {
 }
