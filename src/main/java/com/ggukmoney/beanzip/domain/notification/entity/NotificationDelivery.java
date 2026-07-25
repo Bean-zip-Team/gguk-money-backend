@@ -50,6 +50,9 @@ public class NotificationDelivery {
     @Column(name = "template_set_code", nullable = false, length = 120)
     private String templateSetCode;
 
+    @Column(name = "context_json", nullable = false, columnDefinition = "text")
+    private String contextJson;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private NotificationDeliveryStatus status;
@@ -80,6 +83,7 @@ public class NotificationDelivery {
             NotificationType type,
             String dedupeKey,
             String templateSetCode,
+            String contextJson,
             Instant requestedAt
     ) {
         NotificationDelivery delivery = new NotificationDelivery();
@@ -87,8 +91,13 @@ public class NotificationDelivery {
         delivery.type = type;
         delivery.dedupeKey = dedupeKey;
         delivery.templateSetCode = templateSetCode;
+        delivery.contextJson = contextJson;
         delivery.requestedAt = requestedAt;
         return delivery;
+    }
+
+    public static NotificationDelivery pending(UUID userId, NotificationType type, String dedupeKey, String templateSetCode, Instant requestedAt) {
+        return pending(userId, type, dedupeKey, templateSetCode, "{}", requestedAt);
     }
 
     public void markSent(String contentId, String providerResponseJson) {

@@ -1,9 +1,10 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
-import com.ggukmoney.beanzip.domain.notification.dto.request.UpdateNotificationPreferenceRequest;
+import com.ggukmoney.beanzip.domain.notification.dto.request.UpdateNotificationPreferenceAgreementRequest;
 import com.ggukmoney.beanzip.domain.notification.dto.response.NotificationPreferenceListResponse;
 import com.ggukmoney.beanzip.domain.notification.dto.response.NotificationPreferenceResponse;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
@@ -26,18 +27,22 @@ public class NotificationPreferenceService {
     private final NotificationDeliveryPersistenceService persistenceService;
 
     public NotificationPreferenceListResponse list(UUID userId) {
-        return new NotificationPreferenceListResponse(Arrays.stream(NotificationType.values())
-                .map(type -> toResponse(resolvePreference(userId, type), promptEligible(userId, type)))
-                .toList());
+        return new NotificationPreferenceListResponse(
+                Arrays.stream(NotificationType.values())
+                        .filter(templateProperties::isConfigured)
+                        .map(type -> resolvePreference(userId, type))
+                        .map(preference -> toResponse(preference, promptEligible(userId, preference.getType())))
+                        .toList()
+        );
     }
 
     @Transactional
-    public NotificationPreferenceResponse update(UUID userId, UpdateNotificationPreferenceRequest request) {
+    public NotificationPreferenceResponse agree(UUID userId, UpdateNotificationPreferenceAgreementRequest request) {
         try {
-            NotificationPreference preference = preferenceRepository.findByUserIdAndType(userId, request.type())
-                    .orElseGet(() -> preferenceRepository.save(NotificationPreference.defaultOf(userId, request.type())));
+            NotificationPreference preference = preferenceFor(userId, request.type());
             preference.applyAgreement(request.agreementResult());
-            if (request.type() == NotificationType.RANK_CHANGE && preference.isSendable()) {
+            if (request.type() == NotificationType.RANK_CHANGE
+                    && preference.getAgreementStatus() == NotificationAgreementStatus.AGREED) {
                 persistenceService.captureRankBaselineOnAgreement(userId);
             }
             return toResponse(preference, promptEligible(userId, request.type()));
@@ -46,9 +51,24 @@ public class NotificationPreferenceService {
         }
     }
 
+    @Transactional
+    public NotificationPreferenceResponse updateEnabled(UUID userId, NotificationType type, boolean enabled) {
+        NotificationPreference preference = preferenceFor(userId, type);
+        if (enabled && preference.getAgreementStatus() != NotificationAgreementStatus.AGREED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "NOTIFICATION_AGREEMENT_REQUIRED");
+        }
+        preference.updateEnabled(enabled);
+        return toResponse(preference, promptEligible(userId, type));
+    }
+
     private NotificationPreference resolvePreference(UUID userId, NotificationType type) {
         return preferenceRepository.findByUserIdAndType(userId, type)
                 .orElseGet(() -> NotificationPreference.defaultOf(userId, type));
+    }
+
+    private NotificationPreference preferenceFor(UUID userId, NotificationType type) {
+        return preferenceRepository.findByUserIdAndType(userId, type)
+                .orElseGet(() -> preferenceRepository.save(NotificationPreference.defaultOf(userId, type)));
     }
 
     private NotificationPreferenceResponse toResponse(NotificationPreference preference, boolean promptEligible) {
@@ -56,7 +76,7 @@ public class NotificationPreferenceService {
                 preference.getType(),
                 preference.isEnabled(),
                 preference.getAgreementStatus(),
-                templateProperties.templateCode(preference.getType()),
+                templateProperties.campaignCode(preference.getType()),
                 promptEligible
         );
     }

@@ -1,49 +1,49 @@
 package com.ggukmoney.beanzip.domain.notification.config;
 
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class NotificationTemplateProperties {
 
-    private final Template weeklyRewardAvailable;
-    private final Template rankChange;
-    private final Template boosterRecharged;
+    private final String weeklyRewardAvailableCampaignCode;
+    private final String rankChangeCampaignCode;
+    private final String boosterRechargedCampaignCode;
+    private final String dailyReminderCampaignCode;
+    private final String boosterUnusedCampaignCode;
 
+    @Autowired
     public NotificationTemplateProperties(
-            @Value("${app.smart-message.templates.weekly-reward-available.template-code:}") String weeklyRewardAvailableTemplateCode,
-            @Value("${app.smart-message.templates.weekly-reward-available.template-set-code:}") String weeklyRewardAvailableTemplateSetCode,
-            @Value("${app.smart-message.templates.rank-change.template-code:}") String rankChangeTemplateCode,
-            @Value("${app.smart-message.templates.rank-change.template-set-code:}") String rankChangeTemplateSetCode,
-            @Value("${app.smart-message.templates.booster-recharged.template-code:}") String boosterRechargedTemplateCode,
-            @Value("${app.smart-message.templates.booster-recharged.template-set-code:}") String boosterRechargedTemplateSetCode
+            @Value("${app.smart-message.templates.weekly-reward-available.campaign-code:}") String weeklyRewardAvailableCampaignCode,
+            @Value("${app.smart-message.templates.rank-change.campaign-code:}") String rankChangeCampaignCode,
+            @Value("${app.smart-message.templates.booster-recharged.campaign-code:}") String boosterRechargedCampaignCode,
+            @Value("${app.smart-message.templates.daily-reminder.campaign-code:}") String dailyReminderCampaignCode,
+            @Value("${app.smart-message.templates.booster-unused.campaign-code:}") String boosterUnusedCampaignCode
     ) {
-        this.weeklyRewardAvailable = new Template(blankToNull(weeklyRewardAvailableTemplateCode), blankToNull(weeklyRewardAvailableTemplateSetCode));
-        this.rankChange = new Template(blankToNull(rankChangeTemplateCode), blankToNull(rankChangeTemplateSetCode));
-        this.boosterRecharged = new Template(blankToNull(boosterRechargedTemplateCode), blankToNull(boosterRechargedTemplateSetCode));
+        this.weeklyRewardAvailableCampaignCode = blankToNull(weeklyRewardAvailableCampaignCode);
+        this.rankChangeCampaignCode = blankToNull(rankChangeCampaignCode);
+        this.boosterRechargedCampaignCode = blankToNull(boosterRechargedCampaignCode);
+        this.dailyReminderCampaignCode = blankToNull(dailyReminderCampaignCode);
+        this.boosterUnusedCampaignCode = blankToNull(boosterUnusedCampaignCode);
     }
 
-    public String templateCode(NotificationType type) {
-        return template(type).templateCode();
-    }
-
-    public String templateSetCode(NotificationType type) {
-        return template(type).templateSetCode();
-    }
-
-    private Template template(NotificationType type) {
+    public String campaignCode(NotificationType type) {
         return switch (type) {
-            case WEEKLY_REWARD_AVAILABLE -> weeklyRewardAvailable;
-            case RANK_CHANGE -> rankChange;
-            case BOOSTER_RECHARGED -> boosterRecharged;
+            case WEEKLY_REWARD_AVAILABLE -> weeklyRewardAvailableCampaignCode;
+            case RANK_CHANGE -> rankChangeCampaignCode;
+            case BOOSTER_RECHARGED -> boosterRechargedCampaignCode;
+            case DAILY_REMINDER -> dailyReminderCampaignCode;
+            case BOOSTER_UNUSED -> boosterUnusedCampaignCode;
         };
+    }
+
+    public boolean isConfigured(NotificationType type) {
+        return campaignCode(type) != null;
     }
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private record Template(String templateCode, String templateSetCode) {
     }
 }

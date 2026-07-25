@@ -89,6 +89,10 @@ public class NotificationPreference {
         return enabled && agreementStatus == NotificationAgreementStatus.AGREED;
     }
 
+    public void updateEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
