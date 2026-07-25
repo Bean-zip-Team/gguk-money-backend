@@ -51,7 +51,7 @@ class RankingControllerTest {
     void rankingApiHasOpenApiDocumentation() throws Exception {
         Tag tag = RankingController.class.getAnnotation(Tag.class);
         assertThat(tag).isNotNull();
-        assertThat(tag.name()).isEqualTo("Rankings");
+        assertThat(tag.name()).isEqualTo("랭킹");
 
         SecurityRequirement securityRequirement = RankingController.class.getAnnotation(SecurityRequirement.class);
         assertThat(securityRequirement).isNotNull();
@@ -84,7 +84,7 @@ class RankingControllerTest {
         assertThat(historyMethod.getAnnotation(GetMapping.class).value()).containsExactly("/history");
         Parameter cursorParameter = historyMethod.getParameters()[1].getAnnotation(Parameter.class);
         Parameter sizeParameter = historyMethod.getParameters()[2].getAnnotation(Parameter.class);
-        assertThat(cursorParameter.description()).contains("cursor");
+        assertThat(cursorParameter.description()).contains("커서");
         assertThat(sizeParameter.description()).contains("100");
     }
 
@@ -116,13 +116,13 @@ class RankingControllerTest {
     @Test
     void rankingHistoryResponseDtosHaveOpenApiSchemas() {
         assertThat(RankingHistoryResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("Ranking history page response");
+                .isEqualTo("주간 랭킹 히스토리 페이지 응답");
         assertThat(RankingHistoryItemResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("Ranking history item");
+                .isEqualTo("주간 랭킹 히스토리 항목");
         assertThat(schemaDescription(RankingHistoryItemResponse.class, "endsAt"))
-                .isEqualTo("Season end instant");
+                .isEqualTo("시즌 종료 시각");
         assertThat(schemaDescription(RankingHistoryResponse.class, "nextCursor"))
-                .isEqualTo("Next page cursor");
+                .isEqualTo("다음 페이지 조회에 전달할 커서입니다. 다음 페이지가 없으면 null입니다.");
     }
 
     @Test
