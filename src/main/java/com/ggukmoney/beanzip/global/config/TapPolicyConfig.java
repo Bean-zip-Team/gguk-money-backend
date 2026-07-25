@@ -27,6 +27,7 @@ public class TapPolicyConfig {
     public static final String KEY_CURVE_DECEL_VARIANCE = "tap.curve.decel.variance";
     public static final String KEY_DECEL_THRESHOLD_POINTS = "tap.curve.decelThresholdPoints";
     public static final String KEY_POINT_DAILY_CAP = "tap.point.dailyCap";
+    public static final String KEY_BOT_ENABLED = "tap.bot.enabled";
     public static final String KEY_BOT_SAMPLE_SIZE = "tap.bot.sampleSize";
     public static final String KEY_BOT_STDDEV_THRESHOLD_MS = "tap.bot.stddevThresholdMs";
     public static final String KEY_RATE_LIMIT_CAPACITY = "tap.rateLimit.capacity";
@@ -46,6 +47,7 @@ public class TapPolicyConfig {
             Map.entry(KEY_CURVE_DECEL_VARIANCE, "0.05"),
             Map.entry(KEY_DECEL_THRESHOLD_POINTS, "7"),
             Map.entry(KEY_POINT_DAILY_CAP, "20"),
+            Map.entry(KEY_BOT_ENABLED, "false"),
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
             Map.entry(KEY_BOT_STDDEV_THRESHOLD_MS, "12"),
             Map.entry(KEY_RATE_LIMIT_CAPACITY, "8"),
@@ -110,6 +112,10 @@ public class TapPolicyConfig {
         return getInt(KEY_POINT_DAILY_CAP);
     }
 
+    public boolean botDetectionEnabled() {
+        return getBoolean(KEY_BOT_ENABLED);
+    }
+
     public int botSampleSize() {
         return getInt(KEY_BOT_SAMPLE_SIZE);
     }
@@ -148,6 +154,10 @@ public class TapPolicyConfig {
 
     private double getDouble(String key) {
         return Double.parseDouble(resolve(key).trim());
+    }
+
+    private boolean getBoolean(String key) {
+        return Boolean.parseBoolean(resolve(key).trim());
     }
 
     private String resolve(String key) {
