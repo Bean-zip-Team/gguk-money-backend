@@ -14,6 +14,8 @@ public interface UserTapDailyRepository extends JpaRepository<UserTapDaily, Long
 
     Optional<UserTapDaily> findByUserIdAndTapDate(UUID userId, LocalDate tapDate);
 
+    boolean existsByUserIdAndTapDateAndValidTapCountGreaterThan(UUID userId, LocalDate tapDate, Integer validTapCount);
+
     @Query("""
             SELECT COALESCE(SUM(daily.validTapCount), 0)
             FROM UserTapDaily daily

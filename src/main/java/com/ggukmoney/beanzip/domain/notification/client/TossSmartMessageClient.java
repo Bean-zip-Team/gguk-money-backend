@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
 import java.net.http.HttpClient;
 import java.util.List;
@@ -58,12 +59,16 @@ public class TossSmartMessageClient {
     }
 
     public SendResult sendMessage(String tossUserKey, String templateSetCode) {
+        return sendMessage(tossUserKey, templateSetCode, "{}");
+    }
+
+    public SendResult sendMessage(String tossUserKey, String templateSetCode, String contextJson) {
         try {
             TossSmartMessageResponse response = restClient.post()
                     .uri(SEND_MESSAGE_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("x-toss-user-key", requireText(tossUserKey))
-                    .body(new TossSmartMessageRequest(requireText(templateSetCode)))
+                    .body(new TossSmartMessageRequest(requireText(templateSetCode), parseContext(contextJson)))
                     .retrieve()
                     .body(TossSmartMessageResponse.class);
             if (response == null || response.success() == null || !StringUtils.hasText(response.success().contentId())) {
@@ -129,7 +134,15 @@ public class TossSmartMessageClient {
         return value.trim();
     }
 
-    private record TossSmartMessageRequest(String templateSetCode) {
+    private JsonNode parseContext(String contextJson) {
+        try {
+            return objectMapper.readTree(StringUtils.hasText(contextJson) ? contextJson : "{}");
+        } catch (JacksonException exception) {
+            throw new IllegalArgumentException("invalid notification context", exception);
+        }
+    }
+
+    private record TossSmartMessageRequest(String templateSetCode, JsonNode context) {
     }
 
     public record TossSmartMessageResponse(String resultType, TossSmartMessageSuccess success, TossSmartMessageError error) {

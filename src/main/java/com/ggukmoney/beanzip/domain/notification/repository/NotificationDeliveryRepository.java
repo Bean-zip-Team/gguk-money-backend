@@ -17,10 +17,10 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
             INSERT INTO notification_delivery (
-                public_id, user_id, notification_type, dedupe_key, template_set_code,
+                public_id, user_id, notification_type, dedupe_key, template_set_code, context_json,
                 status, requested_at, created_at, updated_at
             ) VALUES (
-                :publicId, :userId, :notificationType, :dedupeKey, :templateSetCode,
+                :publicId, :userId, :notificationType, :dedupeKey, :templateSetCode, :contextJson,
                 'PENDING', :requestedAt, :requestedAt, :requestedAt
             )
             ON CONFLICT ON CONSTRAINT uq_notification_delivery_dedupe_key DO NOTHING
@@ -31,6 +31,18 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
             @Param("notificationType") String notificationType,
             @Param("dedupeKey") String dedupeKey,
             @Param("templateSetCode") String templateSetCode,
+            @Param("contextJson") String contextJson,
             @Param("requestedAt") Instant requestedAt
     );
+
+    default int insertPendingIfAbsent(
+            UUID publicId,
+            UUID userId,
+            String notificationType,
+            String dedupeKey,
+            String templateSetCode,
+            Instant requestedAt
+    ) {
+        return insertPendingIfAbsent(publicId, userId, notificationType, dedupeKey, templateSetCode, "{}", requestedAt);
+    }
 }

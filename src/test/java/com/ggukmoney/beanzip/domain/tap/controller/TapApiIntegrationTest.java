@@ -8,12 +8,15 @@ import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
+import com.ggukmoney.beanzip.global.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -37,6 +40,9 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private TapPolicyConfig tapPolicyConfig;
+
+    @Autowired
+    private AppConfigRepository appConfigRepository;
 
     @Test
     void submitsBatchAndReturnsAcceptedCountAndBalanceWithoutExposingTarget() throws Exception {
@@ -79,6 +85,9 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Test
     void rejectsOnceTokenBucketIsExhausted() throws Exception {
+        appConfigRepository.save(AppConfig.createFor(TapPolicyConfig.KEY_RATE_LIMIT_ENABLED, "true", Instant.now()));
+        tapPolicyConfig.refresh();
+
         TestTokens tokens = registerUserWithSession("tester-3");
 
         for (int i = 0; i < 8; i++) {
