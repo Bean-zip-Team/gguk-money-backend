@@ -1,5 +1,8 @@
 package com.ggukmoney.beanzip.domain.auth.client;
 
+import com.ggukmoney.beanzip.global.util.PayloadLoggingInterceptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
@@ -20,6 +23,8 @@ import java.net.http.HttpClient;
 @Component
 public class TossAuthClient {
 
+    private static final Logger log = LoggerFactory.getLogger(TossAuthClient.class);
+
     private static final String GENERATE_TOKEN_PATH =
             "/api-partner/v1/apps-in-toss/user/oauth2/generate-token";
     private static final String LOGIN_ME_PATH =
@@ -31,6 +36,7 @@ public class TossAuthClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
+    private final boolean mtlsEnabled;
 
     public TossAuthClient(
             ObjectMapper objectMapper,
@@ -42,10 +48,14 @@ public class TossAuthClient {
         RestClient.Builder builder = StringUtils.hasText(this.baseUrl)
                 ? RestClient.builder().baseUrl(this.baseUrl)
                 : RestClient.builder();
-        if (sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME)) {
+        this.mtlsEnabled = sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME);
+        if (mtlsEnabled) {
             builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
         }
+        builder.requestInterceptor(PayloadLoggingInterceptor.forLogger(log, "TossAuth"));
         this.restClient = builder.build();
+        log.info("TossAuthClient initialized: baseUrl={} mtlsBundle={} mtlsEnabled={} availableBundles={}",
+                this.baseUrl, MTLS_BUNDLE_NAME, mtlsEnabled, sslBundles.getBundleNames());
     }
 
     private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
@@ -57,6 +67,8 @@ public class TossAuthClient {
 
     public TossToken generateToken(String authorizationCode, String referrer) {
         requireConfigured();
+        log.info("Toss generate-token request: url={}{} referrer={} authorizationCode={} mtlsEnabled={}",
+                baseUrl, GENERATE_TOKEN_PATH, referrer, mask(requireText(authorizationCode)), mtlsEnabled);
         try {
             TossGenerateTokenResponse response = restClient.post()
                     .uri(GENERATE_TOKEN_PATH)
@@ -64,6 +76,13 @@ public class TossAuthClient {
                     .body(new TossGenerateTokenRequest(requireText(authorizationCode), referrer))
                     .retrieve()
                     .body(TossGenerateTokenResponse.class);
+
+            log.info("Toss generate-token response: resultType={} accessTokenPresent={} tokenType={} expiresIn={} error={}",
+                    response == null ? null : response.resultType(),
+                    response != null && response.success() != null && StringUtils.hasText(response.success().accessToken()),
+                    response == null || response.success() == null ? null : response.success().tokenType(),
+                    response == null || response.success() == null ? null : response.success().expiresIn(),
+                    response == null ? null : response.error());
 
             if (response == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
@@ -73,10 +92,13 @@ public class TossAuthClient {
             }
             return new TossToken(response.success().accessToken());
         } catch (RestClientResponseException exception) {
+            log.warn("Toss generate-token HTTP error: status={} body={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString());
             throw convertException(exception);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.error("Toss generate-token unexpected failure", exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         }
     }
@@ -90,19 +112,32 @@ public class TossAuthClient {
                     .retrieve()
                     .body(TossLoginMeResponse.class);
 
+            log.info("Toss login-me response: resultType={} rawUserKey={} name={} email={} error={}",
+                    response == null ? null : response.resultType(),
+                    response == null || response.success() == null ? null : response.success().userKey(),
+                    response == null || response.success() == null ? null : response.success().name(),
+                    response == null || response.success() == null ? null : response.success().email(),
+                    response == null ? null : response.error());
+
             if (response == null || response.success() == null || response.success().userKey() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_USER_KEY_MISSING");
             }
+            String userKey = String.valueOf(response.success().userKey());
+            log.info("Toss login-me parsed userKey: rawType=Long rawValue={} parsedString={} equalAfterConversion={}",
+                    response.success().userKey(), userKey, String.valueOf(response.success().userKey()).equals(userKey));
             return new TossLoginMe(
-                    String.valueOf(response.success().userKey()),
+                    userKey,
                     response.success().name(),
                     null
             );
         } catch (RestClientResponseException exception) {
+            log.warn("Toss login-me HTTP error: status={} body={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString());
             throw convertException(exception);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.error("Toss login-me unexpected failure", exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         }
     }
@@ -141,6 +176,13 @@ public class TossAuthClient {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TOSS_REQUEST_INVALID");
         }
         return value.trim();
+    }
+
+    private String mask(String value) {
+        if (value.length() <= 8) {
+            return "***(len=" + value.length() + ")";
+        }
+        return value.substring(0, 4) + "***" + value.substring(value.length() - 4) + "(len=" + value.length() + ")";
     }
 
     private ResponseStatusException convertException(RestClientResponseException exception) {

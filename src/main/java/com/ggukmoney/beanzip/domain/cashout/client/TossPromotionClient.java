@@ -1,31 +1,22 @@
 package com.ggukmoney.beanzip.domain.cashout.client;
 
+import com.ggukmoney.beanzip.global.util.PayloadLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.ClientHttpRequestInterceptor;
-import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.http.HttpClient;
-import java.nio.charset.StandardCharsets;
 
 /**
  * 서버-투-서버 연동 스펙(https://developers-apps-in-toss.toss.im/bedrock/reference/framework/비게임/promotion.html).
@@ -61,7 +52,7 @@ public class TossPromotionClient {
         if (mtlsEnabled) {
             builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
         }
-        builder.requestInterceptor(payloadLoggingInterceptor());
+        builder.requestInterceptor(PayloadLoggingInterceptor.forLogger(log, "TossPromotion"));
         this.restClient = builder.build();
         log.info("TossPromotionClient initialized: baseUrl={} mtlsBundle={} mtlsEnabled={} availableBundles={}",
                 this.baseUrl, MTLS_BUNDLE_NAME, mtlsEnabled, sslBundles.getBundleNames());
@@ -75,56 +66,12 @@ public class TossPromotionClient {
     }
 
     /**
-     * 요청/응답 전문(payload)을 원문 그대로 로그에 남긴다. 응답 바디는 한 번만 읽을 수 있으므로
-     * 읽은 뒤 {@link BufferedClientHttpResponse}로 다시 감싸서 이후 역직렬화가 정상 동작하게 한다.
-     */
-    private ClientHttpRequestInterceptor payloadLoggingInterceptor() {
-        return (request, body, execution) -> {
-            log.info("Toss HTTP request payload: method={} uri={} headers={} body={}",
-                    request.getMethod(), request.getURI(), request.getHeaders(), new String(body, StandardCharsets.UTF_8));
-            ClientHttpResponse response = execution.execute(request, body);
-            byte[] responseBody = StreamUtils.copyToByteArray(response.getBody());
-            log.info("Toss HTTP response payload: status={} headers={} body={}",
-                    response.getStatusCode(), response.getHeaders(), new String(responseBody, StandardCharsets.UTF_8));
-            return new BufferedClientHttpResponse(response, responseBody);
-        };
-    }
-
-    private record BufferedClientHttpResponse(ClientHttpResponse delegate, byte[] body) implements ClientHttpResponse {
-
-        @Override
-        public HttpStatusCode getStatusCode() throws IOException {
-            return delegate.getStatusCode();
-        }
-
-        @Override
-        public String getStatusText() throws IOException {
-            return delegate.getStatusText();
-        }
-
-        @Override
-        public void close() {
-            delegate.close();
-        }
-
-        @Override
-        public InputStream getBody() {
-            return new ByteArrayInputStream(body);
-        }
-
-        @Override
-        public HttpHeaders getHeaders() {
-            return delegate.getHeaders();
-        }
-    }
-
-    /**
      * 지급용 1회성 Key를 발급받는다. 이 호출 자체는 돈을 움직이지 않으므로, 실패 시(예외 종류와 무관하게)
      * 안전하게 재시도하거나 즉시 실패로 처리해도 된다.
      */
     public String getKey(String tossUserKey) {
         requireConfigured();
-        String headerName = "x-user-key";
+        String headerName = "x-toss-user-key";
         String headerValue = requireText(tossUserKey);
         log.info("Toss get-key request: url={}{} header={} value={} mtlsEnabled={}",
                 baseUrl, GET_KEY_PATH, headerName, mask(headerValue), mtlsEnabled);
