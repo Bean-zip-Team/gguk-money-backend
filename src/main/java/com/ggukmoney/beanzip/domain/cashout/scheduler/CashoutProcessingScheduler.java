@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.cashout.repository.CashoutRequestRepository;
 import com.ggukmoney.beanzip.domain.cashout.service.CashoutService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +30,9 @@ public class CashoutProcessingScheduler {
     private final TossPromotionClient tossPromotionClient;
     private final CashoutService cashoutService;
 
+    @Value("${app.cashout.toss.promotion-code:}")
+    private String promotionCode;
+
     @Scheduled(fixedRate = 30_000)
     public void pollProcessingCashouts() {
         List<CashoutRequest> processing =
@@ -38,7 +42,7 @@ public class CashoutProcessingScheduler {
             try {
                 String tossUserKey = resolveTossUserKey(request);
                 TossPromotionClient.PromotionResultStatus result =
-                        tossPromotionClient.getExecutionResult(tossUserKey, request.getTossPromotionKey());
+                        tossPromotionClient.getExecutionResult(tossUserKey, promotionCode, request.getTossPromotionKey());
                 cashoutService.finalizeProcessingCashout(request, result);
             } catch (RuntimeException exception) {
                 log.error("Toss execution-result 폴링 실패: cashoutId={}", request.getPublicId(), exception);

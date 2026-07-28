@@ -106,7 +106,7 @@ public class TossPromotionClient {
 
     /**
      * 발급받은 Key로 실제 지급을 실행한다. 응답은 "접수 성공/실패"만 의미하고, 최종 지급 여부는
-     * {@link #getExecutionResult(String, String)}로 별도 확인해야 한다.
+     * {@link #getExecutionResult(String, String, String)}로 별도 확인해야 한다.
      *
      * <p>get-key와 마찬가지로 프로모션 대상을 식별하는 {@code x-toss-user-key} 헤더가 필수다(문서상
      * 세 API 모두 독립적으로 이 헤더 또는 {@code x-anon-key} 중 하나를 요구함).
@@ -167,16 +167,17 @@ public class TossPromotionClient {
 
     /**
      * 지급 Key의 최종 처리 상태를 조회한다. {@code SUCCESS}/{@code PENDING}/{@code FAILED} 중 하나를 반환한다.
-     * get-key/execute-promotion과 마찬가지로 {@code x-toss-user-key} 헤더가 필수다.
+     * get-key/execute-promotion과 마찬가지로 {@code x-toss-user-key} 헤더가 필수고, 바디에도
+     * execute-promotion 때와 동일한 {@code promotionCode}가 필수다(빠지면 errorCode=40000으로 거절됨).
      */
-    public PromotionResultStatus getExecutionResult(String tossUserKey, String key) {
+    public PromotionResultStatus getExecutionResult(String tossUserKey, String promotionCode, String key) {
         requireConfigured();
         try {
             TossPromotionResultResponse response = restClient.post()
                     .uri(EXECUTION_RESULT_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("x-toss-user-key", requireText(tossUserKey))
-                    .body(new TossPromotionResultRequest(requireText(key)))
+                    .body(new TossPromotionResultRequest(requireText(promotionCode), requireText(key)))
                     .retrieve()
                     .body(TossPromotionResultResponse.class);
 
@@ -225,7 +226,7 @@ public class TossPromotionClient {
     private record TossPromotionExecuteRequest(String promotionCode, String key, long amount) {
     }
 
-    private record TossPromotionResultRequest(String key) {
+    private record TossPromotionResultRequest(String promotionCode, String key) {
     }
 
     public record TossPromotionKeyResponse(String resultType, TossPromotionKeySuccess success, TossPromotionError error) {

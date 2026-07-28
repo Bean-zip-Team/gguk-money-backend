@@ -30,15 +30,19 @@ class CashoutProcessingSchedulerTest {
     private final CashoutProcessingScheduler scheduler =
             new CashoutProcessingScheduler(cashoutRequestRepository, authIdentityRepository, tossPromotionClient, cashoutService);
 
+    {
+        ReflectionTestUtils.setField(scheduler, "promotionCode", "TEST_PROMO");
+    }
+
     @Test
     void finalizesEachProcessingRequestWithItsExecutionResult() {
         CashoutRequest request1 = cashoutRequestFixture("key-1");
         CashoutRequest request2 = cashoutRequestFixture("key-2");
         when(cashoutRequestRepository.findByStatusAndTossPromotionKeyIsNotNull(CashoutRequest.Status.PROCESSING))
                 .thenReturn(List.of(request1, request2));
-        when(tossPromotionClient.getExecutionResult("toss-user-key-key-1", "key-1"))
+        when(tossPromotionClient.getExecutionResult("toss-user-key-key-1", "TEST_PROMO", "key-1"))
                 .thenReturn(TossPromotionClient.PromotionResultStatus.SUCCESS);
-        when(tossPromotionClient.getExecutionResult("toss-user-key-key-2", "key-2"))
+        when(tossPromotionClient.getExecutionResult("toss-user-key-key-2", "TEST_PROMO", "key-2"))
                 .thenReturn(TossPromotionClient.PromotionResultStatus.PENDING);
 
         scheduler.pollProcessingCashouts();
@@ -53,9 +57,9 @@ class CashoutProcessingSchedulerTest {
         CashoutRequest request2 = cashoutRequestFixture("key-2");
         when(cashoutRequestRepository.findByStatusAndTossPromotionKeyIsNotNull(CashoutRequest.Status.PROCESSING))
                 .thenReturn(List.of(request1, request2));
-        when(tossPromotionClient.getExecutionResult("toss-user-key-key-1", "key-1"))
+        when(tossPromotionClient.getExecutionResult("toss-user-key-key-1", "TEST_PROMO", "key-1"))
                 .thenThrow(new RuntimeException("network error"));
-        when(tossPromotionClient.getExecutionResult("toss-user-key-key-2", "key-2"))
+        when(tossPromotionClient.getExecutionResult("toss-user-key-key-2", "TEST_PROMO", "key-2"))
                 .thenReturn(TossPromotionClient.PromotionResultStatus.SUCCESS);
 
         scheduler.pollProcessingCashouts();
