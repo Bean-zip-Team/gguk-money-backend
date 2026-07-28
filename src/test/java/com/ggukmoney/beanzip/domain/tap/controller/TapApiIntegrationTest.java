@@ -59,6 +59,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.pointsAwarded").exists())
                 .andExpect(jsonPath("$.data.boxesDropped").exists())
                 .andExpect(jsonPath("$.data.balance").exists())
+                .andExpect(jsonPath("$.data.pointDailyCapReached").value(false))
                 .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist())
                 .andExpect(jsonPath("$.data.nextBoxTarget").doesNotExist());
     }
