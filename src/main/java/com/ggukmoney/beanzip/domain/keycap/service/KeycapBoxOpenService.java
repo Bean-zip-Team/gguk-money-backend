@@ -18,6 +18,8 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KeycapBoxOpenService {
 
+    private static final Logger log = LoggerFactory.getLogger(KeycapBoxOpenService.class);
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
     private static final String POINT_REASON_KEYCAP_ALL_COMPLETE = "KEYCAP_ALL_COMPLETE_BONUS";
     private static final long ALL_COMPLETE_BONUS_POINT_AMOUNT = 1;
@@ -139,7 +142,13 @@ public class KeycapBoxOpenService {
                 completedNow,
                 acceptedAt
         );
-        return keycapBoxMapper.mapToOpenResponse(keycapBoxOpenRepository.save(boxOpen));
+        KeycapBoxOpenResponse response = keycapBoxMapper.mapToOpenResponse(keycapBoxOpenRepository.save(boxOpen));
+        log.info(
+                "Keycap box opened: userId={} candidateCount={} selectedKeycapId={} selectedCode={} selectedImageUrl={} responseKeycapId={} responseImageUrl={}",
+                userId, candidates.size(), selected.getId(), selected.getCode(), selected.getImageUrl(),
+                response.keycapId(), response.imageUrl()
+        );
+        return response;
     }
 
     /**
@@ -186,7 +195,12 @@ public class KeycapBoxOpenService {
                     if (!existing.getRequestHash().equals(requestHash)) {
                         throw new ResponseStatusException(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED");
                     }
-                    return keycapBoxMapper.mapToOpenResponse(existing);
+                    KeycapBoxOpenResponse response = keycapBoxMapper.mapToOpenResponse(existing);
+                    log.info(
+                            "Keycap box open replay: userId={} idempotencyKey={} keycapId={} imageUrl={}",
+                            userId, idempotencyKey, response.keycapId(), response.imageUrl()
+                    );
+                    return response;
                 });
     }
 
