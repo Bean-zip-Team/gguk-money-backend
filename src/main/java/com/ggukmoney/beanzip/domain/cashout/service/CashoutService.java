@@ -166,7 +166,7 @@ public class CashoutService {
 
         try {
             TossPromotionClient.PromotionExecutionOutcome outcome =
-                    tossPromotionClient.executePromotion(promotionCode, key, request.getTossPointAmount());
+                    tossPromotionClient.executePromotion(identity.getProviderUserId(), promotionCode, key, request.getTossPointAmount());
             if (outcome.succeeded()) {
                 persistProcessing(request, key);
             } else {

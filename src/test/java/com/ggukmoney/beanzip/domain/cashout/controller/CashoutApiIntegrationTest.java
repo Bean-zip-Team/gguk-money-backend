@@ -55,7 +55,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
     void stubTossPromotionSuccessByDefault() {
         reset(tossPromotionClient);
         when(tossPromotionClient.getKey(anyString())).thenReturn("promo-key");
-        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
+        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn(TossPromotionClient.PromotionExecutionOutcome.success());
     }
 
@@ -268,7 +268,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         pointAccountService.credit(user.getId(), 134);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
 
-        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyLong()))
+        when(tossPromotionClient.executePromotion(anyString(), anyString(), anyString(), anyLong()))
                 .thenReturn(TossPromotionClient.PromotionExecutionOutcome.failed("4112", "예산 부족"));
 
         mockMvc.perform(post("/api/cashouts")

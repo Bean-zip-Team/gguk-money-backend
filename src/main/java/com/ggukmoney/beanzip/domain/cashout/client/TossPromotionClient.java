@@ -106,23 +106,28 @@ public class TossPromotionClient {
 
     /**
      * 발급받은 Key로 실제 지급을 실행한다. 응답은 "접수 성공/실패"만 의미하고, 최종 지급 여부는
-     * {@link #getExecutionResult(String)}로 별도 확인해야 한다.
+     * {@link #getExecutionResult(String, String)}로 별도 확인해야 한다.
+     *
+     * <p>get-key와 마찬가지로 프로모션 대상을 식별하는 {@code x-toss-user-key} 헤더가 필수다(문서상
+     * 세 API 모두 독립적으로 이 헤더 또는 {@code x-anon-key} 중 하나를 요구함).
      *
      * <p>Toss가 명시적으로 거절한 경우(4xx + 파싱 가능한 에러 바디)는 {@link PromotionExecutionOutcome#failed(String, String)}로
      * 반환한다 — 이 경우 Toss 쪽에서 아무 일도 일어나지 않았음이 확실하므로 호출자가 안전하게 환불 처리할 수 있다.
      * 반면 네트워크 오류·5xx·타임아웃처럼 Toss가 실제로 처리했는지 알 수 없는 경우는
      * {@link AmbiguousTossFailureException}을 던진다 — 호출자는 이 경우 자동 환불하면 안 된다.
      */
-    public PromotionExecutionOutcome executePromotion(String promotionCode, String key, long amount) {
+    public PromotionExecutionOutcome executePromotion(String tossUserKey, String promotionCode, String key, long amount) {
         requireConfigured();
+        String headerValue = requireText(tossUserKey);
         String safePromotionCode = requireText(promotionCode);
         String safeKey = requireText(key);
-        log.info("Toss execute-promotion request: url={}{} promotionCode={} key={} amount={} mtlsEnabled={}",
-                baseUrl, EXECUTE_PROMOTION_PATH, safePromotionCode, mask(safeKey), amount, mtlsEnabled);
+        log.info("Toss execute-promotion request: url={}{} x-toss-user-key={} promotionCode={} key={} amount={} mtlsEnabled={}",
+                baseUrl, EXECUTE_PROMOTION_PATH, mask(headerValue), safePromotionCode, mask(safeKey), amount, mtlsEnabled);
         try {
             TossPromotionExecuteResponse response = restClient.post()
                     .uri(EXECUTE_PROMOTION_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("x-toss-user-key", headerValue)
                     .body(new TossPromotionExecuteRequest(safePromotionCode, safeKey, amount))
                     .retrieve()
                     .body(TossPromotionExecuteResponse.class);
@@ -162,13 +167,15 @@ public class TossPromotionClient {
 
     /**
      * 지급 Key의 최종 처리 상태를 조회한다. {@code SUCCESS}/{@code PENDING}/{@code FAILED} 중 하나를 반환한다.
+     * get-key/execute-promotion과 마찬가지로 {@code x-toss-user-key} 헤더가 필수다.
      */
-    public PromotionResultStatus getExecutionResult(String key) {
+    public PromotionResultStatus getExecutionResult(String tossUserKey, String key) {
         requireConfigured();
         try {
             TossPromotionResultResponse response = restClient.post()
                     .uri(EXECUTION_RESULT_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("x-toss-user-key", requireText(tossUserKey))
                     .body(new TossPromotionResultRequest(requireText(key)))
                     .retrieve()
                     .body(TossPromotionResultResponse.class);

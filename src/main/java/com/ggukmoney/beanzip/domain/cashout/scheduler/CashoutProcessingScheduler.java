@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.cashout.scheduler;
 
+import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
+import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.cashout.client.TossPromotionClient;
 import com.ggukmoney.beanzip.domain.cashout.entity.CashoutRequest;
 import com.ggukmoney.beanzip.domain.cashout.repository.CashoutRequestRepository;
@@ -10,6 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * PROCESSING 상태인 출금 건의 Toss 지급 결과(execution-result)를 주기적으로 폴링해 확정한다.
@@ -22,6 +25,7 @@ import java.util.List;
 public class CashoutProcessingScheduler {
 
     private final CashoutRequestRepository cashoutRequestRepository;
+    private final AuthIdentityRepository authIdentityRepository;
     private final TossPromotionClient tossPromotionClient;
     private final CashoutService cashoutService;
 
@@ -32,12 +36,22 @@ public class CashoutProcessingScheduler {
 
         for (CashoutRequest request : processing) {
             try {
+                String tossUserKey = resolveTossUserKey(request);
                 TossPromotionClient.PromotionResultStatus result =
-                        tossPromotionClient.getExecutionResult(request.getTossPromotionKey());
+                        tossPromotionClient.getExecutionResult(tossUserKey, request.getTossPromotionKey());
                 cashoutService.finalizeProcessingCashout(request, result);
             } catch (RuntimeException exception) {
                 log.error("Toss execution-result 폴링 실패: cashoutId={}", request.getPublicId(), exception);
             }
         }
+    }
+
+    private String resolveTossUserKey(CashoutRequest request) {
+        Optional<AuthIdentity> identity = authIdentityRepository.findByUserIdAndProvider(
+                request.getUser().getId(), AuthIdentity.Provider.TOSS);
+        return identity
+                .map(AuthIdentity::getProviderUserId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "출금 신청에 연결된 Toss 계정이 없음: cashoutId=" + request.getPublicId()));
     }
 }
