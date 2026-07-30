@@ -32,6 +32,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -69,8 +71,8 @@ public class CashoutService {
     public CashoutQuoteResponse getQuote(UUID userId) {
         long balance = pointAccountService.getBalance(userId);
         int minimumPoint = cashoutPolicyConfig.minimumPoint();
-        double rate = cashoutPolicyConfig.pointToKrwRate();
-        long tossPointAmount = (long) Math.floor(balance * rate);
+        BigDecimal rate = cashoutPolicyConfig.pointToKrwRate();
+        long tossPointAmount = toTossPointAmount(balance, rate);
         boolean eligible = balance >= minimumPoint;
 
         return new CashoutQuoteResponse(
@@ -104,6 +106,10 @@ public class CashoutService {
         return toResponse(request);
     }
 
+    private long toTossPointAmount(long balance, BigDecimal rate) {
+        return BigDecimal.valueOf(balance).multiply(rate).setScale(0, RoundingMode.FLOOR).longValueExact();
+    }
+
     private Optional<CashoutSubmitResponse> findReplay(UUID userId, UUID idempotencyKey) {
         return cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
                 .map(this::toResponse);
@@ -128,7 +134,7 @@ public class CashoutService {
         }
 
         AppUser user = userService.getById(userId);
-        long tossPointAmount = (long) Math.floor(balance * cashoutPolicyConfig.pointToKrwRate());
+        long tossPointAmount = toTossPointAmount(balance, cashoutPolicyConfig.pointToKrwRate());
 
         PointAccount account = pointAccountService.debit(userId, balance);
         pointLedgerService.recordDebit(account, user, balance, DEBIT_REASON_CASHOUT, idempotencyKey);

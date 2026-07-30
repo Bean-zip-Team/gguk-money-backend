@@ -2,6 +2,8 @@ package com.ggukmoney.beanzip.domain.cashout.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.math.BigDecimal;
+
 @Schema(description = "출금 견적 응답")
 public record CashoutQuoteResponse(
         @Schema(description = "현재 포인트 잔액", example = "134")
@@ -16,6 +18,6 @@ public record CashoutQuoteResponse(
         boolean eligible
 ) {
     @Schema(description = "출금 전환 비율")
-    public record RateInfo(double pointToKrw) {
+    public record RateInfo(BigDecimal pointToKrw) {
     }
 }

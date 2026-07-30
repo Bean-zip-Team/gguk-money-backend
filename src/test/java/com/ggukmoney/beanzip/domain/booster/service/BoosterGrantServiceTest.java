@@ -40,6 +40,7 @@ class BoosterGrantServiceTest {
                 .thenReturn(Optional.empty());
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(1L);
+        when(boosterGrantRepository.countByUserIdAndStartsAtAfter(eq(userId), any(Instant.class))).thenReturn(1L);
         when(tapPolicyConfig.boosterDurationSeconds()).thenReturn(300);
         AppUser user = mock(AppUser.class);
         when(userService.getById(userId)).thenReturn(user);
@@ -77,10 +78,31 @@ class BoosterGrantServiceTest {
                 .thenReturn(Optional.empty());
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(3L);
+        when(boosterGrantRepository.countByUserIdAndStartsAtAfter(eq(userId), any(Instant.class))).thenReturn(3L);
 
         assertThatThrownBy(() -> boosterGrantService.activate(userId, "ait.dev.43daa14da3ae487b"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("BOOSTER_DAILY_LIMIT_EXCEEDED");
+    }
+
+    @Test
+    void activatesWhenGrantOutsideLimitWindowDoesNotCountTowardLimit() {
+        when(boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(eq(userId), eq(BoosterGrant.Status.ACTIVE), any(Instant.class)))
+                .thenReturn(Optional.empty());
+        when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
+        when(tapPolicyConfig.boosterLimitWindowSeconds()).thenReturn(60);
+        when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(3L);
+        // A grant recorded 5 minutes ago falls outside a 60s window, so it no longer counts toward the limit.
+        when(boosterGrantRepository.countByUserIdAndStartsAtAfter(eq(userId), any(Instant.class))).thenReturn(0L);
+        when(tapPolicyConfig.boosterDurationSeconds()).thenReturn(300);
+        AppUser user = mock(AppUser.class);
+        when(userService.getById(userId)).thenReturn(user);
+        when(boosterGrantRepository.save(any(BoosterGrant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BoosterActivateResponse response = boosterGrantService.activate(userId, "ait.dev.43daa14da3ae487b");
+
+        assertThat(response.active()).isTrue();
+        assertThat(response.remainingDailyCount()).isEqualTo(2);
     }
 
     @Test
@@ -91,6 +113,7 @@ class BoosterGrantServiceTest {
                 .thenReturn(Optional.of(grant));
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(1L);
+        when(boosterGrantRepository.countByUserIdAndStartsAtAfter(eq(userId), any(Instant.class))).thenReturn(1L);
 
         BoosterStatusResponse status = boosterGrantService.getCurrentStatus(userId);
 
@@ -106,6 +129,7 @@ class BoosterGrantServiceTest {
                 .thenReturn(Optional.empty());
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.countByUserIdAndGrantDate(eq(userId), any(LocalDate.class))).thenReturn(0L);
+        when(boosterGrantRepository.countByUserIdAndStartsAtAfter(eq(userId), any(Instant.class))).thenReturn(0L);
 
         BoosterStatusResponse status = boosterGrantService.getCurrentStatus(userId);
 

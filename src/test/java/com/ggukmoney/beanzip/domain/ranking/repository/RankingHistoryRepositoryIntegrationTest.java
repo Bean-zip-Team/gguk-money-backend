@@ -30,27 +30,27 @@ class RankingHistoryRepositoryIntegrationTest extends FullStackIntegrationTestSu
     void findsOnlyCompletedClosedWeeklyHistoryForCurrentUserWithCursorTieBreaker() {
         AppUser me = appUserRepository.save(AppUser.createActive("history-me", null));
         AppUser other = appUserRepository.save(AppUser.createActive("history-other", null));
-        Instant olderEndsAt = Instant.parse("2026-07-12T15:00:00Z");
-        Instant tiedEndsAt = Instant.parse("2026-07-19T15:00:00Z");
-        Instant latestEndsAt = Instant.parse("2026-07-26T15:00:00Z");
+        Instant olderEndsAt = Instant.parse("2020-07-12T15:00:00Z");
+        Instant tiedEndsAt = Instant.parse("2020-07-19T15:00:00Z");
+        Instant latestEndsAt = Instant.parse("2020-07-26T15:00:00Z");
 
         RankingSeason older = seasonRepository.save(closedWeekly("WEEKLY_HISTORY_OLDER", olderEndsAt.minusSeconds(604800), olderEndsAt));
         RankingSeason tieLow = seasonRepository.save(closedWeekly("WEEKLY_HISTORY_TIE_LOW", tiedEndsAt.minusSeconds(604800), tiedEndsAt));
         RankingSeason tieHigh = seasonRepository.save(closedWeekly("WEEKLY_HISTORY_TIE_HIGH", tiedEndsAt.minusSeconds(604800), tiedEndsAt));
         RankingSeason latest = seasonRepository.save(closedWeekly("WEEKLY_HISTORY_LATEST", latestEndsAt.minusSeconds(604800), latestEndsAt));
         RankingSeason active = seasonRepository.save(RankingSeason.activeWeekly(
-                LocalDate.of(2026, 7, 27),
-                Instant.parse("2026-07-26T15:00:00Z"),
-                Instant.parse("2026-08-02T15:00:00Z")
+                LocalDate.of(2020, 7, 27),
+                Instant.parse("2020-07-26T15:00:00Z"),
+                Instant.parse("2020-08-02T15:00:00Z")
         ));
         RankingSeason finalizing = seasonRepository.save(activeWeeklyWithCode(
                 "WEEKLY_HISTORY_FINALIZING",
-                Instant.parse("2026-07-05T15:00:00Z"),
-                Instant.parse("2026-07-12T15:00:00Z")
+                Instant.parse("2020-07-05T15:00:00Z"),
+                Instant.parse("2020-07-12T15:00:00Z")
         ));
         finalizing.startFinalizing();
-        RankingSeason allTime = seasonRepository.save(RankingSeason.activeAllTime(Instant.parse("2026-07-01T00:00:00Z")));
-        allTime.close(Instant.parse("2026-07-26T15:00:00Z"));
+        RankingSeason allTime = seasonRepository.save(RankingSeason.activeAllTime(Instant.parse("2020-07-01T00:00:00Z")));
+        allTime.close(Instant.parse("2020-07-26T15:00:00Z"));
 
         entryRepository.save(finalizedEntry(older, me, 100L, 3L));
         entryRepository.save(finalizedEntry(tieLow, me, 200L, 2L));
@@ -64,19 +64,19 @@ class RankingHistoryRepositoryIntegrationTest extends FullStackIntegrationTestSu
                 me,
                 700L,
                 null,
-                Instant.parse("2026-07-26T15:00:00Z")
+                Instant.parse("2020-07-26T15:00:00Z")
         );
-        allTimeEntry.finalizeRank(1L, Instant.parse("2026-07-26T15:10:00Z"));
+        allTimeEntry.finalizeRank(1L, Instant.parse("2020-07-26T15:10:00Z"));
         entryRepository.save(allTimeEntry);
         entryRepository.save(RankingEntry.createFor(
-                seasonRepository.save(closedWeekly("WEEKLY_HISTORY_INCOMPLETE_RANK", Instant.parse("2026-06-22T15:00:00Z"), Instant.parse("2026-06-29T15:00:00Z"))),
+                seasonRepository.save(closedWeekly("WEEKLY_HISTORY_INCOMPLETE_RANK", Instant.parse("2020-06-22T15:00:00Z"), Instant.parse("2020-06-29T15:00:00Z"))),
                 me,
                 800L,
                 null,
-                Instant.parse("2026-06-29T15:00:00Z")
+                Instant.parse("2020-06-29T15:00:00Z")
         ));
         RankingEntry missingFinalizedAt = entryRepository.saveAndFlush(finalizedEntry(
-                seasonRepository.save(closedWeekly("WEEKLY_HISTORY_INCOMPLETE_FINALIZED", Instant.parse("2026-06-15T15:00:00Z"), Instant.parse("2026-06-22T15:00:00Z"))),
+                seasonRepository.save(closedWeekly("WEEKLY_HISTORY_INCOMPLETE_FINALIZED", Instant.parse("2020-06-15T15:00:00Z"), Instant.parse("2020-06-22T15:00:00Z"))),
                 me,
                 900L,
                 9L
