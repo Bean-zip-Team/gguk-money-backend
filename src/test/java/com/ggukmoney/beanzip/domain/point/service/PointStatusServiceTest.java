@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -40,7 +41,7 @@ class PointStatusServiceTest {
     @BeforeEach
     void stubCashoutPolicyDefaults() {
         when(cashoutPolicyConfig.minimumPoint()).thenReturn(10);
-        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(0.7);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(new BigDecimal("0.7"));
     }
 
     @Test

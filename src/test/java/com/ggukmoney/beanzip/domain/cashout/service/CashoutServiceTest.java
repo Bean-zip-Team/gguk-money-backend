@@ -29,6 +29,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -65,7 +66,7 @@ class CashoutServiceTest {
     @BeforeEach
     void stubCashoutPolicyDefaults() {
         when(cashoutPolicyConfig.minimumPoint()).thenReturn(10);
-        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(0.7);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(new BigDecimal("0.7"));
         ReflectionTestUtils.setField(cashoutService, "promotionCode", "TEST_PROMO");
     }
 
@@ -85,7 +86,7 @@ class CashoutServiceTest {
         assertThat(response.tossPointAmount()).isEqualTo(93L);
         assertThat(response.eligible()).isTrue();
         assertThat(response.minimumPoint()).isEqualTo(10);
-        assertThat(response.rate().pointToKrw()).isEqualTo(0.7);
+        assertThat(response.rate().pointToKrw()).isEqualByComparingTo(new BigDecimal("0.7"));
     }
 
     @Test
@@ -119,13 +120,13 @@ class CashoutServiceTest {
     @Test
     void reflectsConfiguredMinimumAndRateWhenChanged() {
         when(cashoutPolicyConfig.minimumPoint()).thenReturn(50);
-        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(0.5);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(new BigDecimal("0.5"));
         when(pointAccountService.getBalance(userId)).thenReturn(100L);
 
         CashoutQuoteResponse response = cashoutService.getQuote(userId);
 
         assertThat(response.minimumPoint()).isEqualTo(50);
-        assertThat(response.rate().pointToKrw()).isEqualTo(0.5);
+        assertThat(response.rate().pointToKrw()).isEqualByComparingTo(new BigDecimal("0.5"));
         assertThat(response.tossPointAmount()).isEqualTo(50L);
     }
 

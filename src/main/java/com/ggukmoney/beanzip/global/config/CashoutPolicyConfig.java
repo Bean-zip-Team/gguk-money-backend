@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,16 +49,16 @@ public class CashoutPolicyConfig {
         return getInt(KEY_MINIMUM_POINT);
     }
 
-    public double pointToKrwRate() {
-        return getDouble(KEY_POINT_TO_KRW_RATE);
+    public BigDecimal pointToKrwRate() {
+        return getBigDecimal(KEY_POINT_TO_KRW_RATE);
     }
 
     private int getInt(String key) {
         return Integer.parseInt(resolve(key).trim());
     }
 
-    private double getDouble(String key) {
-        return Double.parseDouble(resolve(key).trim());
+    private BigDecimal getBigDecimal(String key) {
+        return new BigDecimal(resolve(key).trim());
     }
 
     private String resolve(String key) {

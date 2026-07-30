@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -41,7 +43,10 @@ public class PointStatusService {
         long balance = account.getBalance();
         int minimumPoint = cashoutPolicyConfig.minimumPoint();
         boolean cashoutEligible = balance >= minimumPoint;
-        long estimatedKrw = (long) Math.floor(balance * cashoutPolicyConfig.pointToKrwRate());
+        long estimatedKrw = BigDecimal.valueOf(balance)
+                .multiply(cashoutPolicyConfig.pointToKrwRate())
+                .setScale(0, RoundingMode.FLOOR)
+                .longValueExact();
 
         return new PointMeResponse(
                 balance,
