@@ -17,6 +17,8 @@ public interface BoosterGrantRepository extends JpaRepository<BoosterGrant, Long
 
     long countByUserIdAndGrantDate(UUID userId, LocalDate grantDate);
 
+    long countByUserIdAndStartsAtAfter(UUID userId, Instant startsAtAfter);
+
     @Query("""
             SELECT grant.user.id
             FROM BoosterGrant grant

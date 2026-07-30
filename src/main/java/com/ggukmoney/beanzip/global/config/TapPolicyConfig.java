@@ -37,6 +37,7 @@ public class TapPolicyConfig {
     public static final String KEY_BOX_DROP_VARIANCE = "tap.box.dropVariance";
     public static final String KEY_BOOSTER_DURATION_SECONDS = "tap.booster.durationSeconds";
     public static final String KEY_BOOSTER_DAILY_LIMIT = "tap.booster.dailyLimit";
+    public static final String KEY_BOOSTER_LIMIT_WINDOW_SECONDS = "tap.booster.limitWindowSeconds";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_MIN_INTERVAL_MS, "80"),
@@ -57,7 +58,8 @@ public class TapPolicyConfig {
             Map.entry(KEY_BOX_DROP_BASE, "20"),
             Map.entry(KEY_BOX_DROP_VARIANCE, "0"),
             Map.entry(KEY_BOOSTER_DURATION_SECONDS, "300"),
-            Map.entry(KEY_BOOSTER_DAILY_LIMIT, "3")
+            Map.entry(KEY_BOOSTER_DAILY_LIMIT, "3"),
+            Map.entry(KEY_BOOSTER_LIMIT_WINDOW_SECONDS, "86400")
     );
 
     private final AppConfigRepository appConfigRepository;
@@ -152,6 +154,10 @@ public class TapPolicyConfig {
 
     public int boosterDailyLimit() {
         return getInt(KEY_BOOSTER_DAILY_LIMIT);
+    }
+
+    public int boosterLimitWindowSeconds() {
+        return getInt(KEY_BOOSTER_LIMIT_WINDOW_SECONDS);
     }
 
     private int getInt(String key) {

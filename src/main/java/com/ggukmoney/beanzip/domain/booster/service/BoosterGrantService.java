@@ -43,7 +43,8 @@ public class BoosterGrantService {
         LocalDate today = LocalDate.now();
         int dailyLimit = tapPolicyConfig.boosterDailyLimit();
         long todayCount = boosterGrantRepository.countByUserIdAndGrantDate(userId, today);
-        if (todayCount >= dailyLimit) {
+        long windowCount = countWithinLimitWindow(userId, now);
+        if (windowCount >= dailyLimit) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "BOOSTER_DAILY_LIMIT_EXCEEDED");
         }
 
@@ -62,15 +63,15 @@ public class BoosterGrantService {
                 grant.getMultiplier(),
                 grant.getStartsAt(),
                 grant.getExpiresAt(),
-                (int) (dailyLimit - (todayCount + 1))
+                (int) (dailyLimit - (windowCount + 1))
         );
     }
 
     public BoosterStatusResponse getCurrentStatus(UUID userId) {
         Instant now = Instant.now();
         int dailyLimit = tapPolicyConfig.boosterDailyLimit();
-        long todayCount = boosterGrantRepository.countByUserIdAndGrantDate(userId, LocalDate.now());
-        int remainingDailyCount = (int) Math.max(dailyLimit - todayCount, 0);
+        long windowCount = countWithinLimitWindow(userId, now);
+        int remainingDailyCount = (int) Math.max(dailyLimit - windowCount, 0);
 
         return boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(userId, BoosterGrant.Status.ACTIVE, now)
                 .map(grant -> new BoosterStatusResponse(
@@ -81,6 +82,11 @@ public class BoosterGrantService {
                         remainingDailyCount
                 ))
                 .orElseGet(() -> new BoosterStatusResponse(false, BigDecimal.ONE, 0L, null, remainingDailyCount));
+    }
+
+    private long countWithinLimitWindow(UUID userId, Instant now) {
+        Instant windowStart = now.minusSeconds(tapPolicyConfig.boosterLimitWindowSeconds());
+        return boosterGrantRepository.countByUserIdAndStartsAtAfter(userId, windowStart);
     }
 
     public BigDecimal findActiveMultiplier(UUID userId, Instant now) {
