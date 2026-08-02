@@ -42,6 +42,30 @@ class UserServiceTest {
     );
 
     @Test
+    void createsNewUserWithDecryptedPlaintextNickname() {
+        when(appUserRepository.save(org.mockito.ArgumentMatchers.any(AppUser.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppUser created = userService.createActive("김토스", null);
+
+        assertThat(created.getNickname()).isEqualTo("김토스");
+        assertThat(created.getNicknameNormalized()).isEqualTo("김토스");
+        verify(appUserRepository).save(created);
+    }
+
+    @Test
+    void replacesExistingEncryptedNicknameWithDecryptedPlaintextOnLogin() {
+        AppUser existing = user(UUID.randomUUID(), "ciphertext-from-previous-login", null);
+        when(appUserRepository.save(existing)).thenReturn(existing);
+
+        AppUser loggedIn = userService.recordLogin(existing, "김토스", null);
+
+        assertThat(loggedIn.getNickname()).isEqualTo("김토스");
+        assertThat(loggedIn.getNicknameNormalized()).isEqualTo("김토스");
+        verify(appUserRepository).save(existing);
+    }
+
+    @Test
     void getsCurrentMemberWithPointBalanceAndEquippedKeycap() {
         UUID userId = UUID.randomUUID();
         AppUser user = user(userId, "Bean", "https://img");
