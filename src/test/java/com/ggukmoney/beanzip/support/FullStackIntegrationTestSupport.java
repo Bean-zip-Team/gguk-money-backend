@@ -65,6 +65,8 @@ public abstract class FullStackIntegrationTestSupport {
         registry.add("springdoc.api-docs.enabled", () -> "false");
         registry.add("springdoc.swagger-ui.enabled", () -> "false");
         registry.add("app.auth.jwt.secret", () -> "integration-test-secret-at-least-32-bytes-long");
+        registry.add("app.auth.toss.decryption-key", TossCryptoTestFixture::contextBase64Key);
+        registry.add("app.auth.toss.aad", TossCryptoTestFixture::contextAad);
     }
 
     @BeforeEach
