@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisMeta;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
+import com.ggukmoney.beanzip.global.util.NameMasker;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -199,7 +200,7 @@ public class RankingQueryService {
                 previousRank,
                 rankChange(previousRank, rank),
                 row.userId(),
-                row.nickname(),
+                NameMasker.mask(row.nickname()),
                 row.profileImageUrl(),
                 participant.score(),
                 row.userId().equals(me)

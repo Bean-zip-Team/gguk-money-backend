@@ -77,6 +77,7 @@ class UserServiceTest {
         MemberMeResponse response = userService.getCurrentMember(userId);
 
         assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.nickname()).isEqualTo("B**n");
         assertThat(response.equippedKeycap()).isEqualTo(equippedKeycap);
         assertThat(response.pointBalance()).isEqualTo(42L);
     }
@@ -108,7 +109,7 @@ class UserServiceTest {
                 new UpdateMemberRequest(" New ", null)
         );
 
-        assertThat(response.nickname()).isEqualTo("New");
+        assertThat(response.nickname()).isEqualTo("N*w");
         assertThat(response.profileImageUrl()).isEqualTo("https://old");
         assertThat(user.getNicknameNormalized()).isEqualTo("new");
     }
@@ -125,7 +126,7 @@ class UserServiceTest {
                 new UpdateMemberRequest(null, " https://new ")
         );
 
-        assertThat(response.nickname()).isEqualTo("Bean");
+        assertThat(response.nickname()).isEqualTo("B**n");
         assertThat(response.profileImageUrl()).isEqualTo("https://new");
         verify(appUserRepository, never()).existsByNicknameNormalizedAndStatusAndIdNot(
                 org.mockito.ArgumentMatchers.any(),

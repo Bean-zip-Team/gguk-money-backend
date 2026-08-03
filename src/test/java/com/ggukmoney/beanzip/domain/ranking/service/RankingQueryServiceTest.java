@@ -110,6 +110,7 @@ class RankingQueryServiceTest {
         CurrentRankingResponse response = service.getCurrentRanking(me, null);
 
         assertThat(response.items()).extracting(RankingItemResponse::userId).containsExactly(first);
+        assertThat(response.items()).extracting(RankingItemResponse::nickname).containsExactly("f***t");
         assertThat(response.myRank().rank()).isEqualTo(2L);
         assertThat(response.myRank().score()).isEqualTo(100L);
         assertThat(response.myRank().scoreGapToFirst()).isEqualTo(100L);
