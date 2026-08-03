@@ -112,6 +112,22 @@ class KeycapBoxAccountTest {
     }
 
     @Test
+    void calculatesEffectiveOpenCycleStartWithoutChangingState() {
+        Instant cycleStartedAt = Instant.parse("2026-07-16T00:00:00Z");
+        KeycapBoxAccount account = accountWithCycle(1, 2, 2, cycleStartedAt);
+
+        Instant effectiveCycleStartedAt = account.calculateEffectiveOpenCycleStartedAt(
+                cycleStartedAt.plusSeconds(2 * 3600 + 60),
+                ONE_HOUR
+        );
+
+        assertThat(effectiveCycleStartedAt).isEqualTo(cycleStartedAt.plusSeconds(2 * 3600));
+        assertThat(account.getOpenCycleStartedAt()).isEqualTo(cycleStartedAt);
+        assertThat(account.getFreeOpenUsedCount()).isEqualTo(2);
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(2);
+    }
+
+    @Test
     void doesNotMoveOpenCycleBackwardWhenNowIsBeforeCycleStartedAt() {
         Instant cycleStartedAt = Instant.parse("2026-07-16T00:00:00Z");
         KeycapBoxAccount account = accountWithCycle(1, 1, 1, cycleStartedAt);

@@ -147,6 +147,11 @@ public class KeycapBoxAccount {
         }
     }
 
+    public Instant calculateEffectiveOpenCycleStartedAt(Instant now, Duration cycleDuration) {
+        validateOpenCyclePolicy(now, cycleDuration, 0, 0);
+        return currentCycleState(now, cycleDuration).openCycleStartedAt();
+    }
+
     public boolean canUseFreeOpen(int freeLimit) {
         validateLimit("freeLimit", freeLimit);
         return freeOpenUsedCount < freeLimit;

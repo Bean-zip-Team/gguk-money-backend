@@ -13,6 +13,7 @@ public class NotificationTemplateProperties {
     private final String boosterRechargedCampaignCode;
     private final String dailyReminderCampaignCode;
     private final String boosterUnusedCampaignCode;
+    private final String keycapBoxOpenAvailableCampaignCode;
 
     @Autowired
     public NotificationTemplateProperties(
@@ -20,13 +21,15 @@ public class NotificationTemplateProperties {
             @Value("${app.smart-message.templates.rank-change.campaign-code:}") String rankChangeCampaignCode,
             @Value("${app.smart-message.templates.booster-recharged.campaign-code:}") String boosterRechargedCampaignCode,
             @Value("${app.smart-message.templates.daily-reminder.campaign-code:}") String dailyReminderCampaignCode,
-            @Value("${app.smart-message.templates.booster-unused.campaign-code:}") String boosterUnusedCampaignCode
+            @Value("${app.smart-message.templates.booster-unused.campaign-code:}") String boosterUnusedCampaignCode,
+            @Value("${app.smart-message.templates.keycap-box-open-available.campaign-code:}") String keycapBoxOpenAvailableCampaignCode
     ) {
         this.weeklyRewardAvailableCampaignCode = blankToNull(weeklyRewardAvailableCampaignCode);
         this.rankChangeCampaignCode = blankToNull(rankChangeCampaignCode);
         this.boosterRechargedCampaignCode = blankToNull(boosterRechargedCampaignCode);
         this.dailyReminderCampaignCode = blankToNull(dailyReminderCampaignCode);
         this.boosterUnusedCampaignCode = blankToNull(boosterUnusedCampaignCode);
+        this.keycapBoxOpenAvailableCampaignCode = blankToNull(keycapBoxOpenAvailableCampaignCode);
     }
 
     public String campaignCode(NotificationType type) {
@@ -36,6 +39,7 @@ public class NotificationTemplateProperties {
             case BOOSTER_RECHARGED -> boosterRechargedCampaignCode;
             case DAILY_REMINDER -> dailyReminderCampaignCode;
             case BOOSTER_UNUSED -> boosterUnusedCampaignCode;
+            case KEYCAP_BOX_OPEN_AVAILABLE -> keycapBoxOpenAvailableCampaignCode;
         };
     }
 
