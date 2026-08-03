@@ -11,6 +11,7 @@ import com.ggukmoney.beanzip.domain.notification.service.NotificationPreferenceS
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
 import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.lang.reflect.Method;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -108,9 +111,9 @@ class NotificationPreferenceControllerTest {
     void patchPreferenceEnabledUpdatesOnlyTheRequestedType() throws Exception {
         UUID userId = UUID.randomUUID();
         UpdateNotificationPreferenceEnabledRequest request =
-                new UpdateNotificationPreferenceEnabledRequest(NotificationType.BOOSTER_RECHARGED, false);
+                new UpdateNotificationPreferenceEnabledRequest(NotificationType.KEYCAP_BOX_OPEN_AVAILABLE, false);
         when(notificationPreferenceService.updateEnabled(userId, request.type(), request.enabled())).thenReturn(
-                response(NotificationType.BOOSTER_RECHARGED, false, NotificationAgreementStatus.AGREED, "clickmoney-box", false)
+                response(NotificationType.KEYCAP_BOX_OPEN_AVAILABLE, false, NotificationAgreementStatus.AGREED, "clickmoney-box", false)
         );
 
         mockMvc.perform(patch("/api/notifications/preferences/enabled")
@@ -119,10 +122,28 @@ class NotificationPreferenceControllerTest {
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.type").value("BOOSTER_RECHARGED"))
+                .andExpect(jsonPath("$.data.type").value("KEYCAP_BOX_OPEN_AVAILABLE"))
                 .andExpect(jsonPath("$.data.enabled").value(false));
 
         verify(notificationPreferenceService).updateEnabled(userId, request.type(), request.enabled());
+    }
+
+    @Test
+    void swaggerUsesKeycapTypeForClickmoneyBoxExample() throws Exception {
+        Method method = NotificationPreferenceController.class.getDeclaredMethod(
+                "updateEnabled",
+                jakarta.servlet.http.HttpServletRequest.class,
+                UpdateNotificationPreferenceEnabledRequest.class
+        );
+        String examples = Arrays.stream(method.getAnnotation(ApiResponses.class).value())
+                .flatMap(response -> Arrays.stream(response.content()))
+                .flatMap(content -> Arrays.stream(content.examples()))
+                .map(io.swagger.v3.oas.annotations.media.ExampleObject::value)
+                .collect(Collectors.joining());
+
+        assertThat(examples)
+                .contains("KEYCAP_BOX_OPEN_AVAILABLE", "clickmoney-box")
+                .doesNotContain("BOOSTER_RECHARGED");
     }
 
     @Test

@@ -25,9 +25,10 @@ class NotificationPreferenceServiceTest {
     private final NotificationTemplateProperties templateProperties = new NotificationTemplateProperties(
             null,
             "clickmoney-asfasf",
-            "clickmoney-box",
             null,
-            null
+            null,
+            null,
+            "clickmoney-box"
     );
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
     private final NotificationPreferenceService service =
@@ -41,7 +42,8 @@ class NotificationPreferenceServiceTest {
                         NotificationType.RANK_CHANGE,
                         NotificationType.BOOSTER_RECHARGED,
                         NotificationType.DAILY_REMINDER,
-                        NotificationType.BOOSTER_UNUSED
+                        NotificationType.BOOSTER_UNUSED,
+                        NotificationType.KEYCAP_BOX_OPEN_AVAILABLE
                 );
         assertThat(Arrays.stream(NotificationType.values()).map(Enum::name))
                 .doesNotContain("RANK_DROP");
@@ -61,6 +63,11 @@ class NotificationPreferenceServiceTest {
                 .findFirst()
                 .orElseThrow()
                 .templateCode()).isEqualTo("clickmoney-asfasf");
+        assertThat(response.items().stream()
+                .filter(item -> item.type() == NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)
+                .findFirst()
+                .orElseThrow()
+                .templateCode()).isEqualTo("clickmoney-box");
     }
 
     @Test

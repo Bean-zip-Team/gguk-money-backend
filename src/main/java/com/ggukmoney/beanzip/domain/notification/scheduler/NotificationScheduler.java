@@ -21,6 +21,7 @@ public class NotificationScheduler {
 
     private static final long MORNING_LOCK_KEY = 1_920_830L;
     private static final long EVENING_LOCK_KEY = 1_920_190L;
+    private static final long KEYCAP_BOX_LOCK_KEY = 1_590_001L;
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final NotificationDeliveryService notificationDeliveryService;
@@ -35,6 +36,17 @@ public class NotificationScheduler {
     @Scheduled(cron = "${app.smart-message.schedule.evening-cron:0 0 19 * * *}", zone = "${app.smart-message.schedule.zone:Asia/Seoul}")
     public void scheduleEveningNotifications() {
         withAdvisoryLock(EVENING_LOCK_KEY, () -> notificationDeliveryService.sendEveningNotifications(today()));
+    }
+
+    @Scheduled(
+            cron = "${app.smart-message.schedule.keycap-box-cron:0 * * * * *}",
+            zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
+    )
+    public void scheduleKeycapBoxOpenAvailableNotifications() {
+        withAdvisoryLock(
+                KEYCAP_BOX_LOCK_KEY,
+                () -> notificationDeliveryService.sendKeycapBoxOpenAvailableNotifications(clock.instant())
+        );
     }
 
     private LocalDate today() {

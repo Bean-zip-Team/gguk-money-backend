@@ -48,7 +48,7 @@ public class NotificationPreferenceController {
                     responseCode = "200",
                     description = "알림 설정 조회 성공",
                     content = @Content(examples = @ExampleObject(value = """
-                            {"success":true,"data":{"items":[{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true}]}}
+                            {"success":true,"data":{"items":[{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true},{"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}]}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -112,7 +112,7 @@ public class NotificationPreferenceController {
                     responseCode = "200",
                     description = "알림 활성화 상태 변경 성공",
                     content = @Content(examples = @ExampleObject(value = """
-                            {"success":true,"data":{"type":"BOOSTER_RECHARGED","enabled":false,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}}
+                            {"success":true,"data":{"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":false,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -131,7 +131,7 @@ public class NotificationPreferenceController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
                     content = @Content(examples = @ExampleObject(value = """
-                            {"type":"BOOSTER_RECHARGED","enabled":false}
+                            {"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":false}
                             """))
             )
             @Valid @RequestBody UpdateNotificationPreferenceEnabledRequest updateRequest

@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
@@ -11,6 +13,7 @@ import com.ggukmoney.beanzip.domain.notification.repository.NotificationRankStat
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
+import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +40,8 @@ public class NotificationDeliveryPersistenceService {
     private final NotificationRankStateRepository rankStateRepository;
     private final RankingSeasonService rankingSeasonService;
     private final RankingEntryRepository rankingEntryRepository;
+    private final KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
     private final NotificationTemplateProperties templateProperties;
     private final Clock clock;
 
@@ -90,6 +96,52 @@ public class NotificationDeliveryPersistenceService {
 
         state.updateBaseline(rank.season().getId(), rank.rank(), clock.instant());
         rankStateRepository.saveAndFlush(state);
+        return pending;
+    }
+
+    @Transactional
+    public Optional<NotificationDelivery> prepareKeycapBoxOpenAvailable(UUID userId, Instant now) {
+        String campaignCode = templateProperties.campaignCode(NotificationType.KEYCAP_BOX_OPEN_AVAILABLE);
+        if (!StringUtils.hasText(campaignCode) || !isKeycapBoxOpenAvailableSendable(userId)) {
+            return Optional.empty();
+        }
+
+        Duration cycleDuration = keycapBoxPolicyConfig.openCycleDuration();
+        int freeOpenLimit = keycapBoxPolicyConfig.freeOpenLimit();
+        int adOpenLimit = keycapBoxPolicyConfig.adOpenLimit();
+        if (freeOpenLimit == 0 && adOpenLimit == 0) {
+            return Optional.empty();
+        }
+
+        Optional<KeycapBoxAccount> lockedAccount = keycapBoxAccountRepository.findByUserIdForUpdate(userId);
+        if (lockedAccount.isEmpty()) {
+            return Optional.empty();
+        }
+
+        KeycapBoxAccount account = lockedAccount.get();
+        Instant cutoff = now.minus(cycleDuration);
+        if (!account.hasBox()
+                || account.getFreeOpenUsedCount() < freeOpenLimit
+                || account.getAdOpenUsedCount() < adOpenLimit
+                || account.getOpenCycleStartedAt().isAfter(cutoff)) {
+            return Optional.empty();
+        }
+
+        Instant effectiveCycleStartedAt = account.calculateEffectiveOpenCycleStartedAt(now, cycleDuration);
+        String dedupeKey = "KEYCAP_BOX_OPEN_AVAILABLE:%s:%s".formatted(userId, effectiveCycleStartedAt);
+        Optional<NotificationDelivery> pending = createPendingInternal(
+                userId,
+                NotificationType.KEYCAP_BOX_OPEN_AVAILABLE,
+                dedupeKey,
+                campaignCode,
+                "{}"
+        );
+        if (pending.isEmpty()) {
+            return Optional.empty();
+        }
+
+        account.refreshOpenCycle(now, cycleDuration);
+        keycapBoxAccountRepository.saveAndFlush(account);
         return pending;
     }
 
@@ -165,6 +217,12 @@ public class NotificationDeliveryPersistenceService {
 
     private boolean isRankChangeSendable(UUID userId) {
         return preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE)
+                .map(NotificationPreference::isSendable)
+                .orElse(false);
+    }
+
+    private boolean isKeycapBoxOpenAvailableSendable(UUID userId) {
+        return preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)
                 .map(NotificationPreference::isSendable)
                 .orElse(false);
     }
