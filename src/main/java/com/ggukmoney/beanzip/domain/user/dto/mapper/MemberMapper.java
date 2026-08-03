@@ -4,15 +4,20 @@ import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
 import com.ggukmoney.beanzip.domain.user.dto.response.MemberMeResponse;
 import com.ggukmoney.beanzip.domain.user.dto.response.MemberUpdateResponse;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.global.util.NameMasker;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
 import org.mapstruct.ReportingPolicy;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface MemberMapper {
 
-    @Mapping(target = "userId", source = "id")
-    MemberUpdateResponse mapToUpdateResponse(AppUser user);
+    default MemberUpdateResponse mapToUpdateResponse(AppUser user) {
+        return new MemberUpdateResponse(
+                user.getId(),
+                NameMasker.mask(user.getNickname()),
+                user.getProfileImageUrl()
+        );
+    }
 
     default MemberMeResponse mapToMeResponse(
             AppUser user,
@@ -22,7 +27,7 @@ public interface MemberMapper {
         return new MemberMeResponse(
                 user.getId(),
                 user.getStatus().name(),
-                user.getNickname(),
+                NameMasker.mask(user.getNickname()),
                 user.getProfileImageUrl(),
                 equippedKeycap,
                 pointBalance

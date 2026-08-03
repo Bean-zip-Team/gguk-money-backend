@@ -24,7 +24,7 @@ class MemberMapperTest {
         MemberUpdateResponse response = memberMapper.mapToUpdateResponse(user);
 
         assertThat(response.userId()).isEqualTo(userId);
-        assertThat(response.nickname()).isEqualTo("Bean");
+        assertThat(response.nickname()).isEqualTo("B**n");
         assertThat(response.profileImageUrl()).isEqualTo("https://img");
     }
 
@@ -46,7 +46,7 @@ class MemberMapperTest {
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.status()).isEqualTo("ACTIVE");
-        assertThat(response.nickname()).isEqualTo("Bean");
+        assertThat(response.nickname()).isEqualTo("B**n");
         assertThat(response.profileImageUrl()).isNull();
         assertThat(response.equippedKeycap()).isEqualTo(equippedKeycap);
         assertThat(response.pointBalance()).isEqualTo(42L);
