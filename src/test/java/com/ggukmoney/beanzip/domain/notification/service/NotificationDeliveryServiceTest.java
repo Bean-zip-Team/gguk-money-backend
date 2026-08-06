@@ -167,7 +167,7 @@ class NotificationDeliveryServiceTest {
             AuthIdentity identity = AuthIdentity.toss(AppUser.createActive("me", null), "toss-user-1");
             when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)).thenReturn(Optional.of(identity));
             when(smartMessageClient.sendMessage("toss-user-1", "clickmoney-asfasf", "{}"))
-                    .thenReturn(new TossSmartMessageClient.SendResult(false, null, "RATE_LIMITED", "temporary", true, "{\"error\":true}"));
+                    .thenReturn(new TossSmartMessageClient.SendResult(false, null, "RATE_LIMITED", "temporary", true, null, "{\"error\":true}"));
             when(persistenceService.markRetryWaiting(pending.getId(), "RATE_LIMITED", "temporary", "{\"error\":true}"))
                     .thenReturn(pending);
 
@@ -352,7 +352,7 @@ class NotificationDeliveryServiceTest {
         when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)).thenReturn(Optional.of(identity));
         when(smartMessageClient.sendMessage("toss-user-1", pending.getTemplateSetCode(), pending.getContextJson())).thenAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            return new TossSmartMessageClient.SendResult(true, "content-1", null, null, false, "{\"ok\":true}");
+            return new TossSmartMessageClient.SendResult(true, "content-1", null, null, false, "SUCCESS", "{\"ok\":true}");
         });
         when(persistenceService.markSent(pending.getId(), "content-1", "{\"ok\":true}")).thenReturn(pending);
     }

@@ -224,6 +224,16 @@ public class NotificationDeliveryService {
                 delivery.getTemplateSetCode(),
                 delivery.getContextJson()
         );
+        log.info(
+                "Smart message delivery result. deliveryId={}, userId={}, notificationType={}, status={}, tossResultType={}, contentId={}, errorCode={}",
+                delivery.getId(),
+                delivery.getUserId(),
+                delivery.getType(),
+                result.succeeded() ? "SENT" : result.retryable() ? "RETRY_WAITING" : "FAILED",
+                result.providerResultType(),
+                result.contentId(),
+                result.errorCode()
+        );
         if (result.succeeded()) {
             return Optional.of(persistenceService.markSent(delivery.getId(), result.contentId(), result.responseBody()));
         }

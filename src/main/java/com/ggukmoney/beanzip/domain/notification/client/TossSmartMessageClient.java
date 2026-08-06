@@ -71,22 +71,50 @@ public class TossSmartMessageClient {
                     .body(new TossSmartMessageRequest(requireText(templateSetCode), parseContext(contextJson)))
                     .retrieve()
                     .body(TossSmartMessageResponse.class);
+            if (isSuccessResponse(response)) {
+                if (hasChannelResults(response.success()) && !hasSuccessfulChannel(response.success())) {
+                    return SendResult.failed(
+                            "TOSS_SMART_MESSAGE_CHANNEL_FAILED",
+                            "No successful smart message channel result",
+                            true,
+                            response.resultType(),
+                            toResponseBody(response)
+                    );
+                }
+                String contentId = response.success() == null ? null : response.success().contentId();
+                return SendResult.succeeded(contentId, response.resultType(), toResponseBody(response));
+            }
             if (response == null || response.success() == null || !StringUtils.hasText(response.success().contentId())) {
                 TossSmartMessageError error = response == null ? null : response.error();
-                return SendResult.failed(error == null ? "TOSS_SMART_MESSAGE_FAILED" : error.errorCode(),
-                        error == null ? null : error.reason(), false, toResponseBody(response));
+                return SendResult.failed(
+                        error == null ? "TOSS_SMART_MESSAGE_FAILED" : error.errorCode(),
+                        error == null ? null : error.reason(),
+                        false,
+                        response == null ? null : response.resultType(),
+                        toResponseBody(response)
+                );
             }
             if (!hasSuccessfulChannel(response.success())) {
-                return SendResult.failed("TOSS_SMART_MESSAGE_CHANNEL_FAILED", "No successful smart message channel result", true, toResponseBody(response));
+                return SendResult.failed(
+                        "TOSS_SMART_MESSAGE_CHANNEL_FAILED",
+                        "No successful smart message channel result",
+                        true,
+                        response.resultType(),
+                        toResponseBody(response)
+                );
             }
-            return SendResult.succeeded(response.success().contentId(), toResponseBody(response));
+            return SendResult.succeeded(response.success().contentId(), response.resultType(), toResponseBody(response));
         } catch (RestClientResponseException exception) {
             TossSmartMessageError error = extractError(exception.getResponseBodyAsString());
             return SendResult.failed(error == null ? "TOSS_SMART_MESSAGE_FAILED" : error.errorCode(),
-                    error == null ? exception.getMessage() : error.reason(), isRetryableStatus(exception), exception.getResponseBodyAsString());
+                    error == null ? exception.getMessage() : error.reason(), isRetryableStatus(exception), null, exception.getResponseBodyAsString());
         } catch (RuntimeException exception) {
-            return SendResult.failed("TOSS_SMART_MESSAGE_FAILED", exception.getMessage(), true, null);
+            return SendResult.failed("TOSS_SMART_MESSAGE_FAILED", exception.getMessage(), true, null, null);
         }
+    }
+
+    private boolean isSuccessResponse(TossSmartMessageResponse response) {
+        return response != null && "SUCCESS".equalsIgnoreCase(response.resultType());
     }
 
     private boolean isRetryableStatus(RestClientResponseException exception) {
@@ -103,6 +131,14 @@ public class TossSmartMessageClient {
             return StringUtils.hasText(success.contentId());
         }
         return channelResults.stream().anyMatch(TossChannelResult::isSuccessful);
+    }
+
+    private boolean hasChannelResults(TossSmartMessageSuccess success) {
+        if (success == null) {
+            return false;
+        }
+        return (success.channelResults() != null && !success.channelResults().isEmpty())
+                || (success.results() != null && !success.results().isEmpty());
     }
 
     private String toResponseBody(TossSmartMessageResponse response) {
@@ -164,13 +200,14 @@ public class TossSmartMessageClient {
     public record TossSmartMessageError(String errorCode, String reason) {
     }
 
-    public record SendResult(boolean succeeded, String contentId, String errorCode, String reason, boolean retryable, String responseBody) {
-        static SendResult succeeded(String contentId, String responseBody) {
-            return new SendResult(true, contentId, null, null, false, responseBody);
+    public record SendResult(boolean succeeded, String contentId, String errorCode, String reason, boolean retryable,
+                             String providerResultType, String responseBody) {
+        static SendResult succeeded(String contentId, String providerResultType, String responseBody) {
+            return new SendResult(true, contentId, null, null, false, providerResultType, responseBody);
         }
 
-        static SendResult failed(String errorCode, String reason, boolean retryable, String responseBody) {
-            return new SendResult(false, null, errorCode, reason, retryable, responseBody);
+        static SendResult failed(String errorCode, String reason, boolean retryable, String providerResultType, String responseBody) {
+            return new SendResult(false, null, errorCode, reason, retryable, providerResultType, responseBody);
         }
     }
 }
