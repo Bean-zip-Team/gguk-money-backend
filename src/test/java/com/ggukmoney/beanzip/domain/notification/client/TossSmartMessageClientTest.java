@@ -42,6 +42,24 @@ class TossSmartMessageClientTest {
     }
 
     @Test
+    void successResponseWithoutDeliveryMetadataIsAccepted() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        TossSmartMessageClient client = new TossSmartMessageClient(objectMapper, "https://apps-in-toss-api.toss.im", null, "toss-auth", builder);
+        server.expect(requestTo("https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/messenger/send-message"))
+                .andRespond(withSuccess("""
+                        {"resultType":"SUCCESS","success":{"contentId":null,"channelResults":null,"results":null},"error":null}
+                        """, MediaType.APPLICATION_JSON));
+
+        TossSmartMessageClient.SendResult result = client.sendMessage("toss-user-1", "TPL_RANK");
+
+        assertThat(result.succeeded()).isTrue();
+        assertThat(result.contentId()).isNull();
+        assertThat(result.providerResultType()).isEqualTo("SUCCESS");
+        server.verify();
+    }
+
+    @Test
     void failureResponseIsReturnedWithoutThrowing() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
