@@ -224,27 +224,27 @@ public class NotificationDeliveryService {
                 delivery.getTemplateSetCode(),
                 delivery.getContextJson()
         );
+        NotificationDelivery updated;
+        if (result.succeeded()) {
+            updated = persistenceService.markSent(delivery.getId(), result.contentId(), result.responseBody());
+        } else if (result.retryable()) {
+            updated = persistenceService.markRetryWaiting(
+                    delivery.getId(), result.errorCode(), result.reason(), result.responseBody()
+            );
+        } else {
+            updated = persistenceService.markFailed(
+                    delivery.getId(), result.errorCode(), result.reason(), result.responseBody()
+            );
+        }
         log.info(
-                "Smart message delivery result. deliveryId={}, userId={}, notificationType={}, status={}, tossResultType={}, contentId={}, errorCode={}",
-                delivery.getId(),
-                delivery.getUserId(),
-                delivery.getType(),
-                result.succeeded() ? "SENT" : result.retryable() ? "RETRY_WAITING" : "FAILED",
+                "Smart message delivery result. deliveryId={}, notificationType={}, status={}, tossResultType={}, errorCode={}",
+                updated.getId(),
+                updated.getType(),
+                updated.getStatus(),
                 result.providerResultType(),
-                result.contentId(),
                 result.errorCode()
         );
-        if (result.succeeded()) {
-            return Optional.of(persistenceService.markSent(delivery.getId(), result.contentId(), result.responseBody()));
-        }
-        if (result.retryable()) {
-            return Optional.of(persistenceService.markRetryWaiting(
-                    delivery.getId(), result.errorCode(), result.reason(), result.responseBody()
-            ));
-        }
-        return Optional.of(persistenceService.markFailed(
-                delivery.getId(), result.errorCode(), result.reason(), result.responseBody()
-        ));
+        return Optional.of(updated);
     }
 
     private boolean isSendable(UUID userId, NotificationType type) {
