@@ -15,6 +15,7 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,6 @@ import java.util.UUID;
 public class NotificationDeliveryPersistenceService {
 
     private static final String DEDUPE_CONSTRAINT_NAME = "uq_notification_delivery_dedupe_key";
-    private static final int SIGNIFICANT_RANK_CHANGE = 3;
     private static final long TOP_TEN = 10L;
 
     private final NotificationDeliveryRepository deliveryRepository;
@@ -44,6 +44,9 @@ public class NotificationDeliveryPersistenceService {
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
     private final NotificationTemplateProperties templateProperties;
     private final Clock clock;
+
+    @Value("${app.smart-message.rank-change.minimum-difference:3}")
+    private int minimumRankChange = 3;
 
     @Transactional
     public Optional<NotificationDelivery> createPending(
@@ -238,7 +241,7 @@ public class NotificationDeliveryPersistenceService {
 
     private boolean shouldSend(long previousRank, long currentRank) {
         long rankChange = previousRank - currentRank;
-        return Math.abs(rankChange) >= SIGNIFICANT_RANK_CHANGE
+        return Math.abs(rankChange) >= minimumRankChange
                 || (previousRank > TOP_TEN && currentRank <= TOP_TEN)
                 || (previousRank <= TOP_TEN && currentRank > TOP_TEN);
     }
