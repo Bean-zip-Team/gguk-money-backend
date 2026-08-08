@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
-import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
@@ -24,7 +23,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -57,7 +55,6 @@ class TapBatchServiceTest {
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
-    private final BoosterGrantService boosterGrantService = mock(BoosterGrantService.class);
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final UserService userService = mock(UserService.class);
@@ -69,7 +66,7 @@ class TapBatchServiceTest {
 
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, pointAccountService, pointLedgerService,
-            keycapBoxAccountService, boosterGrantService, redisService, tapPolicyConfig, userService,
+            keycapBoxAccountService, redisService, tapPolicyConfig, userService,
             eventPublisher, clock, businessZoneId
     );
 
@@ -81,7 +78,6 @@ class TapBatchServiceTest {
         lenient().when(redisService.executeScript(any(RedisScript.class), anyList(), anyString(), anyString(), anyString()))
                 .thenReturn(1L);
         lenient().when(tapPolicyConfig.rateLimitEnabled()).thenReturn(true);
-        lenient().when(boosterGrantService.findActiveMultiplier(any(), any())).thenReturn(BigDecimal.ONE);
     }
 
     @Test
@@ -178,38 +174,6 @@ class TapBatchServiceTest {
         inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
-    }
-
-    @Test
-    void appliesActiveBoosterMultiplierToPointCredit() {
-        AppUser user = stubUser();
-        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
-        when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
-
-        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
-        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
-
-        UserTapProgress progress = UserTapProgress.createFor(user, 100, FAR_AWAY_TARGET);
-        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
-
-        TapBatch savedBatch = mock(TapBatch.class);
-        when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
-        when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
-
-        when(boosterGrantService.findActiveMultiplier(eq(userId), any(Instant.class))).thenReturn(new BigDecimal("2.0"));
-        when(userTapProgressService.drawNextTarget(eq(100L), eq(1), eq(tapPolicyConfig))).thenReturn(400);
-
-        PointAccount account = PointAccount.createFor(user);
-        account.credit(2);
-        when(pointAccountService.credit(userId, 2L)).thenReturn(account);
-
-        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
-        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
-
-        assertThat(response.pointsAwarded()).isEqualTo(2);
-        assertThat(response.balance()).isEqualTo(2L);
-        verify(pointAccountService).credit(userId, 2L);
-        verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(2L), eq("TAP_REWARD"), any(UUID.class));
     }
 
     @Test
