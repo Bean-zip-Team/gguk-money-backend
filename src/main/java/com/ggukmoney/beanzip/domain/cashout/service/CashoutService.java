@@ -35,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -153,6 +154,7 @@ public class CashoutService {
      *   자동 환불하지 않고 REQUESTED로 남겨 운영자가 수동으로 확인하도록 한다(이중지급 위험 방지).
      */
     private void submitToToss(CashoutRequest request, UUID userId, AppUser user, long balance, UUID idempotencyKey) {
+        log.info("Cashout Toss 제출 시작: cashoutId={}", request.getPublicId());
         AuthIdentity identity = authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)
                 .orElse(null);
         if (identity == null) {
@@ -190,6 +192,8 @@ public class CashoutService {
     void persistProcessing(CashoutRequest request, String tossPromotionKey) {
         request.markProcessing(tossPromotionKey);
         cashoutRequestRepository.save(request);
+        log.info("Cashout PROCESSING 전이: cashoutId={} tossPromotionKey={} elapsedSinceRequestMs={}",
+                request.getPublicId(), tossPromotionKey, elapsedSinceRequestMs(request));
     }
 
     @Transactional
@@ -197,6 +201,8 @@ public class CashoutService {
         request.markFailed();
         reverseDebit(request, user, amount, idempotencyKey);
         cashoutRequestRepository.save(request);
+        log.info("Cashout FAILED 처리(제출 단계): cashoutId={} elapsedSinceRequestMs={}",
+                request.getPublicId(), elapsedSinceRequestMs(request));
     }
 
     /**
@@ -205,16 +211,27 @@ public class CashoutService {
     @Transactional
     public void finalizeProcessingCashout(CashoutRequest request, TossPromotionClient.PromotionResultStatus result) {
         switch (result) {
-            case SUCCESS -> request.markSucceeded();
+            case SUCCESS -> {
+                request.markSucceeded();
+                log.info("Cashout SUCCEEDED 확정: cashoutId={} elapsedSinceRequestMs={}",
+                        request.getPublicId(), elapsedSinceRequestMs(request));
+            }
             case FAILED -> {
                 request.markFailed();
                 reverseDebit(request, request.getUser(), request.getPointAmount(), request.getIdempotencyKey());
+                log.info("Cashout FAILED 확정(환불 처리): cashoutId={} elapsedSinceRequestMs={}",
+                        request.getPublicId(), elapsedSinceRequestMs(request));
             }
             case PENDING -> {
                 // 다음 tick에 재확인
             }
         }
         cashoutRequestRepository.save(request);
+    }
+
+    private long elapsedSinceRequestMs(CashoutRequest request) {
+        Instant createdAt = request.getCreatedAt();
+        return createdAt == null ? -1 : Duration.between(createdAt, Instant.now()).toMillis();
     }
 
     private void reverseDebit(CashoutRequest request, AppUser user, long amount, UUID idempotencyKey) {

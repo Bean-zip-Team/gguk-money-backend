@@ -35,19 +35,27 @@ public class CashoutProcessingScheduler {
 
     @Scheduled(fixedRate = 30_000)
     public void pollProcessingCashouts() {
+        long tickStart = System.currentTimeMillis();
         List<CashoutRequest> processing =
                 cashoutRequestRepository.findByStatusAndTossPromotionKeyIsNotNull(CashoutRequest.Status.PROCESSING);
+        log.info("Cashout polling tick 시작: count={}", processing.size());
 
         for (CashoutRequest request : processing) {
             try {
                 String tossUserKey = resolveTossUserKey(request);
+                long callStart = System.currentTimeMillis();
                 TossPromotionClient.PromotionResultStatus result =
                         tossPromotionClient.getExecutionResult(tossUserKey, promotionCode, request.getTossPromotionKey());
+                log.info("Cashout execution-result 폴링 결과: cashoutId={} result={} callElapsedMs={}",
+                        request.getPublicId(), result, System.currentTimeMillis() - callStart);
                 cashoutService.finalizeProcessingCashout(request, result);
             } catch (RuntimeException exception) {
                 log.error("Toss execution-result 폴링 실패: cashoutId={}", request.getPublicId(), exception);
             }
         }
+
+        log.info("Cashout polling tick 종료: count={} tickElapsedMs={}",
+                processing.size(), System.currentTimeMillis() - tickStart);
     }
 
     private String resolveTossUserKey(CashoutRequest request) {
