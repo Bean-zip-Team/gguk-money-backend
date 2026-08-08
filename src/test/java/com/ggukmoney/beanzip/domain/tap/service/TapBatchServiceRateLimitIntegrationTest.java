@@ -44,26 +44,4 @@ class TapBatchServiceRateLimitIntegrationTest extends RedisIntegrationTestSuppor
         assertThat(tapBatchService.tryConsumeRateLimit(userA, 1, 0.1, now)).isFalse();
         assertThat(tapBatchService.tryConsumeRateLimit(userB, 1, 0.1, now)).isTrue();
     }
-
-    @Test
-    void minuteCounterAccumulates() {
-        UUID userId = UUID.randomUUID();
-
-        assertThat(tapBatchService.getMinuteCount(userId)).isZero();
-
-        tapBatchService.addMinuteCount(userId, 40);
-        tapBatchService.addMinuteCount(userId, 5);
-
-        assertThat(tapBatchService.getMinuteCount(userId)).isEqualTo(45);
-    }
-
-    @Test
-    void minuteCounterIgnoresNonPositiveDelta() {
-        UUID userId = UUID.randomUUID();
-
-        tapBatchService.addMinuteCount(userId, 0);
-        tapBatchService.addMinuteCount(userId, -5);
-
-        assertThat(tapBatchService.getMinuteCount(userId)).isZero();
-    }
 }

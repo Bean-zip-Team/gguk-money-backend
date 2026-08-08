@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,11 +32,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,13 +46,9 @@ public class TapBatchService {
     private static final Logger log = LoggerFactory.getLogger(TapBatchService.class);
 
     private static final String CREDIT_REASON_TAP = "TAP_REWARD";
-    private static final int MIN_BOT_SAMPLE_SIZE = 3;
-    private static final Duration MINUTE_WINDOW = Duration.ofSeconds(60);
 
     private static final RedisScript<Long> TOKEN_BUCKET_SCRIPT =
             RedisScript.of(new ClassPathResource("scripts/tap-token-bucket.lua"), Long.class);
-    private static final RedisScript<Long> INCR_WITH_WINDOW_SCRIPT =
-            RedisScript.of(new ClassPathResource("scripts/tap-incr-with-window.lua"), Long.class);
 
     private final TapBatchRepository tapBatchRepository;
     private final UserTapDailyService userTapDailyService;
@@ -89,39 +82,18 @@ public class TapBatchService {
             return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), existingDaily.getValidTapCount(), 0, 0, balance, false);
         }
 
-        List<TapBatch> recentBatches = tapBatchRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, tapPolicyConfig.botSampleSize()));
-        Duration elapsedSinceLastBatch = recentBatches.isEmpty()
-                ? null
-                : Duration.between(recentBatches.get(0).getCreatedAt(), acceptedAt);
-
-        int minuteRemaining = tapPolicyConfig.maxPerMinute() - getMinuteCount(userId);
-
         UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
-        int dailyRemaining = tapPolicyConfig.maxPerDay() - daily.getValidTapCount();
-
-        int acceptedCount = calculateAcceptedCount(
-                request.submittedCount(), elapsedSinceLastBatch, minuteRemaining, dailyRemaining, tapPolicyConfig
-        );
-
-        List<Instant> botCheckTimestamps = new ArrayList<>();
-        botCheckTimestamps.add(acceptedAt);
-        recentBatches.forEach(batch -> botCheckTimestamps.add(batch.getCreatedAt()));
-        boolean botSuspected = isSuspicious(botCheckTimestamps, tapPolicyConfig);
+        int acceptedCount = request.submittedCount();
 
         TapBatch batch = TapBatch.createFor(user, request.tapSessionId(), request.sequence(), request.submittedCount(), requestHash(request));
         batch.markAccepted(acceptedCount);
-        if (botSuspected) {
-            batch.markBotSuspected();
-        }
         batch = tapBatchRepository.save(batch);
-
-        addMinuteCount(userId, acceptedCount);
 
         int pointsAwarded = 0;
         int boxesDropped = 0;
         long balance = pointAccountService.getBalance(userId);
 
-        if (!botSuspected && acceptedCount > 0) {
+        if (acceptedCount > 0) {
             daily.addValidTaps(acceptedCount);
             UserTapProgress progress = userTapProgressService.getForUser(userId);
             progress.addValidTaps(acceptedCount);
@@ -163,64 +135,6 @@ public class TapBatchService {
         return new TapBatchSubmitResponse(acceptedCount, daily.getValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached);
     }
 
-    private int calculateAcceptedCount(
-            int submittedCount,
-            Duration elapsedSinceLastBatch,
-            int minuteRemaining,
-            int dailyRemaining,
-            TapPolicyConfig config
-    ) {
-        int accepted = Math.min(submittedCount, elapsedBasedCap(elapsedSinceLastBatch, config.minIntervalMs()));
-        accepted = Math.min(accepted, Math.max(minuteRemaining, 0));
-        accepted = Math.min(accepted, Math.max(dailyRemaining, 0));
-        return Math.max(accepted, 0);
-    }
-
-    private int elapsedBasedCap(Duration elapsedSinceLastBatch, int minIntervalMs) {
-        if (elapsedSinceLastBatch == null) {
-            return Integer.MAX_VALUE;
-        }
-        long elapsedMillis = elapsedSinceLastBatch.toMillis();
-        if (elapsedMillis <= 0) {
-            return 0;
-        }
-        return (int) (elapsedMillis / minIntervalMs);
-    }
-
-    private boolean isSuspicious(List<Instant> timestampsMostRecentFirst, TapPolicyConfig config) {
-        if (!config.botDetectionEnabled()) {
-            return false;
-        }
-        if (timestampsMostRecentFirst.size() < MIN_BOT_SAMPLE_SIZE) {
-            return false;
-        }
-
-        double[] gapsMillis = new double[timestampsMostRecentFirst.size() - 1];
-        for (int i = 0; i < gapsMillis.length; i++) {
-            long gap = timestampsMostRecentFirst.get(i).toEpochMilli() - timestampsMostRecentFirst.get(i + 1).toEpochMilli();
-            gapsMillis[i] = Math.abs(gap);
-        }
-
-        double stddev = standardDeviation(gapsMillis);
-        return stddev < config.botStddevThresholdMs();
-    }
-
-    private double standardDeviation(double[] values) {
-        double mean = 0;
-        for (double value : values) {
-            mean += value;
-        }
-        mean /= values.length;
-
-        double variance = 0;
-        for (double value : values) {
-            variance += Math.pow(value - mean, 2);
-        }
-        variance /= values.length;
-
-        return Math.sqrt(variance);
-    }
-
     private UUID deterministicIdempotencyKey(UUID batchPublicId, int awardIndex) {
         return UUID.nameUUIDFromBytes((batchPublicId + "-" + awardIndex).getBytes(StandardCharsets.UTF_8));
     }
@@ -246,32 +160,7 @@ public class TapBatchService {
         }
     }
 
-    int getMinuteCount(UUID userId) {
-        return redisService.get(minuteKey(userId)).map(Integer::parseInt).orElse(0);
-    }
-
-    void addMinuteCount(UUID userId, int delta) {
-        if (delta <= 0) {
-            return;
-        }
-        try {
-            redisService.executeScript(
-                    INCR_WITH_WINDOW_SCRIPT,
-                    List.of(minuteKey(userId)),
-                    String.valueOf(delta),
-                    String.valueOf(MINUTE_WINDOW.toSeconds())
-            );
-        } catch (RuntimeException exception) {
-            log.error("Failed to increment tap minute counter for userId={}", userId, exception);
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "TAP_REDIS_UNAVAILABLE", exception);
-        }
-    }
-
     private String bucketKey(UUID userId) {
         return "tap:bucket:" + userId;
-    }
-
-    private String minuteKey(UUID userId) {
-        return "tap:minute:" + userId;
     }
 }
