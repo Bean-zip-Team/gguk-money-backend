@@ -80,13 +80,14 @@ public class TapBatchService {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "TAP_RATE_LIMITED");
         }
 
+        AppUser user = userService.getById(userId);
+
         Optional<TapBatch> existing = tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, request.tapSessionId(), request.sequence());
         if (existing.isPresent()) {
             long balance = pointAccountService.getBalance(userId);
-            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), 0, 0, balance, false);
+            UserTapDaily existingDaily = userTapDailyService.getOrCreate(user, tapDate);
+            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), existingDaily.getValidTapCount(), 0, 0, balance, false);
         }
-
-        AppUser user = userService.getById(userId);
 
         List<TapBatch> recentBatches = tapBatchRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, tapPolicyConfig.botSampleSize()));
         Duration elapsedSinceLastBatch = recentBatches.isEmpty()
@@ -159,7 +160,7 @@ public class TapBatchService {
         }
 
         boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();
-        return new TapBatchSubmitResponse(acceptedCount, pointsAwarded, boxesDropped, balance, pointDailyCapReached);
+        return new TapBatchSubmitResponse(acceptedCount, daily.getValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached);
     }
 
     private int calculateAcceptedCount(
