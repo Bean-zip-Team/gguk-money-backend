@@ -253,9 +253,8 @@ public class NotificationDeliveryPersistenceService {
     }
 
     private boolean shouldSend(long previousRank, long currentRank) {
-        long rankChange = previousRank - currentRank;
-        return Math.abs(rankChange) >= minimumRankChange
-                || (previousRank > TOP_TEN && currentRank <= TOP_TEN)
+        long rankDrop = currentRank - previousRank;
+        return rankDrop >= minimumRankChange
                 || (previousRank <= TOP_TEN && currentRank > TOP_TEN);
     }
 

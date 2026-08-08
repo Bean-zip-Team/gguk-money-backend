@@ -99,7 +99,7 @@ class NotificationDeliveryPersistenceServiceTest {
     void significantRankChangeCreatesPendingAndUpdatesBaselineInPreparation() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 8L, Instant.parse("2026-07-25T10:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T10:00:00Z"));
         String dedupeKey = rankDedupeKey(season, userId, state);
         NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
         NotificationPreference preference = agreed(userId, NotificationType.RANK_CHANGE);
@@ -107,7 +107,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(7L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(),
@@ -122,7 +122,7 @@ class NotificationDeliveryPersistenceServiceTest {
 
         assertThat(service.prepareRankChange(userId)).contains(pending);
 
-        assertThat(state.getBaselineRank()).isEqualTo(5L);
+        assertThat(state.getBaselineRank()).isEqualTo(8L);
         verify(rankStateRepository).saveAndFlush(state);
     }
 
@@ -130,7 +130,7 @@ class NotificationDeliveryPersistenceServiceTest {
     void rankChangeUsesBaselineRecordedAtToCreateANewEventForTheSameRankTransition() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 8L, Instant.parse("2026-07-25T09:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));
         String dedupeKey = "RANK_CHANGE:1:" + userId + ":" + state.getBaselineRecordedAt().toEpochMilli();
         NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
@@ -138,7 +138,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(7L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(),
@@ -158,13 +158,13 @@ class NotificationDeliveryPersistenceServiceTest {
     void recentSentRankNotificationSkipsDeliveryButUpdatesBaseline() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 8L, Instant.parse("2026-07-25T09:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
                 .thenReturn(Optional.of(agreed(userId, NotificationType.RANK_CHANGE)));
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(7L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.existsByUserIdAndTypeAndStatusAndRequestedAtAfter(
                 userId,
@@ -175,7 +175,7 @@ class NotificationDeliveryPersistenceServiceTest {
 
         assertThat(service.prepareRankChange(userId)).isEmpty();
 
-        assertThat(state.getBaselineRank()).isEqualTo(5L);
+        assertThat(state.getBaselineRank()).isEqualTo(8L);
         verify(deliveryRepository, org.mockito.Mockito.never()).insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
@@ -192,7 +192,7 @@ class NotificationDeliveryPersistenceServiceTest {
         ReflectionTestUtils.setField(service, "rankChangeCooldown", java.time.Duration.ZERO);
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 8L, Instant.parse("2026-07-25T09:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));
         String dedupeKey = rankDedupeKey(season, userId, state);
         NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
@@ -200,7 +200,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(7L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(),
@@ -228,7 +228,7 @@ class NotificationDeliveryPersistenceServiceTest {
         ReflectionTestUtils.setField(service, "minimumRankChange", 1);
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 6L, Instant.parse("2026-07-25T10:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T10:00:00Z"));
         String dedupeKey = rankDedupeKey(season, userId, state);
         NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
@@ -236,7 +236,7 @@ class NotificationDeliveryPersistenceServiceTest {
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(5L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(),
@@ -256,13 +256,13 @@ class NotificationDeliveryPersistenceServiceTest {
     void duplicateRankDeliveryStillUpdatesBaselineWithoutReturningPending() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
-        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 8L, Instant.parse("2026-07-25T10:00:00Z"));
+        NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T10:00:00Z"));
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
                 .thenReturn(Optional.of(agreed(userId, NotificationType.RANK_CHANGE)));
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
         when(rankingEntryRepository.findMyParticipant(season, userId))
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 995L)));
-        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(4L);
+        when(rankingEntryRepository.countParticipantsAhead(season, 995L, userId.toString())).thenReturn(7L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
         when(deliveryRepository.insertPendingIfAbsent(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
@@ -271,7 +271,7 @@ class NotificationDeliveryPersistenceServiceTest {
 
         assertThat(service.prepareRankChange(userId)).isEmpty();
 
-        assertThat(state.getBaselineRank()).isEqualTo(5L);
+        assertThat(state.getBaselineRank()).isEqualTo(8L);
         verify(rankStateRepository).saveAndFlush(state);
     }
 
@@ -319,12 +319,10 @@ class NotificationDeliveryPersistenceServiceTest {
     }
 
     @Test
-    void topTenEntryCreatesPendingForSmallRankChange() {
+    void topTenEntryUpdatesBaselineWithoutCreatingPendingDelivery() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
         NotificationRankState state = NotificationRankState.record(userId, season.getId(), 11L, Instant.parse("2026-07-25T10:00:00Z"));
-        String dedupeKey = rankDedupeKey(season, userId, state);
-        NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
         when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
                 .thenReturn(Optional.of(agreed(userId, NotificationType.RANK_CHANGE)));
         when(rankingSeasonService.findActiveWeeklySeason()).thenReturn(Optional.of(season));
@@ -332,14 +330,13 @@ class NotificationDeliveryPersistenceServiceTest {
                 .thenReturn(Optional.of(new RankingEntryRepository.RankingParticipantRow(userId, "me", null, 990L)));
         when(rankingEntryRepository.countParticipantsAhead(season, 990L, userId.toString())).thenReturn(9L);
         when(rankStateRepository.findByUserIdAndSeasonId(userId, season.getId())).thenReturn(Optional.of(state));
-        when(deliveryRepository.insertPendingIfAbsent(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
-                org.mockito.ArgumentMatchers.eq(dedupeKey), org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any()
-        )).thenReturn(1);
-        when(deliveryRepository.findByDedupeKey(dedupeKey)).thenReturn(Optional.of(pending));
+        assertThat(service.prepareRankChange(userId)).isEmpty();
 
-        assertThat(service.prepareRankChange(userId)).contains(pending);
+        assertThat(state.getBaselineRank()).isEqualTo(10L);
+        verify(deliveryRepository, org.mockito.Mockito.never()).insertPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()
+        );
     }
 
     @Test
