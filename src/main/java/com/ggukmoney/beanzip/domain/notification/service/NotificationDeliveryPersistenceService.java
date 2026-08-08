@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationRankState;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
@@ -48,6 +49,16 @@ public class NotificationDeliveryPersistenceService {
     @Value("${app.smart-message.rank-change.minimum-difference:3}")
     private int minimumRankChange = 3;
 
+    private Duration rankChangeCooldown = Duration.ofHours(6);
+
+    @Value("${app.smart-message.rank-change.cooldown:6h}")
+    void setRankChangeCooldown(Duration rankChangeCooldown) {
+        if (rankChangeCooldown.isNegative()) {
+            throw new IllegalStateException("app.smart-message.rank-change.cooldown must not be negative");
+        }
+        this.rankChangeCooldown = rankChangeCooldown;
+    }
+
     @Transactional
     public Optional<NotificationDelivery> createPending(
             UUID userId,
@@ -85,19 +96,21 @@ public class NotificationDeliveryPersistenceService {
 
         NotificationRankState state = existingState.get();
         long previousRank = state.getBaselineRank();
+        Instant now = clock.instant();
         Optional<NotificationDelivery> pending = Optional.empty();
-        if (shouldSend(previousRank, rank.rank())) {
+        if (shouldSend(previousRank, rank.rank()) && !isRankChangeCooldownActive(userId, now)) {
             pending = createPendingInternal(
                     userId,
                     NotificationType.RANK_CHANGE,
-                    "RANK_CHANGE:%d:%s:%d:%d".formatted(rank.season().getId(), userId, previousRank, rank.rank()),
+                    "RANK_CHANGE:%d:%s:%d".formatted(
+                            rank.season().getId(), userId, state.getBaselineRecordedAt().toEpochMilli()),
                     templateProperties.campaignCode(NotificationType.RANK_CHANGE),
                     "{\"currentRank\":%d,\"rankChange\":%d,\"direction\":\"%s\"}".formatted(
                             rank.rank(), Math.abs(previousRank - rank.rank()), previousRank > rank.rank() ? "UP" : "DOWN")
             );
         }
 
-        state.updateBaseline(rank.season().getId(), rank.rank(), clock.instant());
+        state.updateBaseline(rank.season().getId(), rank.rank(), now);
         rankStateRepository.saveAndFlush(state);
         return pending;
     }
@@ -244,6 +257,16 @@ public class NotificationDeliveryPersistenceService {
         return Math.abs(rankChange) >= minimumRankChange
                 || (previousRank > TOP_TEN && currentRank <= TOP_TEN)
                 || (previousRank <= TOP_TEN && currentRank > TOP_TEN);
+    }
+
+    private boolean isRankChangeCooldownActive(UUID userId, Instant now) {
+        return !rankChangeCooldown.isZero()
+                && deliveryRepository.existsByUserIdAndTypeAndStatusAndRequestedAtAfter(
+                        userId,
+                        NotificationType.RANK_CHANGE,
+                        NotificationDeliveryStatus.SENT,
+                        now.minus(rankChangeCooldown)
+                );
     }
 
     private boolean isDedupeConstraintViolation(DataIntegrityViolationException exception) {

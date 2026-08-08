@@ -1,6 +1,8 @@
 package com.ggukmoney.beanzip.domain.notification.repository;
 
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +15,13 @@ import java.util.UUID;
 public interface NotificationDeliveryRepository extends JpaRepository<NotificationDelivery, Long> {
 
     Optional<NotificationDelivery> findByDedupeKey(String dedupeKey);
+
+    boolean existsByUserIdAndTypeAndStatusAndRequestedAtAfter(
+            UUID userId,
+            NotificationType type,
+            NotificationDeliveryStatus status,
+            Instant requestedAt
+    );
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
