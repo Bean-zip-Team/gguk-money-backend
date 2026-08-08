@@ -39,7 +39,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TapPolicyConfig tapPolicyConfig;
 
     @Test
-    void activatesBoosterAndAppliesDoublePointsOnSubsequentTapBatch() throws Exception {
+    void activatesBoosterButTapBatchStillAwardsSinglePoint() throws Exception {
         TestTokens tokens = registerUserWithSession("booster-tester-1");
 
         mockMvc.perform(post("/api/boosters/activate")
@@ -56,7 +56,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 1, 350)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointsAwarded").value(2));
+                .andExpect(jsonPath("$.data.pointsAwarded").value(1));
     }
 
     @Test
