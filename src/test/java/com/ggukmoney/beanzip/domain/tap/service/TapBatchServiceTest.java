@@ -106,20 +106,24 @@ class TapBatchServiceTest {
 
     @Test
     void returnsExistingSnapshotWithoutReprocessingOnDuplicateSubmission() {
+        AppUser user = stubUser();
         TapBatch existing = mock(TapBatch.class);
         when(existing.getAcceptedCount()).thenReturn(42);
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         when(pointAccountService.getBalance(userId)).thenReturn(100L);
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        daily.addValidTaps(77);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 50);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
         assertThat(response.acceptedCount()).isEqualTo(42);
+        assertThat(response.validTapCount()).isEqualTo(77);
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.boxesDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
-        verify(userService, never()).getById(any());
-        verify(userTapDailyService, never()).getOrCreate(any(), any());
+        verify(userTapDailyService, never()).save(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(eventPublisher, never()).publishEvent(any());
     }
