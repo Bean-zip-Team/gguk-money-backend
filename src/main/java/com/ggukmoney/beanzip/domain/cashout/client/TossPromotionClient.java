@@ -75,6 +75,7 @@ public class TossPromotionClient {
         String headerValue = requireText(tossUserKey);
         log.info("Toss get-key request: url={}{} header={} value={} mtlsEnabled={}",
                 baseUrl, GET_KEY_PATH, headerName, mask(headerValue), mtlsEnabled);
+        long callStart = System.currentTimeMillis();
         try {
             TossPromotionKeyResponse response = restClient.post()
                     .uri(GET_KEY_PATH)
@@ -83,23 +84,24 @@ public class TossPromotionClient {
                     .retrieve()
                     .body(TossPromotionKeyResponse.class);
 
-            log.info("Toss get-key response: resultType={} keyPresent={} error={}",
+            log.info("Toss get-key response: resultType={} keyPresent={} error={} elapsedMs={}",
                     response == null ? null : response.resultType(),
                     response != null && response.success() != null && StringUtils.hasText(response.success().key()),
-                    response == null ? null : response.error());
+                    response == null ? null : response.error(),
+                    System.currentTimeMillis() - callStart);
 
             if (response == null || response.success() == null || !StringUtils.hasText(response.success().key())) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
             }
             return response.success().key();
         } catch (RestClientResponseException exception) {
-            log.warn("Toss get-key HTTP error: status={} body={}",
-                    exception.getStatusCode(), exception.getResponseBodyAsString(), exception);
+            log.warn("Toss get-key HTTP error: status={} body={} elapsedMs={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString(), System.currentTimeMillis() - callStart, exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            log.error("Toss get-key unexpected failure", exception);
+            log.error("Toss get-key unexpected failure: elapsedMs={}", System.currentTimeMillis() - callStart, exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         }
     }
@@ -123,6 +125,7 @@ public class TossPromotionClient {
         String safeKey = requireText(key);
         log.info("Toss execute-promotion request: url={}{} x-toss-user-key={} promotionCode={} key={} amount={} mtlsEnabled={}",
                 baseUrl, EXECUTE_PROMOTION_PATH, mask(headerValue), safePromotionCode, mask(safeKey), amount, mtlsEnabled);
+        long callStart = System.currentTimeMillis();
         try {
             TossPromotionExecuteResponse response = restClient.post()
                     .uri(EXECUTE_PROMOTION_PATH)
@@ -132,9 +135,10 @@ public class TossPromotionClient {
                     .retrieve()
                     .body(TossPromotionExecuteResponse.class);
 
-            log.info("Toss execute-promotion response: resultType={} error={}",
+            log.info("Toss execute-promotion response: resultType={} error={} elapsedMs={}",
                     response == null ? null : response.resultType(),
-                    response == null ? null : response.error());
+                    response == null ? null : response.error(),
+                    System.currentTimeMillis() - callStart);
 
             if (response == null) {
                 throw new AmbiguousTossFailureException("execute-promotion 응답이 비어 있음");
@@ -147,8 +151,8 @@ public class TossPromotionClient {
                     response.error() == null ? null : response.error().reason()
             );
         } catch (RestClientResponseException exception) {
-            log.warn("Toss execute-promotion HTTP error: status={} body={}",
-                    exception.getStatusCode(), exception.getResponseBodyAsString());
+            log.warn("Toss execute-promotion HTTP error: status={} body={} elapsedMs={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString(), System.currentTimeMillis() - callStart);
             if (exception.getStatusCode().is4xxClientError()) {
                 TossPromotionError error = extractError(exception);
                 return PromotionExecutionOutcome.failed(
@@ -160,7 +164,7 @@ public class TossPromotionClient {
         } catch (AmbiguousTossFailureException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            log.error("Toss execute-promotion 네트워크 오류", exception);
+            log.error("Toss execute-promotion 네트워크 오류: elapsedMs={}", System.currentTimeMillis() - callStart, exception);
             throw new AmbiguousTossFailureException("execute-promotion 네트워크 오류", exception);
         }
     }
@@ -172,6 +176,7 @@ public class TossPromotionClient {
      */
     public PromotionResultStatus getExecutionResult(String tossUserKey, String promotionCode, String key) {
         requireConfigured();
+        long callStart = System.currentTimeMillis();
         try {
             TossPromotionResultResponse response = restClient.post()
                     .uri(EXECUTION_RESULT_PATH)
@@ -181,15 +186,23 @@ public class TossPromotionClient {
                     .retrieve()
                     .body(TossPromotionResultResponse.class);
 
+            log.info("Toss execution-result response: success={} error={} elapsedMs={}",
+                    response == null ? null : response.success(),
+                    response == null ? null : response.error(),
+                    System.currentTimeMillis() - callStart);
+
             if (response == null || !StringUtils.hasText(response.success())) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR");
             }
             return PromotionResultStatus.valueOf(response.success());
         } catch (RestClientResponseException exception) {
+            log.warn("Toss execution-result HTTP error: status={} body={} elapsedMs={}",
+                    exception.getStatusCode(), exception.getResponseBodyAsString(), System.currentTimeMillis() - callStart);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.error("Toss execution-result unexpected failure: elapsedMs={}", System.currentTimeMillis() - callStart, exception);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "TOSS_SERVER_ERROR", exception);
         }
     }
