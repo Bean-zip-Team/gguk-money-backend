@@ -23,8 +23,8 @@ public class CashoutPolicyConfig {
     public static final String KEY_POINT_TO_KRW_RATE = "cashout.pointToKrwRate";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
-            Map.entry(KEY_MINIMUM_POINT, "10"),
-            Map.entry(KEY_POINT_TO_KRW_RATE, "0.7")
+            Map.entry(KEY_MINIMUM_POINT, "50"),
+            Map.entry(KEY_POINT_TO_KRW_RATE, "0.02")
     );
 
     private final AppConfigRepository appConfigRepository;

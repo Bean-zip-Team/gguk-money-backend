@@ -8,9 +8,11 @@ import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
-import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapSessionService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
@@ -35,7 +37,9 @@ import static org.mockito.Mockito.when;
 class KeycapBoxQueryServiceTest {
 
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
-    private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
+    private final UserService userService = mock(UserService.class);
+    private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final KeycapBoxMapper keycapBoxMapper = mock(KeycapBoxMapper.class);
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-16T00:10:00Z"), ZoneOffset.UTC);
@@ -43,7 +47,9 @@ class KeycapBoxQueryServiceTest {
     private final KeycapBoxHistoryCursorCodec cursorCodec = new KeycapBoxHistoryCursorCodec();
     private final KeycapBoxQueryService service = new KeycapBoxQueryService(
             keycapBoxAccountService,
-            userTapProgressService,
+            userTapSessionService,
+            userService,
+            tapPolicyConfig,
             keycapBoxMapper,
             keycapBoxPolicyConfig,
             clock,
@@ -56,12 +62,14 @@ class KeycapBoxQueryServiceTest {
     @Test
     void getsStatusFromOrdinaryAccountLookupAndTapProgress() {
         KeycapBoxAccount account = keycapBoxAccount(userId, 2, 1, 0);
+        AppUser user = account.getUser();
+        when(userService.getById(userId)).thenReturn(user);
         BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
         KeycapBoxAccount.OpenCycleSnapshot snapshot =
                 new KeycapBoxAccount.OpenCycleSnapshot(true, true, false, null);
         KeycapBoxStatusResponse mapped = new KeycapBoxStatusResponse(2, true, true, false, null, 45, 100);
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(account);
-        when(userTapProgressService.getBoxProgress(userId)).thenReturn(progress);
+        when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig)).thenReturn(progress);
         when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofHours(1));
         when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
         when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
@@ -72,7 +80,7 @@ class KeycapBoxQueryServiceTest {
         assertThat(response).isEqualTo(mapped);
         verify(keycapBoxAccountService).getForUser(userId);
         verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
-        verify(userTapProgressService).getBoxProgress(userId);
+        verify(userTapSessionService).getBoxProgress(user, clock.instant(), tapPolicyConfig);
         verify(keycapBoxMapper).mapToStatusResponse(account, snapshot, progress);
     }
 
@@ -86,7 +94,7 @@ class KeycapBoxQueryServiceTest {
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
                 .isEqualTo("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
 
-        verify(userTapProgressService, never()).getBoxProgress(userId);
+        verify(userTapSessionService, never()).getBoxProgress(any(), any(), any());
     }
 
     @Test

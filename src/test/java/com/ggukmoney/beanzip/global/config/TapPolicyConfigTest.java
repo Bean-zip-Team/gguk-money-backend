@@ -24,8 +24,9 @@ class TapPolicyConfigTest {
 
         tapPolicyConfig.refresh();
 
-        assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(20);
-        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(20);
+        assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(150);
+        assertThat(tapPolicyConfig.boxSessionStep1()).isEqualTo(25);
+        assertThat(tapPolicyConfig.boxSessionTailStep()).isEqualTo(180);
         assertThat(tapPolicyConfig.boosterDurationSeconds()).isEqualTo(300);
         assertThat(tapPolicyConfig.boosterDailyLimit()).isEqualTo(3);
     }
@@ -37,8 +38,9 @@ class TapPolicyConfigTest {
 
         tapPolicyConfig.refresh();
 
-        assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(20);
-        assertThat(tapPolicyConfig.boxDropBase()).isEqualTo(20);
+        assertThat(tapPolicyConfig.pointDailyCap()).isEqualTo(150);
+        assertThat(tapPolicyConfig.boxSessionStep1()).isEqualTo(25);
+        assertThat(tapPolicyConfig.boxSessionTailStep()).isEqualTo(180);
         assertThat(tapPolicyConfig.boosterDurationSeconds()).isEqualTo(300);
         assertThat(tapPolicyConfig.boosterDailyLimit()).isEqualTo(3);
     }

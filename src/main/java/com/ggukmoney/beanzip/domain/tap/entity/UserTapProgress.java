@@ -43,9 +43,6 @@ public class UserTapProgress {
     @Column(name = "next_point_target", nullable = false)
     private Integer nextPointTarget;
 
-    @Column(name = "next_box_target", nullable = false)
-    private Integer nextBoxTarget;
-
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
@@ -56,11 +53,10 @@ public class UserTapProgress {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static UserTapProgress createFor(AppUser user, int initialPointTarget, int initialBoxTarget) {
+    public static UserTapProgress createFor(AppUser user, int initialPointTarget) {
         UserTapProgress progress = new UserTapProgress();
         progress.user = user;
         progress.nextPointTarget = initialPointTarget;
-        progress.nextBoxTarget = initialBoxTarget;
         return progress;
     }
 
@@ -72,16 +68,8 @@ public class UserTapProgress {
         return cumulativeValidTapCount >= nextPointTarget;
     }
 
-    public boolean hasReachedBoxTarget() {
-        return cumulativeValidTapCount >= nextBoxTarget;
-    }
-
     public void advancePointTarget(int nextTarget) {
         this.nextPointTarget = nextTarget;
-    }
-
-    public void advanceBoxTarget(int nextTarget) {
-        this.nextBoxTarget = nextTarget;
     }
 
     @PrePersist

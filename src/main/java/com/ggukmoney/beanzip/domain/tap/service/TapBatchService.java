@@ -11,6 +11,7 @@ import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
@@ -50,6 +51,7 @@ public class TapBatchService {
     private final TapBatchRepository tapBatchRepository;
     private final UserTapDailyService userTapDailyService;
     private final UserTapProgressService userTapProgressService;
+    private final UserTapSessionService userTapSessionService;
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
     private final KeycapBoxAccountService keycapBoxAccountService;
@@ -90,40 +92,48 @@ public class TapBatchService {
         long balance = pointAccountService.getBalance(userId);
 
         if (acceptedCount > 0) {
-            daily.addValidTaps(acceptedCount);
-            UserTapProgress progress = userTapProgressService.getForUser(userId);
-            progress.addValidTaps(acceptedCount);
+            int remainingDailyTapAllowance = Math.max(tapPolicyConfig.maxPerDay() - daily.getValidTapCount(), 0);
+            int creditedTaps = Math.min(acceptedCount, remainingDailyTapAllowance);
 
-            long creditAmount = 1L;
+            if (creditedTaps > 0) {
+                daily.addValidTaps(creditedTaps);
+                UserTapProgress progress = userTapProgressService.getForUser(userId);
+                progress.addValidTaps(creditedTaps);
 
-            int dailyCap = tapPolicyConfig.pointDailyCap();
-            int awardIndex = 0;
-            while (progress.hasReachedPointTarget() && daily.getPointEarnedAmount() < dailyCap) {
-                UUID idempotencyKey = deterministicIdempotencyKey(batch.getPublicId(), awardIndex);
-                PointAccount account = pointAccountService.credit(userId, creditAmount);
-                pointLedgerService.recordCredit(account, user, creditAmount, CREDIT_REASON_TAP, idempotencyKey);
-                daily.incrementPointEarned();
+                long creditAmount = 1L;
 
-                int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), daily.getPointEarnedAmount(), tapPolicyConfig);
-                progress.advancePointTarget(nextTarget);
+                int dailyCap = tapPolicyConfig.pointDailyCap();
+                int awardIndex = 0;
+                while (progress.hasReachedPointTarget() && daily.getPointEarnedAmount() < dailyCap) {
+                    UUID idempotencyKey = deterministicIdempotencyKey(batch.getPublicId(), awardIndex);
+                    PointAccount account = pointAccountService.credit(userId, creditAmount);
+                    pointLedgerService.recordCredit(account, user, creditAmount, CREDIT_REASON_TAP, idempotencyKey);
+                    daily.incrementPointEarned();
 
-                balance = account.getBalance();
-                pointsAwarded += creditAmount;
-                awardIndex++;
+                    int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), daily.getPointEarnedAmount(), tapPolicyConfig);
+                    progress.advancePointTarget(nextTarget);
+
+                    balance = account.getBalance();
+                    pointsAwarded += creditAmount;
+                    awardIndex++;
+                }
+
+                UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, acceptedAt, tapPolicyConfig);
+                session.addValidTaps(creditedTaps);
+                while (session.hasReachedBoxTarget()) {
+                    keycapBoxAccountService.addBoxes(userId, 1);
+
+                    int nextBoxTarget = userTapSessionService.drawNextBoxTargetInSession(session.getSessionValidTapCount(), session.getBoxesDroppedInSession(), tapPolicyConfig);
+                    session.advanceBoxTarget(nextBoxTarget);
+
+                    boxesDropped++;
+                }
+                userTapSessionService.save(session);
+
+                userTapDailyService.save(daily);
+                userTapProgressService.save(progress);
+                eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
             }
-
-            while (progress.hasReachedBoxTarget()) {
-                keycapBoxAccountService.addBoxes(userId, 1);
-
-                int nextBoxTarget = userTapProgressService.drawNextBoxTarget(progress.getCumulativeValidTapCount(), tapPolicyConfig);
-                progress.advanceBoxTarget(nextBoxTarget);
-
-                boxesDropped++;
-            }
-
-            userTapDailyService.save(daily);
-            userTapProgressService.save(progress);
-            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
         boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();

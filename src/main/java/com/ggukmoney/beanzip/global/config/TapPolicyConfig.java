@@ -33,8 +33,15 @@ public class TapPolicyConfig {
     public static final String KEY_RATE_LIMIT_ENABLED = "tap.rateLimit.enabled";
     public static final String KEY_RATE_LIMIT_CAPACITY = "tap.rateLimit.capacity";
     public static final String KEY_RATE_LIMIT_REFILL_PER_SECOND = "tap.rateLimit.refillPerSecond";
-    public static final String KEY_BOX_DROP_BASE = "tap.box.dropBase";
-    public static final String KEY_BOX_DROP_VARIANCE = "tap.box.dropVariance";
+    public static final String KEY_BOX_SESSION_STEP_1 = "tap.box.session.step1";
+    public static final String KEY_BOX_SESSION_STEP_2 = "tap.box.session.step2";
+    public static final String KEY_BOX_SESSION_STEP_3 = "tap.box.session.step3";
+    public static final String KEY_BOX_SESSION_STEP_4 = "tap.box.session.step4";
+    public static final String KEY_BOX_SESSION_STEP_5 = "tap.box.session.step5";
+    public static final String KEY_BOX_SESSION_TAIL_STEP = "tap.box.session.tailStep";
+    public static final String KEY_BOX_SESSION_VARIANCE = "tap.box.session.variance";
+    public static final String KEY_BOX_SESSION_MAX_DURATION_SECONDS = "tap.box.session.maxDurationSeconds";
+    public static final String KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS = "tap.box.session.idleThresholdSeconds";
     public static final String KEY_BOOSTER_DURATION_SECONDS = "tap.booster.durationSeconds";
     public static final String KEY_BOOSTER_DAILY_LIMIT = "tap.booster.dailyLimit";
     public static final String KEY_BOOSTER_LIMIT_WINDOW_SECONDS = "tap.booster.limitWindowSeconds";
@@ -42,21 +49,28 @@ public class TapPolicyConfig {
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_MIN_INTERVAL_MS, "80"),
             Map.entry(KEY_MAX_PER_MINUTE, "420"),
-            Map.entry(KEY_MAX_PER_DAY, "12000"),
-            Map.entry(KEY_CURVE_GENERAL_BASE, "40"),
-            Map.entry(KEY_CURVE_GENERAL_VARIANCE, "0"),
-            Map.entry(KEY_CURVE_DECEL_BASE, "40"),
-            Map.entry(KEY_CURVE_DECEL_VARIANCE, "0"),
+            Map.entry(KEY_MAX_PER_DAY, "3000"),
+            Map.entry(KEY_CURVE_GENERAL_BASE, "20"),
+            Map.entry(KEY_CURVE_GENERAL_VARIANCE, "0.25"),
+            Map.entry(KEY_CURVE_DECEL_BASE, "20"),
+            Map.entry(KEY_CURVE_DECEL_VARIANCE, "0.25"),
             Map.entry(KEY_DECEL_THRESHOLD_POINTS, "7"),
-            Map.entry(KEY_POINT_DAILY_CAP, "20"),
+            Map.entry(KEY_POINT_DAILY_CAP, "150"),
             Map.entry(KEY_BOT_ENABLED, "false"),
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
             Map.entry(KEY_BOT_STDDEV_THRESHOLD_MS, "12"),
             Map.entry(KEY_RATE_LIMIT_ENABLED, "false"),
             Map.entry(KEY_RATE_LIMIT_CAPACITY, "8"),
             Map.entry(KEY_RATE_LIMIT_REFILL_PER_SECOND, "0.125"),
-            Map.entry(KEY_BOX_DROP_BASE, "20"),
-            Map.entry(KEY_BOX_DROP_VARIANCE, "0"),
+            Map.entry(KEY_BOX_SESSION_STEP_1, "25"),
+            Map.entry(KEY_BOX_SESSION_STEP_2, "35"),
+            Map.entry(KEY_BOX_SESSION_STEP_3, "50"),
+            Map.entry(KEY_BOX_SESSION_STEP_4, "70"),
+            Map.entry(KEY_BOX_SESSION_STEP_5, "100"),
+            Map.entry(KEY_BOX_SESSION_TAIL_STEP, "180"),
+            Map.entry(KEY_BOX_SESSION_VARIANCE, "0.2"),
+            Map.entry(KEY_BOX_SESSION_MAX_DURATION_SECONDS, "3600"),
+            Map.entry(KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS, "1800"),
             Map.entry(KEY_BOOSTER_DURATION_SECONDS, "300"),
             Map.entry(KEY_BOOSTER_DAILY_LIMIT, "3"),
             Map.entry(KEY_BOOSTER_LIMIT_WINDOW_SECONDS, "86400")
@@ -140,12 +154,40 @@ public class TapPolicyConfig {
         return getDouble(KEY_RATE_LIMIT_REFILL_PER_SECOND);
     }
 
-    public int boxDropBase() {
-        return getInt(KEY_BOX_DROP_BASE);
+    public int boxSessionStep1() {
+        return getInt(KEY_BOX_SESSION_STEP_1);
     }
 
-    public double boxDropVariance() {
-        return getDouble(KEY_BOX_DROP_VARIANCE);
+    public int boxSessionStep2() {
+        return getInt(KEY_BOX_SESSION_STEP_2);
+    }
+
+    public int boxSessionStep3() {
+        return getInt(KEY_BOX_SESSION_STEP_3);
+    }
+
+    public int boxSessionStep4() {
+        return getInt(KEY_BOX_SESSION_STEP_4);
+    }
+
+    public int boxSessionStep5() {
+        return getInt(KEY_BOX_SESSION_STEP_5);
+    }
+
+    public int boxSessionTailStep() {
+        return getInt(KEY_BOX_SESSION_TAIL_STEP);
+    }
+
+    public double boxSessionVariance() {
+        return getDouble(KEY_BOX_SESSION_VARIANCE);
+    }
+
+    public int boxSessionMaxDurationSeconds() {
+        return getInt(KEY_BOX_SESSION_MAX_DURATION_SECONDS);
+    }
+
+    public int boxSessionIdleThresholdSeconds() {
+        return getInt(KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS);
     }
 
     public int boosterDurationSeconds() {

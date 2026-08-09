@@ -39,7 +39,7 @@ class RankingProjectionRequiresNewIntegrationTest extends FullStackIntegrationTe
     @Test
     void syncLatestAllTimeScoreCommitsInRequiresNewEvenWhenOuterTransactionRollsBack() {
         AppUser user = appUserRepository.save(AppUser.createActive("ranking-requires-new", null));
-        UserTapProgress progress = UserTapProgress.createFor(user, 1, 1);
+        UserTapProgress progress = UserTapProgress.createFor(user, 1);
         progress.addValidTaps(110L);
         userTapProgressRepository.save(progress);
 

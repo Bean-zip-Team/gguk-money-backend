@@ -3,8 +3,10 @@ package com.ggukmoney.beanzip.domain.tap.service;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapTodayStatusResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -23,11 +25,16 @@ class TapStatusServiceTest {
 
     private final UserTapDailyService userTapDailyService = mock(UserTapDailyService.class);
     private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
     private final UserService userService = mock(UserService.class);
-    private final Clock clock = Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC);
+    private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
+    private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
+    private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
-    private final TapStatusService tapStatusService =
-            new TapStatusService(userTapDailyService, userTapProgressService, userService, clock, businessZoneId);
+    private final TapStatusService tapStatusService = new TapStatusService(
+            userTapDailyService, userTapProgressService, userTapSessionService, userService, tapPolicyConfig,
+            clock, businessZoneId
+    );
 
     private final UUID userId = UUID.randomUUID();
     private final LocalDate today = LocalDate.of(2026, 7, 21);
@@ -42,9 +49,13 @@ class TapStatusServiceTest {
         daily.incrementPointEarned();
         when(userTapDailyService.getOrCreate(eq(user), eq(today))).thenReturn(daily);
 
-        UserTapProgress progress = UserTapProgress.createFor(user, 300, 200);
+        UserTapProgress progress = UserTapProgress.createFor(user, 300);
         progress.addValidTaps(120);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 200);
+        session.addValidTaps(120);
+        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
 
         TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
 
@@ -63,9 +74,13 @@ class TapStatusServiceTest {
         UserTapDaily daily = UserTapDaily.createFor(user, today);
         when(userTapDailyService.getOrCreate(eq(user), eq(today))).thenReturn(daily);
 
-        UserTapProgress progress = UserTapProgress.createFor(user, 100, 100);
+        UserTapProgress progress = UserTapProgress.createFor(user, 100);
         progress.addValidTaps(150);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 100);
+        session.addValidTaps(150);
+        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
 
         TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
 
