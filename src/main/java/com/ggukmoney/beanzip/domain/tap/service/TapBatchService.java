@@ -156,6 +156,6 @@ public class TapBatchService {
     }
 
     private String bucketKey(UUID userId) {
-        return "tap:bucket:" + userId;
+        return "ggukmoney:tap:bucket:" + userId;
     }
 }

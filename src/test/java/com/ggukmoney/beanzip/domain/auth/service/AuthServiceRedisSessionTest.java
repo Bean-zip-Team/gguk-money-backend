@@ -65,8 +65,8 @@ class AuthServiceRedisSessionTest {
 
         assertThat(result).isEqualTo(AuthService.RefreshRotationResult.ROTATED);
         assertThat(keysCaptor.getValue()).containsExactly(
-                "auth:refresh:00000000-0000-0000-0000-000000000001",
-                "auth:user-sessions:10000000-0000-0000-0000-000000000001"
+                "ggukmoney:auth:refresh:00000000-0000-0000-0000-000000000001",
+                "ggukmoney:auth:user-sessions:10000000-0000-0000-0000-000000000001"
         );
         assertThat(scriptCaptor.getValue().getScriptAsString())
                 .contains("redis.call('HGET', KEYS[1], 'currentRefreshJtiHash')")
@@ -103,22 +103,22 @@ class AuthServiceRedisSessionTest {
 
         assertThat(revokedCount).isEqualTo(2);
         assertThat(keysCaptor.getValue()).containsExactly(
-                "auth:user-sessions:10000000-0000-0000-0000-000000000001",
-                "auth:revoke:user:10000000-0000-0000-0000-000000000001"
+                "ggukmoney:auth:user-sessions:10000000-0000-0000-0000-000000000001",
+                "ggukmoney:auth:revoke:user:10000000-0000-0000-0000-000000000001"
         );
         assertThat(scriptCaptor.getValue().getScriptAsString())
                 .contains("redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])")
                 .contains("redis.call('DEL', refreshKey)")
                 .contains("redis.call('DEL', KEYS[1])")
                 .contains("redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])")
-                .contains("redis.call('SET', 'auth:deny:access:' .. ARGV[4], '1', 'PX', denyTtl)");
+                .contains("redis.call('SET', 'ggukmoney:auth:deny:access:' .. ARGV[4], '1', 'PX', denyTtl)");
     }
 
     @Test
     void parsesReasonedRevokeMarkerForAccessTokenChecks() {
         RedisService redisService = mock(RedisService.class);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
-        when(redisService.get("auth:revoke:user:10000000-0000-0000-0000-000000000001"))
+        when(redisService.get("ggukmoney:auth:revoke:user:10000000-0000-0000-0000-000000000001"))
                 .thenReturn(java.util.Optional.of("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"));
 
         AuthService authService = new AuthService(null, redisService, null, null, null, null);

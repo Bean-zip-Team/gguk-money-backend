@@ -93,7 +93,7 @@ class AuthServiceTossLifecycleTest {
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
         verify(redisService, times(expectedCallCount)).executeScript(
                 any(RedisScript.class),
-                eq(List.of(AuthService.userSessionsKey(userId), "auth:revoke:user:" + userId)),
+                eq(List.of(AuthService.userSessionsKey(userId), "ggukmoney:auth:revoke:user:" + userId)),
                 anyString(),
                 reasonCaptor.capture(),
                 anyString(),

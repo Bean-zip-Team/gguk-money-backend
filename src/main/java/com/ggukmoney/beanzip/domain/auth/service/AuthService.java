@@ -47,6 +47,7 @@ public class AuthService {
     private static final String TOKEN_TYPE = "Bearer";
     private static final String ACCESS_TYPE = "ACCESS";
     private static final String REFRESH_TYPE = "REFRESH";
+    private static final String PREFIX = "ggukmoney:auth:";
 
     private static final Duration ACCESS_REVOKE_TTL = Duration.ofMinutes(20);
     private static final long REFRESH_CONFLICT_GRACE_MILLIS = 2_000L;
@@ -429,12 +430,12 @@ public class AuthService {
     }
 
     public void addAccessDeny(String jti, Instant expiresAt) {
-        String key = "auth:deny:access:" + jti;
+        String key = PREFIX + "deny:access:" + jti;
         redisService.set(key, "1", Duration.between(Instant.now(), expiresAt));
     }
 
     public boolean isAccessDenied(String jti) {
-        return redisService.exists("auth:deny:access:" + jti);
+        return redisService.exists(PREFIX + "deny:access:" + jti);
     }
 
     public long revokeAllUserSessions(
@@ -471,15 +472,15 @@ public class AuthService {
     }
 
     public static String refreshKey(UUID sessionId) {
-        return "auth:refresh:" + sessionId;
+        return PREFIX + "refresh:" + sessionId;
     }
 
     public static String userSessionsKey(UUID userId) {
-        return "auth:user-sessions:" + userId;
+        return PREFIX + "user-sessions:" + userId;
     }
 
     private static String revokeUserKey(UUID userId) {
-        return "auth:revoke:user:" + userId;
+        return PREFIX + "revoke:user:" + userId;
     }
 
     private static String revokeMarker(long revokedAtMillis, String reason) {

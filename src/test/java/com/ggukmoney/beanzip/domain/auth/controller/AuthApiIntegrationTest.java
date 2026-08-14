@@ -100,7 +100,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isTrue();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(other.session().sessionId())))).isTrue();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey("auth:deny:access:" + current.accessJti()))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey("ggukmoney:auth:deny:access:" + current.accessJti()))).isFalse();
     }
 
     @Test
@@ -121,7 +121,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isFalse();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherSameUser.session().sessionId())))).isTrue();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherUser.session().sessionId())))).isTrue();
-        assertThat(redisTemplate.opsForValue().get("auth:deny:access:" + current.accessJti())).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:deny:access:" + current.accessJti())).isEqualTo("1");
     }
 
     @Test
