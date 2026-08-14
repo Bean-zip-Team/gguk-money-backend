@@ -82,7 +82,7 @@ class TapBatchServiceTest {
 
     @Test
     void throwsRateLimitedWhenBucketExhausted() {
-        when(redisService.executeScript(any(RedisScript.class), eq(List.of("tap:bucket:" + userId)), anyString(), anyString(), anyString()))
+        when(redisService.executeScript(any(RedisScript.class), eq(List.of("ggukmoney:tap:bucket:" + userId)), anyString(), anyString(), anyString()))
                 .thenReturn(0L);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 50);

@@ -22,8 +22,8 @@ class AuthServiceLogoutAllIntegrationTest extends FullStackIntegrationTestSuppor
         assertThat(response.loggedOutAll()).isTrue();
         assertThat(response.revokedSessionCount()).isEqualTo(3);
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
-        assertThat(redisTemplate.opsForValue().get("auth:deny:access:" + current.accessJti())).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:deny:access:" + current.accessJti())).isEqualTo("1");
     }
 
     @Test
@@ -34,6 +34,6 @@ class AuthServiceLogoutAllIntegrationTest extends FullStackIntegrationTestSuppor
 
         assertThat(response.loggedOutAll()).isTrue();
         assertThat(response.revokedSessionCount()).isZero();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:revoke:user:" + userId)).contains("LOGOUT_ALL");
     }
 }
