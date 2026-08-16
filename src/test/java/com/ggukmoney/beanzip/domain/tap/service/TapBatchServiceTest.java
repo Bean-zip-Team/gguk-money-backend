@@ -10,6 +10,7 @@ import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
@@ -52,6 +53,7 @@ class TapBatchServiceTest {
     private final TapBatchRepository tapBatchRepository = mock(TapBatchRepository.class);
     private final UserTapDailyService userTapDailyService = mock(UserTapDailyService.class);
     private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
@@ -65,7 +67,8 @@ class TapBatchServiceTest {
     private final LocalDate tapDate = LocalDate.of(2026, 7, 21);
 
     private final TapBatchService tapBatchService = new TapBatchService(
-            tapBatchRepository, userTapDailyService, userTapProgressService, pointAccountService, pointLedgerService,
+            tapBatchRepository, userTapDailyService, userTapProgressService, userTapSessionService,
+            pointAccountService, pointLedgerService,
             keycapBoxAccountService, redisService, tapPolicyConfig, userService,
             eventPublisher, clock, businessZoneId
     );
@@ -78,6 +81,9 @@ class TapBatchServiceTest {
         lenient().when(redisService.executeScript(any(RedisScript.class), anyList(), anyString(), anyString(), anyString()))
                 .thenReturn(1L);
         lenient().when(tapPolicyConfig.rateLimitEnabled()).thenReturn(true);
+        lenient().when(tapPolicyConfig.maxPerDay()).thenReturn(FAR_AWAY_TARGET);
+        lenient().when(userTapSessionService.getOrCreateActiveSession(any(), any(), any()))
+                .thenReturn(farAwaySession());
     }
 
     @Test
@@ -144,7 +150,7 @@ class TapBatchServiceTest {
         UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
-        UserTapProgress progress = UserTapProgress.createFor(user, 100, FAR_AWAY_TARGET);
+        UserTapProgress progress = UserTapProgress.createFor(user, 100);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
 
         TapBatch savedBatch = mock(TapBatch.class);
@@ -177,23 +183,23 @@ class TapBatchServiceTest {
     }
 
     @Test
-    void dropsBoxAndRedrawsBoxTargetWhenCumulativeTapsReachTarget() {
+    void dropsBoxAndRedrawsBoxTargetWhenSessionTapsReachTarget() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
 
         UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
-
-        UserTapProgress progress = UserTapProgress.createFor(user, FAR_AWAY_TARGET, 200);
-        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+        when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
 
         TapBatch savedBatch = mock(TapBatch.class);
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
         when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
-        when(userTapProgressService.drawNextBoxTarget(eq(200L), eq(tapPolicyConfig))).thenReturn(450);
+        UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
+        when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -201,10 +207,12 @@ class TapBatchServiceTest {
         assertThat(response.acceptedCount()).isEqualTo(200);
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.boxesDropped()).isEqualTo(1);
-        assertThat(progress.getNextBoxTarget()).isEqualTo(450);
+        assertThat(session.getSessionValidTapCount()).isEqualTo(200);
+        assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
+        assertThat(session.getNextBoxTarget()).isEqualTo(450);
         verify(keycapBoxAccountService).addBoxes(userId, 1);
         verify(pointAccountService, never()).credit(any(), anyLong());
-        verify(userTapProgressService).save(progress);
+        verify(userTapSessionService).save(session);
     }
 
     @Test
@@ -217,7 +225,7 @@ class TapBatchServiceTest {
         daily.incrementPointEarned();
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
-        UserTapProgress progress = UserTapProgress.createFor(user, 50, FAR_AWAY_TARGET);
+        UserTapProgress progress = UserTapProgress.createFor(user, 50);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
 
         TapBatch savedBatch = mock(TapBatch.class);
@@ -238,6 +246,31 @@ class TapBatchServiceTest {
         verify(userTapProgressService).save(progress);
     }
 
+    @Test
+    void capsProgressReflectionAtDailyTapLimitButKeepsAuditAcceptedCountUncapped() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapPolicyConfig.maxPerDay()).thenReturn(3000);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        daily.addValidTaps(2950);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
+        when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
+
+        when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pointAccountService.getBalance(userId)).thenReturn(0L);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        assertThat(response.acceptedCount()).isEqualTo(200);
+        assertThat(daily.getValidTapCount()).isEqualTo(3000);
+
+        ArgumentCaptor<TapBatch> batchCaptor = ArgumentCaptor.forClass(TapBatch.class);
+        verify(tapBatchRepository).save(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().getAcceptedCount()).isEqualTo(200);
+    }
+
     private AppUser stubUser() {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
@@ -246,6 +279,11 @@ class TapBatchServiceTest {
     }
 
     private UserTapProgress farAwayProgress(AppUser user) {
-        return UserTapProgress.createFor(user, FAR_AWAY_TARGET, FAR_AWAY_TARGET);
+        return UserTapProgress.createFor(user, FAR_AWAY_TARGET);
+    }
+
+    private UserTapSession farAwaySession() {
+        AppUser sessionUser = mock(AppUser.class);
+        return UserTapSession.createFor(sessionUser, acceptedAt, acceptedAt.plusSeconds(3600), FAR_AWAY_TARGET);
     }
 }

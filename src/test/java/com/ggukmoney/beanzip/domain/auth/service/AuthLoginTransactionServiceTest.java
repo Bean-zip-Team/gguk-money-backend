@@ -6,12 +6,16 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingRewardClaimService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapSessionService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,16 +34,21 @@ class AuthLoginTransactionServiceTest {
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
     private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final OnboardingRewardClaimService onboardingRewardClaimService = mock(OnboardingRewardClaimService.class);
+    private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
+    private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final AuthLoginTransactionService service = new AuthLoginTransactionService(
             authIdentityRepository,
             userService,
             pointAccountService,
             keycapBoxAccountService,
             userTapProgressService,
+            userTapSessionService,
             tapPolicyConfig,
-            onboardingRewardClaimService
+            onboardingRewardClaimService,
+            clock
     );
 
     @Test
@@ -66,6 +75,7 @@ class AuthLoginTransactionServiceTest {
         verify(pointAccountService).createFor(user);
         verify(keycapBoxAccountService).createFor(user);
         verify(userTapProgressService).createFor(user, tapPolicyConfig);
+        verify(userTapSessionService).createFor(user, now, tapPolicyConfig);
         verify(onboardingRewardClaimService).claimForNewUser(user, attemptId);
     }
 

@@ -8,9 +8,11 @@ import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreSyncRequestedEvent
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.tap.repository.UserTapDailyRepository;
 import com.ggukmoney.beanzip.domain.tap.repository.UserTapProgressRepository;
+import com.ggukmoney.beanzip.domain.tap.repository.UserTapSessionRepository;
 import com.ggukmoney.beanzip.domain.tap.service.TapBatchService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
@@ -60,6 +62,9 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
 
     @Autowired
     private UserTapProgressRepository userTapProgressRepository;
+
+    @Autowired
+    private UserTapSessionRepository userTapSessionRepository;
 
     @Autowired
     private UserTapDailyRepository userTapDailyRepository;
@@ -139,7 +144,9 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
         AppUser user = appUserRepository.save(AppUser.createActive("ranking-tx-" + UUID.randomUUID(), null));
         pointAccountRepository.save(PointAccount.createFor(user));
         keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
-        userTapProgressRepository.save(UserTapProgress.createFor(user, pointTarget, boxTarget));
+        userTapProgressRepository.save(UserTapProgress.createFor(user, pointTarget));
+        Instant now = clock.instant();
+        userTapSessionRepository.save(UserTapSession.createFor(user, now, now.plusSeconds(3600), boxTarget));
         return user;
     }
 }

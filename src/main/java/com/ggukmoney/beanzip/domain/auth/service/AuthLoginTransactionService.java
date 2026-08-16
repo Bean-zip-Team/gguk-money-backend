@@ -6,6 +6,7 @@ import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
 import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingRewardClaimService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapSessionService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.util.UUID;
 
 @Service
@@ -26,8 +28,10 @@ public class AuthLoginTransactionService {
     private final PointAccountService pointAccountService;
     private final KeycapBoxAccountService keycapBoxAccountService;
     private final UserTapProgressService userTapProgressService;
+    private final UserTapSessionService userTapSessionService;
     private final TapPolicyConfig tapPolicyConfig;
     private final OnboardingRewardClaimService onboardingRewardClaimService;
+    private final Clock clock;
 
     @Transactional
     public LoginTransactionResult loginWithTossUser(
@@ -46,6 +50,7 @@ public class AuthLoginTransactionService {
             pointAccountService.createFor(user);
             keycapBoxAccountService.createFor(user);
             userTapProgressService.createFor(user, tapPolicyConfig);
+            userTapSessionService.createFor(user, clock.instant(), tapPolicyConfig);
             boolean onboardingRewardApplied = onboardingAttemptId != null
                     && onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
             return new LoginTransactionResult(user.getId(), true, onboardingRewardApplied);

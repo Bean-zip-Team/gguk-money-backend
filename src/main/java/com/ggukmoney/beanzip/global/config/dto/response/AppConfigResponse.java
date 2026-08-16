@@ -2,6 +2,8 @@ package com.ggukmoney.beanzip.global.config.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.List;
+
 @Schema(description = "앱 설정 응답")
 public record AppConfigResponse(
         @Schema(description = "포인트 정책")
@@ -21,8 +23,12 @@ public record AppConfigResponse(
 
     @Schema(description = "키캡 상자 정책")
     public record BoxPolicy(
-            @Schema(description = "기본 상자 획득 필요 탭 수", example = "200")
-            int baseRequiredTapCount
+            @Schema(description = "상자 세션 내 1~5번째 상자까지 필요한 탭 수(순서대로)", example = "[25, 35, 50, 70, 100]")
+            List<Integer> sessionStepTapCounts,
+            @Schema(description = "6번째 상자부터 이후 매 상자마다 필요한 탭 수", example = "180")
+            int tailStepTapCount,
+            @Schema(description = "상자 세션 최대 지속 시간(초, 하드캡)", example = "3600")
+            int sessionMaxDurationSeconds
     ) {
     }
 

@@ -23,7 +23,7 @@ public class OnboardingRewardConfig {
     public static final Map<String, String> DEFAULT_VALUES = Map.of(
             KEY_REWARD_KEYCAP_CODE, "\"main\"",
             KEY_BONUS_KEYCAP_GRADE, "\"COMMON\"",
-            KEY_REWARD_POINT_AMOUNT, "2",
+            KEY_REWARD_POINT_AMOUNT, "70",
             KEY_ATTEMPT_TTL_SECONDS, "900"
     );
 

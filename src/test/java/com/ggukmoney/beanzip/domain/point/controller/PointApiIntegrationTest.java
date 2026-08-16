@@ -44,9 +44,9 @@ class PointApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.balance").value(15))
-                .andExpect(jsonPath("$.data.cashoutEligible").value(true))
-                .andExpect(jsonPath("$.data.minimumPoint").value(10))
-                .andExpect(jsonPath("$.data.estimatedKrw").value(10));
+                .andExpect(jsonPath("$.data.cashoutEligible").value(false))
+                .andExpect(jsonPath("$.data.minimumPoint").value(50))
+                .andExpect(jsonPath("$.data.estimatedKrw").value(0));
     }
 
     @Test

@@ -70,9 +70,9 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pointBalance").value(134))
-                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
-                .andExpect(jsonPath("$.data.minimumPoint").value(10))
-                .andExpect(jsonPath("$.data.rate.pointToKrw").value(0.7))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(2))
+                .andExpect(jsonPath("$.data.minimumPoint").value(50))
+                .andExpect(jsonPath("$.data.rate.pointToKrw").value(0.02))
                 .andExpect(jsonPath("$.data.eligible").value(true));
     }
 
@@ -86,7 +86,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
         mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.tossPointAmount").value(4))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(0))
                 .andExpect(jsonPath("$.data.eligible").value(false));
     }
 
@@ -101,7 +101,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
-                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/cashouts/quote")
@@ -154,7 +154,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.cashoutId").value(firstCashoutId))
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
-                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/cashouts/quote")
@@ -225,7 +225,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.cashoutId").value(cashoutId))
                 .andExpect(jsonPath("$.data.pointAmount").value(134))
-                .andExpect(jsonPath("$.data.tossPointAmount").value(93))
+                .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.data.completedAt").doesNotExist());
     }
