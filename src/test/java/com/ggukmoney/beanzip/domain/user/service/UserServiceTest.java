@@ -196,6 +196,25 @@ class UserServiceTest {
         verify(rankingEligibilityChangeService).publishAllTimeEligibilityChanged(user);
     }
 
+    @Test
+    void reactivatesWithdrawnUserWithoutChangingItsIdAndPublishesRankingEligibilityChange() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = user(userId, "Bean", "https://old");
+        user.withdraw();
+        when(appUserRepository.save(user)).thenReturn(user);
+
+        AppUser reactivated = userService.reactivate(user, "Toss Bean", "https://new");
+
+        assertThat(reactivated.getId()).isEqualTo(userId);
+        assertThat(reactivated.isWithdrawn()).isFalse();
+        assertThat(reactivated.getWithdrawnAt()).isNull();
+        assertThat(reactivated.getNickname()).isEqualTo("Toss Bean");
+        assertThat(reactivated.getNicknameNormalized()).isEqualTo("toss bean");
+        assertThat(reactivated.getProfileImageUrl()).isEqualTo("https://new");
+        verify(appUserRepository).save(user);
+        verify(rankingEligibilityChangeService).publishAllTimeEligibilityChanged(user);
+    }
+
     private static AppUser user(UUID userId, String nickname, String profileImageUrl) {
         AppUser user = AppUser.createActive(nickname, profileImageUrl);
         ReflectionTestUtils.setField(user, "id", userId);

@@ -11,10 +11,8 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.util.UUID;
@@ -58,7 +56,8 @@ public class AuthLoginTransactionService {
 
         AppUser user = identity.getUser();
         if (user.isWithdrawn()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_WITHDRAWN");
+            AppUser reactivatedUser = userService.reactivate(user, nickname, profileImageUrl);
+            return new LoginTransactionResult(reactivatedUser.getId(), false, false);
         }
         AppUser loggedInUser = userService.recordLogin(user, nickname, profileImageUrl);
         boolean onboardingRewardApplied = onboardingRewardClaimService.isClaimedByUser(

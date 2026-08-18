@@ -64,6 +64,14 @@ public class UserService {
     }
 
     @Transactional
+    public AppUser reactivate(AppUser user, String nickname, String profileImageUrl) {
+        user.reactivate(nickname, profileImageUrl);
+        AppUser saved = appUserRepository.save(user);
+        rankingEligibilityChangeService.publishAllTimeEligibilityChanged(saved);
+        return saved;
+    }
+
+    @Transactional
     public AppUser withdraw(AppUser user) {
         user.withdraw();
         AppUser saved = appUserRepository.save(user);

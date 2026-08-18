@@ -43,4 +43,19 @@ class AppUserTest {
 
         assertThat(user.getProfileImageUrl()).isEqualTo(longUrl);
     }
+
+    @Test
+    void reactivatesWithdrawnUserWithLatestTossProfile() {
+        AppUser user = AppUser.createActive("Bean", "https://example.com/old.png");
+        user.withdraw();
+
+        user.reactivate(" Toss Bean ", " https://example.com/new.png ");
+
+        assertThat(user.isWithdrawn()).isFalse();
+        assertThat(user.getWithdrawnAt()).isNull();
+        assertThat(user.getNickname()).isEqualTo("Toss Bean");
+        assertThat(user.getNicknameNormalized()).isEqualTo("toss bean");
+        assertThat(user.getProfileImageUrl()).isEqualTo("https://example.com/new.png");
+        assertThat(user.getLastLoginAt()).isNotNull();
+    }
 }

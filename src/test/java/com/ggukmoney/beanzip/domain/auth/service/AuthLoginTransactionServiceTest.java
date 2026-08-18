@@ -150,6 +150,37 @@ class AuthLoginTransactionServiceTest {
         verify(onboardingRewardClaimService).isClaimedByUser(userId, attemptId);
     }
 
+    @Test
+    void reactivatesWithdrawnIdentityWithoutCreatingAccountOrApplyingOnboardingReward() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Old", null), userId);
+        user.withdraw();
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user")));
+        when(userService.reactivate(user, "Bean", "https://img")).thenReturn(user);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId
+        );
+
+        assertThat(result.userId()).isEqualTo(userId);
+        assertThat(result.newUser()).isFalse();
+        assertThat(result.onboardingRewardApplied()).isFalse();
+        verify(userService).reactivate(user, "Bean", "https://img");
+        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).recordLogin(any(), any(), any());
+        verify(authIdentityRepository, never()).save(any(AuthIdentity.class));
+        verify(pointAccountService, never()).createFor(any());
+        verify(keycapBoxAccountService, never()).createFor(any());
+        verify(userTapProgressService, never()).createFor(any(), any());
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(onboardingRewardClaimService, never()).isClaimedByUser(any(), any());
+    }
+
     private static AppUser withId(AppUser user, UUID userId) {
         ReflectionTestUtils.setField(user, "id", userId);
         return user;

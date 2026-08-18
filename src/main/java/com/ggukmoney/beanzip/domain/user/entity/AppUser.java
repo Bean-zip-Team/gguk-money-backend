@@ -80,6 +80,15 @@ public class AppUser {
         this.lastLoginAt = Instant.now();
     }
 
+    public void reactivate(String nickname, String profileImageUrl) {
+        this.status = Status.ACTIVE;
+        this.withdrawnAt = null;
+        this.nickname = normalizeNullable(nickname);
+        this.nicknameNormalized = normalizeNickname(nickname);
+        this.profileImageUrl = normalizeNullable(profileImageUrl);
+        this.lastLoginAt = Instant.now();
+    }
+
     public void updateProfile(String nickname, String profileImageUrl) {
         if (isWithdrawn()) {
             return;
