@@ -65,8 +65,9 @@ POST /api/v1/auth/toss/login
 4. `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))` 조회
 5. 신규 사용자 DB 생성, 기존 활성 사용자 갱신 또는 기존 탈퇴 사용자 재활성화
 6. 신규 사용자이고 `onboardingAttemptId`가 있으면 온보딩 보상 멱등 처리
-7. 꾹머니 Access/Refresh JWT 발급
-8. Redis Auth Session 저장
+7. Toss `login-me.agreedTerms`의 약관 태그를 동의 이력으로 기록
+8. 꾹머니 Access/Refresh JWT 발급
+9. Redis Auth Session 저장
 
 ### 보안 규칙
 
@@ -74,6 +75,9 @@ POST /api/v1/auth/toss/login
 - Toss Token은 요청 처리 범위를 벗어나 저장하지 않는다.
 - `provider_user_id`는 식별정보로 취급하고 애플리케이션 로그에 출력하지 않는다.
 - `WITHDRAWN` 사용자 Identity가 발견되면 신규 사용자로 만들지 않고, Toss 약관 재동의 뒤 정상 OAuth 로그인이 완료된 경우 기존 계정을 재활성화한다.
+- Toss 로그인 약관 이력(`toss_login_consent_history`)에는 `agreedTerms`의 태그, 동의/철회 상태, 발생 시각, 이벤트 출처(`event_source`)만 저장한다. 약관 본문, Toss 토큰, 전체 응답, 추가 개인정보는 저장하지 않는다.
+- 로그인 동의 이력의 `event_source`는 `LOGIN`이다. 동일 로그인 응답에 중복 태그가 있어도 한 번만 기록한다.
+- 이미 활성 상태인 태그는 일반 재로그인에서 중복 `AGREED` 이력을 만들지 않는다. 태그 변경 여부가 약관 본문의 버전까지 보장하지 않으므로, 약관 개정 시 Console의 약관 태그도 버전별로 관리한다.
 
 ## 2. Refresh
 
@@ -157,8 +161,9 @@ Authorization: Bearer {accessToken}
 2. 새 Toss `authorizationCode`를 `generate-token`으로 교환
 3. `login-me.userKey`와 현재 `auth_identity.provider_user_id` 일치 확인
 4. Toss `remove-by-user-key` 호출
-5. 로컬 사용자 탈퇴 처리
-6. 모든 Redis Session과 Access Token 폐기
+5. 활성 Toss 로그인 약관 태그의 `WITHDRAWN + DIRECT_WITHDRAWAL` 이력 기록
+6. 로컬 사용자 탈퇴 처리
+7. 모든 Redis Session과 Access Token 폐기
 
 ### 로컬 탈퇴 처리
 
@@ -212,8 +217,28 @@ WITHDRAWAL_TOSS
 - Basic Secret을 상수 시간 비교 가능한 방식으로 검증한다.
 - `(provider=TOSS, provider_user_id=userKey)`로 사용자를 찾는다.
 - 사용자 미존재 또는 이미 `WITHDRAWN`이면 `200 processed=true`를 반환한다.
-- 존재하면 회원 탈퇴와 같은 로컬 상태 전환, 개인정보 익명화, Session 전체 폐기를 수행한다.
+- 존재하면 회원 탈퇴와 같은 로컬 상태 전환, 개인정보 익명화, Session 전체 폐기를 수행한다. 현재 정책에서는 `UNLINK`, `WITHDRAWAL_TERMS`, `WITHDRAWAL_TOSS` 모두 이 경로를 사용한다.
+- 존재하면 현재 활성 Toss 로그인 약관 태그에 `WITHDRAWN` 이력을 추가하고 `event_source`에는 수신한 원본 `referrer` 값(`UNLINK`, `WITHDRAWAL_TERMS`, `WITHDRAWAL_TOSS`)을 저장한다. 이미 철회된 태그에는 중복 이력을 만들지 않는다.
 - Webhook에서는 다시 Toss unlink API를 호출하지 않는다.
+- `WITHDRAWAL_TERMS`는 Toss가 안내한 “토스 로그인 > 동의 철회하기” 경로의 콜백 이벤트다. [Toss TechChat 안내](https://techchat-apps-in-toss.toss.im/t/withdrawal-terms/736)
+
+### 운영 확인
+
+Webhook 처리 결과는 Toss 식별정보 없이 다음 구조화 로그로 확인한다.
+
+```bash
+sudo journalctl -fu clickmoney.service \
+  | grep --line-buffered 'TOSS_UNLINK_WEBHOOK_PROCESSED'
+```
+
+`WITHDRAWAL_TOSS`만 확인하려면 `eventType=WITHDRAWAL_TOSS`로 추가 필터링한다. 동의 이력은 아래처럼 사용자 ID 기준으로 조회한다.
+
+```sql
+SELECT status, event_source, term_tag, occurred_at
+FROM toss_login_consent_history
+WHERE user_id = '<user-id>'
+ORDER BY occurred_at, id;
+```
 
 ## 7. 오류 코드
 
