@@ -16,6 +16,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,6 +38,7 @@ class AuthLoginTransactionServiceTest {
     private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final OnboardingRewardClaimService onboardingRewardClaimService = mock(OnboardingRewardClaimService.class);
+    private final TossLoginConsentHistoryService tossLoginConsentHistoryService = mock(TossLoginConsentHistoryService.class);
     private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final AuthLoginTransactionService service = new AuthLoginTransactionService(
@@ -48,6 +50,7 @@ class AuthLoginTransactionServiceTest {
             userTapSessionService,
             tapPolicyConfig,
             onboardingRewardClaimService,
+            tossLoginConsentHistoryService,
             clock
     );
 
@@ -65,7 +68,8 @@ class AuthLoginTransactionServiceTest {
                 "toss-user",
                 "Bean",
                 "https://img",
-                attemptId
+                attemptId,
+                List.of("service_terms_v1", "privacy_v2")
         );
 
         assertThat(result.userId()).isEqualTo(userId);
@@ -77,6 +81,7 @@ class AuthLoginTransactionServiceTest {
         verify(userTapProgressService).createFor(user, tapPolicyConfig);
         verify(userTapSessionService).createFor(user, now, tapPolicyConfig);
         verify(onboardingRewardClaimService).claimForNewUser(user, attemptId);
+        verify(tossLoginConsentHistoryService).recordAgreements(userId, List.of("service_terms_v1", "privacy_v2"), "LOGIN");
     }
 
     @Test

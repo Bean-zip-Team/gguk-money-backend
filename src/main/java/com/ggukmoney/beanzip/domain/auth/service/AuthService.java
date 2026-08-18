@@ -63,6 +63,7 @@ public class AuthService {
     private final AuthIdentityRepository authIdentityRepository;
     private final UserService userService;
     private final AuthLoginTransactionService authLoginTransactionService;
+    private final TossLoginConsentHistoryService tossLoginConsentHistoryService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -101,7 +102,8 @@ public class AuthService {
                 userKey,
                 loginMe.nickname(),
                 loginMe.profileImageUrl(),
-                request.onboardingAttemptId()
+                request.onboardingAttemptId(),
+                loginMe.agreedTerms()
         );
 
         return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());
@@ -216,6 +218,7 @@ public class AuthService {
         }
 
         tossAuthClient.removeByUserKey(tossToken.accessToken(), userKey);
+        tossLoginConsentHistoryService.withdrawActiveAgreements(userId, "DIRECT_WITHDRAWAL");
         userService.withdraw(user);
         revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
         return new UserWithdrawalResponse(true);
@@ -229,14 +232,22 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TOSS_WEBHOOK_UNSUPPORTED_EVENT");
         }
 
-        authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, requireText(request.userKey(), "TOSS_USER_KEY_MISSING"))
-                .ifPresent(identity -> {
-                    AppUser user = identity.getUser();
-                    if (!user.isWithdrawn()) {
-                        userService.withdraw(user);
-                    }
-                    revokeAllUserSessions(user.getId(), null, null, Instant.now(), "TOSS_UNLINK_WEBHOOK");
-                });
+        Optional<AuthIdentity> identity = authIdentityRepository.findByProviderAndProviderUserId(
+                AuthIdentity.Provider.TOSS,
+                requireText(request.userKey(), "TOSS_USER_KEY_MISSING")
+        );
+        if (identity.isPresent()) {
+            AppUser user = identity.get().getUser();
+            tossLoginConsentHistoryService.withdrawActiveAgreements(user.getId(), eventType);
+            if (!user.isWithdrawn()) {
+                userService.withdraw(user);
+            }
+            revokeAllUserSessions(user.getId(), null, null, Instant.now(), "TOSS_UNLINK_WEBHOOK");
+            log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=true action=USER_WITHDRAWN userId={}",
+                    eventType, user.getId());
+        } else {
+            log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=false action=IDENTITY_NOT_FOUND userId=-", eventType);
+        }
 
         return new TossUnlinkWebhookResponse(true, eventType);
     }

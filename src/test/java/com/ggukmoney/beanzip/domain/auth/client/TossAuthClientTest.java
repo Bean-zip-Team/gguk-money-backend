@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -55,6 +56,24 @@ class TossAuthClientTest {
         assertThat(result.profileImageUrl()).isNull();
         verify(decryptor).decryptNullable(encryptedName);
         verifyNoMoreInteractions(decryptor);
+        fixture.server().verify();
+    }
+
+    @Test
+    void mapsAgreedTermsWithoutDecryptingOrLoggingThem() {
+        String encryptedName = "encrypted-name";
+        TossPersonalDataDecryptor decryptor = mock(TossPersonalDataDecryptor.class);
+        when(decryptor.decryptNullable(encryptedName)).thenReturn("김토스");
+        ClientFixture fixture = clientFixture(decryptor);
+        fixture.server().expect(requestTo(LOGIN_ME_URL))
+                .andRespond(withSuccess("""
+                        {"resultType":"SUCCESS","success":{"userKey":123,"name":"encrypted-name","agreedTerms":["service_terms_v1","privacy_v2"]}}
+                        """, MediaType.APPLICATION_JSON));
+
+        TossAuthClient.TossLoginMe result = fixture.client().loginMe("access-token");
+
+        assertThat(result.agreedTerms()).containsExactly("service_terms_v1", "privacy_v2");
+        verify(decryptor).decryptNullable(encryptedName);
         fixture.server().verify();
     }
 

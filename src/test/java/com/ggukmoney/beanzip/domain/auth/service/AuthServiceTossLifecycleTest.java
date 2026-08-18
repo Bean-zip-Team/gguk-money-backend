@@ -1,5 +1,8 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossUnlinkWebhookRequest;
@@ -19,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -66,6 +70,7 @@ class AuthServiceTossLifecycleTest {
     private UserTapProgressService userTapProgressService;
     private TapPolicyConfig tapPolicyConfig;
     private AuthLoginTransactionService authLoginTransactionService;
+    private TossLoginConsentHistoryService tossLoginConsentHistoryService;
     private AuthService authService;
 
     @BeforeEach
@@ -80,13 +85,15 @@ class AuthServiceTossLifecycleTest {
         userTapProgressService = mock(UserTapProgressService.class);
         tapPolicyConfig = mock(TapPolicyConfig.class);
         authLoginTransactionService = mock(AuthLoginTransactionService.class);
+        tossLoginConsentHistoryService = mock(TossLoginConsentHistoryService.class);
         authService = new AuthService(
                 jwtTokenProvider,
                 redisService,
                 tossAuthClient,
                 authIdentityRepository,
                 userService,
-                authLoginTransactionService
+                authLoginTransactionService,
+                tossLoginConsentHistoryService
         );
         ReflectionTestUtils.setField(authService, "tossWebhookSecret", "webhook-secret");
     }
@@ -109,8 +116,10 @@ class AuthServiceTossLifecycleTest {
     void tossLoginCreatesUuidUserIdentityAccountsAndRedisSession() {
         UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
-        when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null))
+        when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe(
+                "user-key-1", "Bean", "https://img", List.of("service_terms_v1", "privacy_v2")
+        ));
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2")))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
@@ -119,7 +128,7 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.newUser()).isTrue();
         assertThat(response.onboardingRewardApplied()).isFalse();
         assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null);
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2"));
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -129,7 +138,7 @@ class AuthServiceTossLifecycleTest {
         UUID attemptId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", attemptId))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of()))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, true));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", attemptId));
@@ -137,7 +146,7 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isTrue();
         assertThat(response.onboardingRewardApplied()).isTrue();
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", attemptId);
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of());
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -146,7 +155,7 @@ class AuthServiceTossLifecycleTest {
         UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of()))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
@@ -158,7 +167,7 @@ class AuthServiceTossLifecycleTest {
         verify(pointAccountService, never()).createFor(any());
         verify(keycapBoxAccountService, never()).createFor(any());
         verify(userTapProgressService, never()).createFor(any(), any());
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null);
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of());
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -167,7 +176,7 @@ class AuthServiceTossLifecycleTest {
         UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", null));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", null, null))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", null, null, List.of()))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
@@ -217,6 +226,7 @@ class AuthServiceTossLifecycleTest {
         authService.withdrawCurrentUser(userId, "jti", Instant.parse("2026-07-02T00:15:00Z"), new UserWithdrawalRequest("code", "DEFAULT"));
 
         verify(tossAuthClient).removeByUserKey("toss-access", "user-key-1");
+        verify(tossLoginConsentHistoryService).withdrawActiveAgreements(userId, "DIRECT_WITHDRAWAL");
         assertThat(user.isWithdrawn()).isTrue();
         assertThat(user.getProfileImageUrl()).isNull();
         assertThat(capturedRevokeReasons(userId, 1)).allMatch(reason -> reason.contains("\"reason\":\"WITHDRAWAL\""));
@@ -275,8 +285,57 @@ class AuthServiceTossLifecycleTest {
         assertThat(user.isWithdrawn()).isTrue();
         assertThat(user.getProfileImageUrl()).isNull();
         verify(userService, times(1)).withdraw(any());
+        verify(tossLoginConsentHistoryService, times(2)).withdrawActiveAgreements(userId, eventType);
         assertThat(capturedRevokeReasons(userId, 2)).allMatch(reason -> reason.contains("\"reason\":\"TOSS_UNLINK_WEBHOOK\""));
         verify(tossAuthClient, never()).removeByUserKey(any(), any());
+    }
+
+    @Test
+    void webhookLogsMatchedWithdrawalWithoutLoggingTossUserKey() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", null), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user-key"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user-key")));
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("toss-user-key", "WITHDRAWAL_TOSS"));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("TOSS_UNLINK_WEBHOOK_PROCESSED", "eventType=WITHDRAWAL_TOSS", "identityFound=true", "action=USER_WITHDRAWN", "userId=" + userId)
+                            .doesNotContain("toss-user-key"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void webhookLogsMissingIdentityWithoutWritingConsentHistory() {
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "missing-key")).thenReturn(Optional.empty());
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("missing-key", "UNLINK"));
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("TOSS_UNLINK_WEBHOOK_PROCESSED", "eventType=UNLINK", "identityFound=false", "action=IDENTITY_NOT_FOUND", "userId=-")
+                            .doesNotContain("missing-key"));
+            verifyNoInteractions(tossLoginConsentHistoryService);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -29,6 +30,7 @@ public class AuthLoginTransactionService {
     private final UserTapSessionService userTapSessionService;
     private final TapPolicyConfig tapPolicyConfig;
     private final OnboardingRewardClaimService onboardingRewardClaimService;
+    private final TossLoginConsentHistoryService tossLoginConsentHistoryService;
     private final Clock clock;
 
     @Transactional
@@ -37,6 +39,17 @@ public class AuthLoginTransactionService {
             String nickname,
             String profileImageUrl,
             UUID onboardingAttemptId
+    ) {
+        return loginWithTossUser(providerUserId, nickname, profileImageUrl, onboardingAttemptId, List.of());
+    }
+
+    @Transactional
+    public LoginTransactionResult loginWithTossUser(
+            String providerUserId,
+            String nickname,
+            String profileImageUrl,
+            UUID onboardingAttemptId,
+            List<String> agreedTerms
     ) {
         AuthIdentity identity = authIdentityRepository
                 .findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, providerUserId)
@@ -51,12 +64,14 @@ public class AuthLoginTransactionService {
             userTapSessionService.createFor(user, clock.instant(), tapPolicyConfig);
             boolean onboardingRewardApplied = onboardingAttemptId != null
                     && onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
+            tossLoginConsentHistoryService.recordAgreements(user.getId(), agreedTerms, "LOGIN");
             return new LoginTransactionResult(user.getId(), true, onboardingRewardApplied);
         }
 
         AppUser user = identity.getUser();
         if (user.isWithdrawn()) {
             AppUser reactivatedUser = userService.reactivate(user, nickname, profileImageUrl);
+            tossLoginConsentHistoryService.recordAgreements(reactivatedUser.getId(), agreedTerms, "LOGIN");
             return new LoginTransactionResult(reactivatedUser.getId(), false, false);
         }
         AppUser loggedInUser = userService.recordLogin(user, nickname, profileImageUrl);
@@ -64,6 +79,7 @@ public class AuthLoginTransactionService {
                 loggedInUser.getId(),
                 onboardingAttemptId
         );
+        tossLoginConsentHistoryService.recordAgreements(loggedInUser.getId(), agreedTerms, "LOGIN");
         return new LoginTransactionResult(loggedInUser.getId(), false, onboardingRewardApplied);
     }
 

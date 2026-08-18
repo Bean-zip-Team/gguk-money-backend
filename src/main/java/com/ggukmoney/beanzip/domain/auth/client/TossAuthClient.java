@@ -142,7 +142,8 @@ public class TossAuthClient {
             return new TossLoginMe(
                     userKey,
                     personalDataDecryptor.decryptNullable(response.success().name()),
-                    null
+                    null,
+                    response.success().agreedTerms() == null ? List.of() : List.copyOf(response.success().agreedTerms())
             );
         } catch (TossPersonalDataDecryptionException exception) {
             log.warn("Toss login-me personal data decryption failed: failure={}", exception.failure());
@@ -267,7 +268,7 @@ public class TossAuthClient {
     public record TossLoginMeResponse(String resultType, TossLoginMeSuccess success, TossApiError error) {
     }
 
-    public record TossLoginMeSuccess(Long userKey, String name, String email) {
+    public record TossLoginMeSuccess(Long userKey, String name, String email, List<String> agreedTerms) {
     }
 
     public record TossUnlinkResponse(String resultType, Object success, TossApiError error) {
@@ -282,6 +283,10 @@ public class TossAuthClient {
     public record TossToken(String accessToken) {
     }
 
-    public record TossLoginMe(String userKey, String nickname, String profileImageUrl) {
+    public record TossLoginMe(String userKey, String nickname, String profileImageUrl, List<String> agreedTerms) {
+
+        public TossLoginMe(String userKey, String nickname, String profileImageUrl) {
+            this(userKey, nickname, profileImageUrl, List.of());
+        }
     }
 }
