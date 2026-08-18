@@ -63,7 +63,7 @@ POST /api/v1/auth/toss/login
 2. Toss `generate-token`
 3. Toss `login-me`
 4. `auth_identity(provider=TOSS, provider_user_id=String.valueOf(userKey))` 조회
-5. 신규 사용자 DB 생성 또는 기존 활성 사용자 갱신
+5. 신규 사용자 DB 생성, 기존 활성 사용자 갱신 또는 기존 탈퇴 사용자 재활성화
 6. 신규 사용자이고 `onboardingAttemptId`가 있으면 온보딩 보상 멱등 처리
 7. 꾹머니 Access/Refresh JWT 발급
 8. Redis Auth Session 저장
@@ -73,7 +73,7 @@ POST /api/v1/auth/toss/login
 - `authorizationCode`, Toss Access Token, Toss Refresh Token, 전체 Toss 응답은 로그에 남기지 않는다.
 - Toss Token은 요청 처리 범위를 벗어나 저장하지 않는다.
 - `provider_user_id`는 식별정보로 취급하고 애플리케이션 로그에 출력하지 않는다.
-- `WITHDRAWN` 사용자 Identity가 발견되면 신규 사용자로 만들지 않는다.
+- `WITHDRAWN` 사용자 Identity가 발견되면 신규 사용자로 만들지 않고, Toss 약관 재동의 뒤 정상 OAuth 로그인이 완료된 경우 기존 계정을 재활성화한다.
 
 ## 2. Refresh
 
@@ -168,7 +168,8 @@ Authorization: Bearer {accessToken}
 - 포인트 잔액은 더 이상 사용할 수 없도록 계정 접근 차단
 - `point_ledger`, `cashout_request`, `keycap_box_open` 등 회계·분쟁 근거는 보존
 - `auth_identity`는 중복 보상 방지와 Webhook 멱등성을 위해 MVP에서는 유지하며 접근을 제한
-- 동일 Toss 사용자의 자동 재가입은 허용하지 않고 `ACCOUNT_WITHDRAWN` 반환
+- Toss 약관 철회로 `WITHDRAWN` 된 사용자가 다시 약관에 동의하고 정상 OAuth 로그인을 완료하면, 동일 `auth_identity`와 `app_user.id`를 유지한 채 `ACTIVE`로 재활성화한다.
+- 재활성화 시 `withdrawn_at`을 초기화하고 Toss 로그인 응답의 nickname, nickname_normalized, profile image, last login 정보를 복구한다. 기존 포인트, 키캡, 원장, 랭킹 데이터는 초기화하거나 새로 만들지 않으며 신규 온보딩 보상도 지급하지 않는다.
 
 외부 unlink 실패 시 로컬 상태를 `WITHDRAWN`으로 바꾸지 않는다. 외부 unlink 성공 뒤 로컬 처리 실패는 Webhook 재처리로 수렴하는 것을 목표로 한다. 사용자 요청 탈퇴와 Webhook이 동시에 들어오는 경우에도 상태 변경과 개인정보 익명화가 멱등하게 수렴하는지 추가 검증이 필요하다.
 
@@ -222,7 +223,7 @@ WITHDRAWAL_TOSS
 | `TOSS_SERVER_ERROR` | 502 | Toss API, mTLS, Timeout 오류 |
 | `TOSS_USER_KEY_MISSING` | 502 | `login-me` 응답에 userKey 없음 |
 | `TOSS_USER_MISMATCH` | 403 | 탈퇴 요청의 Toss 사용자가 현재 로그인 사용자와 다름 |
-| `ACCOUNT_WITHDRAWN` | 403 | 탈퇴 계정의 자동 로그인 또는 자동 재가입 시도 |
+| `ACCOUNT_WITHDRAWN` | 403 | 탈퇴 상태에서 보호된 회원 API에 접근 |
 | `AUTH_SESSION_NOT_FOUND` | 401 | 활성 Session 없음 |
 | `AUTH_REFRESH_CONFLICT` | 409 | 동시 Refresh 충돌 |
 | `AUTH_REFRESH_REUSED` | 401 | Rotation된 Refresh Token 재사용 |

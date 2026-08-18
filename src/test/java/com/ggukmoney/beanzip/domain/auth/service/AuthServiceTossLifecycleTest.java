@@ -16,6 +16,8 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
@@ -161,19 +163,21 @@ class AuthServiceTossLifecycleTest {
     }
 
     @Test
-    void tossLoginRejectsWithdrawnIdentityWithoutRecreatingUser() {
+    void tossLoginIssuesSessionForReactivatedExistingUser() {
+        UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", null));
         when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", null, null))
-                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_WITHDRAWN"));
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
 
-        assertThatThrownBy(() -> authService.loginWithToss(new TossLoginRequest("code", "DEFAULT")))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
 
+        assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.newUser()).isFalse();
+        assertThat(response.onboardingRewardApplied()).isFalse();
         verify(userService, never()).createActive(any(), any());
         verify(userService, never()).recordLogin(any(), any(), any());
+        verify(redisService).putAllHash(anyString(), anyMap());
     }
 
     @Test
@@ -251,8 +255,9 @@ class AuthServiceTossLifecycleTest {
         verify(userService, never()).withdraw(any());
     }
 
-    @Test
-    void webhookSoftWithdrawsRegisteredUserAndIsIdempotentOnReplay() {
+    @ParameterizedTest
+    @ValueSource(strings = {"UNLINK", "WITHDRAWAL_TERMS", "WITHDRAWAL_TOSS"})
+    void webhookSoftWithdrawsRegisteredUserForEachSupportedWithdrawalEvent(String eventType) {
         UUID userId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "user-key-1"))
@@ -262,9 +267,9 @@ class AuthServiceTossLifecycleTest {
             return user;
         });
 
-        assertThat(authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("user-key-1", "UNLINK")).processed())
+        assertThat(authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("user-key-1", eventType)).processed())
                 .isTrue();
-        assertThat(authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("user-key-1", "UNLINK")).processed())
+        assertThat(authService.handleTossUnlinkWebhook(basic("webhook-secret"), new TossUnlinkWebhookRequest("user-key-1", eventType)).processed())
                 .isTrue();
 
         assertThat(user.isWithdrawn()).isTrue();
