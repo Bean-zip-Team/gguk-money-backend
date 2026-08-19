@@ -29,7 +29,7 @@ class UserTapSessionServiceTest {
 
         UserTapSession session = userTapSessionService.createFor(user, now, sessionConfig());
 
-        assertThat(session.getNextBoxTarget()).isBetween(20, 30); // step1=25, variance=0.2
+        assertThat(session.getNextBoxTarget()).isEqualTo(25); // step1=25, fixed
         assertThat(session.getSessionValidTapCount()).isZero();
         assertThat(session.getBoxesDroppedInSession()).isZero();
         assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(3600));
@@ -44,7 +44,6 @@ class UserTapSessionServiceTest {
         when(config.boxSessionStep4()).thenReturn(70);
         when(config.boxSessionStep5()).thenReturn(100);
         when(config.boxSessionTailStep()).thenReturn(180);
-        when(config.boxSessionVariance()).thenReturn(0.0);
 
         assertThat(userTapSessionService.drawNextBoxTargetInSession(0, 0, config)).isEqualTo(25);
         assertThat(userTapSessionService.drawNextBoxTargetInSession(25, 1, config)).isEqualTo(60);
@@ -53,18 +52,6 @@ class UserTapSessionServiceTest {
         assertThat(userTapSessionService.drawNextBoxTargetInSession(180, 4, config)).isEqualTo(280);
         assertThat(userTapSessionService.drawNextBoxTargetInSession(280, 5, config)).isEqualTo(460);
         assertThat(userTapSessionService.drawNextBoxTargetInSession(460, 6, config)).isEqualTo(640);
-    }
-
-    @Test
-    void drawNextBoxTargetInSessionAppliesConfiguredVariance() {
-        TapPolicyConfig config = mock(TapPolicyConfig.class);
-        when(config.boxSessionStep1()).thenReturn(100);
-        when(config.boxSessionVariance()).thenReturn(0.2);
-
-        for (int i = 0; i < 200; i++) {
-            int target = userTapSessionService.drawNextBoxTargetInSession(0, 0, config);
-            assertThat(target).isBetween(80, 120);
-        }
     }
 
     @Test
@@ -113,19 +100,20 @@ class UserTapSessionServiceTest {
     }
 
     @Test
-    void getOrCreateActiveSessionResetsWhenIdleThresholdExceeded() {
+    void getOrCreateActiveSessionKeepsProgressWhenIdleButWithinHardCap() {
         AppUser user = stubUser();
         Instant startedAt = now.minusSeconds(300);
         UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(3600), 999);
         existing.addValidTaps(200);
-        existing.recordActivity(now.minusSeconds(1801)); // idle threshold = 1800s
+        existing.recordActivity(now.minusSeconds(1801)); // long idle, but hard cap not reached
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
         when(userTapSessionRepository.save(any(UserTapSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
 
-        assertThat(session.getSessionValidTapCount()).isZero();
-        assertThat(session.getSessionStartedAt()).isEqualTo(now);
+        assertThat(session.getSessionValidTapCount()).isEqualTo(200);
+        assertThat(session.getSessionStartedAt()).isEqualTo(startedAt);
+        assertThat(session.getLastActivityAt()).isEqualTo(now);
     }
 
     @Test
@@ -156,9 +144,7 @@ class UserTapSessionServiceTest {
         when(config.boxSessionStep4()).thenReturn(70);
         when(config.boxSessionStep5()).thenReturn(100);
         when(config.boxSessionTailStep()).thenReturn(180);
-        when(config.boxSessionVariance()).thenReturn(0.2);
         when(config.boxSessionMaxDurationSeconds()).thenReturn(3600);
-        when(config.boxSessionIdleThresholdSeconds()).thenReturn(1800);
         return config;
     }
 }

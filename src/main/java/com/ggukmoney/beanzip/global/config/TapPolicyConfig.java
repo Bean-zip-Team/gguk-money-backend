@@ -39,9 +39,7 @@ public class TapPolicyConfig {
     public static final String KEY_BOX_SESSION_STEP_4 = "tap.box.session.step4";
     public static final String KEY_BOX_SESSION_STEP_5 = "tap.box.session.step5";
     public static final String KEY_BOX_SESSION_TAIL_STEP = "tap.box.session.tailStep";
-    public static final String KEY_BOX_SESSION_VARIANCE = "tap.box.session.variance";
     public static final String KEY_BOX_SESSION_MAX_DURATION_SECONDS = "tap.box.session.maxDurationSeconds";
-    public static final String KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS = "tap.box.session.idleThresholdSeconds";
     public static final String KEY_BOOSTER_DURATION_SECONDS = "tap.booster.durationSeconds";
     public static final String KEY_BOOSTER_DAILY_LIMIT = "tap.booster.dailyLimit";
     public static final String KEY_BOOSTER_LIMIT_WINDOW_SECONDS = "tap.booster.limitWindowSeconds";
@@ -68,9 +66,7 @@ public class TapPolicyConfig {
             Map.entry(KEY_BOX_SESSION_STEP_4, "70"),
             Map.entry(KEY_BOX_SESSION_STEP_5, "100"),
             Map.entry(KEY_BOX_SESSION_TAIL_STEP, "180"),
-            Map.entry(KEY_BOX_SESSION_VARIANCE, "0.2"),
             Map.entry(KEY_BOX_SESSION_MAX_DURATION_SECONDS, "3600"),
-            Map.entry(KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS, "1800"),
             Map.entry(KEY_BOOSTER_DURATION_SECONDS, "300"),
             Map.entry(KEY_BOOSTER_DAILY_LIMIT, "3"),
             Map.entry(KEY_BOOSTER_LIMIT_WINDOW_SECONDS, "86400")
@@ -178,16 +174,8 @@ public class TapPolicyConfig {
         return getInt(KEY_BOX_SESSION_TAIL_STEP);
     }
 
-    public double boxSessionVariance() {
-        return getDouble(KEY_BOX_SESSION_VARIANCE);
-    }
-
     public int boxSessionMaxDurationSeconds() {
         return getInt(KEY_BOX_SESSION_MAX_DURATION_SECONDS);
-    }
-
-    public int boxSessionIdleThresholdSeconds() {
-        return getInt(KEY_BOX_SESSION_IDLE_THRESHOLD_SECONDS);
     }
 
     public int boosterDurationSeconds() {

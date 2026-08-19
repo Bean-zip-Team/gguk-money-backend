@@ -8,17 +8,13 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
 public class UserTapSessionService {
 
     private final UserTapSessionRepository userTapSessionRepository;
-    private final Random random = new SecureRandom();
 
     public UserTapSession createFor(AppUser user, Instant now, TapPolicyConfig config) {
         Instant expiresAt = now.plusSeconds(config.boxSessionMaxDurationSeconds());
@@ -27,10 +23,9 @@ public class UserTapSessionService {
     }
 
     /**
-     * Fetches the user's tap session, resetting it first if the 1-hour hard cap or the
-     * idle threshold has elapsed since the last activity ("세션 진입마다 리셋"). Always
-     * persists (creation, reset, or activity touch) so read-only status endpoints stay
-     * consistent with what a subsequent tap batch would see.
+     * Fetches the user's tap session, resetting it first if the 1-hour hard cap has
+     * elapsed since session start. Always persists (creation, reset, or activity touch)
+     * so read-only status endpoints stay consistent with what a subsequent tap batch would see.
      */
     public UserTapSession getOrCreateActiveSession(AppUser user, Instant now, TapPolicyConfig config) {
         return userTapSessionRepository.findByUserId(user.getId())
@@ -49,13 +44,11 @@ public class UserTapSessionService {
 
     public int drawNextBoxTargetInSession(long cumulativeSessionTaps, int boxesDroppedInSession, TapPolicyConfig config) {
         int step = stepForBoxIndex(boxesDroppedInSession + 1, config);
-        int increment = drawUniform(step, config.boxSessionVariance());
-        return (int) (cumulativeSessionTaps + increment);
+        return (int) (cumulativeSessionTaps + step);
     }
 
     private UserTapSession refreshSession(UserTapSession session, Instant now, TapPolicyConfig config) {
-        Duration idleThreshold = Duration.ofSeconds(config.boxSessionIdleThresholdSeconds());
-        if (session.isExpired(now, idleThreshold)) {
+        if (session.isExpired(now)) {
             Instant expiresAt = now.plusSeconds(config.boxSessionMaxDurationSeconds());
             session.resetFor(now, expiresAt, drawNextBoxTargetInSession(0, 0, config));
         } else {
@@ -73,11 +66,5 @@ public class UserTapSessionService {
             case 5 -> config.boxSessionStep5();
             default -> config.boxSessionTailStep();
         };
-    }
-
-    private int drawUniform(int base, double variance) {
-        int lowerBound = (int) Math.round(base * (1 - variance));
-        int upperBound = (int) Math.round(base * (1 + variance));
-        return lowerBound + random.nextInt(upperBound - lowerBound + 1);
     }
 }

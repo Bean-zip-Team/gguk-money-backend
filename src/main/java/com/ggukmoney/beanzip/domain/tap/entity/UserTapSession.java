@@ -17,7 +17,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -76,10 +75,8 @@ public class UserTapSession {
         return session;
     }
 
-    public boolean isExpired(Instant now, Duration idleThreshold) {
-        boolean hardCapExpired = !now.isBefore(sessionExpiresAt);
-        boolean idleExpired = !Duration.between(lastActivityAt, now).minus(idleThreshold).isNegative();
-        return hardCapExpired || idleExpired;
+    public boolean isExpired(Instant now) {
+        return !now.isBefore(sessionExpiresAt);
     }
 
     public void resetFor(Instant startedAt, Instant expiresAt, int initialBoxTarget) {
