@@ -45,7 +45,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     private AppConfigRepository appConfigRepository;
 
     @Test
-    void submitsBatchAndReturnsAcceptedCountAndBalanceWithoutExposingTarget() throws Exception {
+    void submitsBatchAndReturnsAcceptedCountAndBalanceWithoutExposingPointTarget() throws Exception {
         TestTokens tokens = registerUserWithSession("tester-1");
         UUID sessionId = UUID.randomUUID();
 
@@ -61,7 +61,8 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.balance").exists())
                 .andExpect(jsonPath("$.data.pointDailyCapReached").value(false))
                 .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist())
-                .andExpect(jsonPath("$.data.nextBoxTarget").doesNotExist());
+                .andExpect(jsonPath("$.data.boxProgressTapCount").value(50))
+                .andExpect(jsonPath("$.data.nextBoxRequiredTapCount").isNumber());
     }
 
     @Test
@@ -117,7 +118,9 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.validTapCount").value(0))
                 .andExpect(jsonPath("$.data.pointEarnedToday").value(0))
                 .andExpect(jsonPath("$.data.remainingTapsToNextPoint").isNumber())
-                .andExpect(jsonPath("$.data.remainingTapsToNextBox").isNumber());
+                .andExpect(jsonPath("$.data.remainingTapsToNextBox").isNumber())
+                .andExpect(jsonPath("$.data.boxProgressTapCount").value(0))
+                .andExpect(jsonPath("$.data.nextBoxRequiredTapCount").isNumber());
     }
 
     @Test
@@ -133,7 +136,8 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
         mockMvc.perform(get("/api/tap/today")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.validTapCount").value(50));
+                .andExpect(jsonPath("$.data.validTapCount").value(50))
+                .andExpect(jsonPath("$.data.boxProgressTapCount").value(50));
     }
 
     private TestTokens registerUserWithSession(String nickname) {

@@ -118,6 +118,8 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.boxesDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
+        assertThat(response.boxProgressTapCount()).isZero();
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(FAR_AWAY_TARGET);
         verify(userTapDailyService, never()).save(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(eventPublisher, never()).publishEvent(any());
@@ -207,6 +209,8 @@ class TapBatchServiceTest {
         assertThat(response.acceptedCount()).isEqualTo(200);
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.boxesDropped()).isEqualTo(1);
+        assertThat(response.boxProgressTapCount()).isEqualTo(200);
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(450);
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
         assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
         assertThat(session.getNextBoxTarget()).isEqualTo(450);

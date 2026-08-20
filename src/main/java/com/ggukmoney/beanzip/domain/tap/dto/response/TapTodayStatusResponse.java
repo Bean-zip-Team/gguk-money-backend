@@ -15,6 +15,10 @@ public record TapTodayStatusResponse(
         @Schema(description = "다음 포인트까지 남은 탭 수", example = "10")
         int remainingTapsToNextPoint,
         @Schema(description = "다음 키캡 상자까지 남은 탭 수", example = "80")
-        int remainingTapsToNextBox
+        int remainingTapsToNextBox,
+        @Schema(description = "현재 상자 진행 탭 수", example = "45")
+        long boxProgressTapCount,
+        @Schema(description = "다음 상자 획득 필요 탭 수", example = "100")
+        int nextBoxRequiredTapCount
 ) {
 }

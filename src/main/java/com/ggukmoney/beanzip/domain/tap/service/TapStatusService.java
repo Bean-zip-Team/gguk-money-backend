@@ -44,7 +44,9 @@ public class TapStatusService {
                 daily.getValidTapCount(),
                 daily.getPointEarnedAmount(),
                 remainingToNextPoint,
-                remainingToNextBox
+                remainingToNextBox,
+                session.getSessionValidTapCount(),
+                session.getNextBoxTarget()
         );
     }
 }
