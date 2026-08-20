@@ -64,6 +64,8 @@ class TapStatusServiceTest {
         assertThat(response.pointEarnedToday()).isEqualTo(1);
         assertThat(response.remainingTapsToNextPoint()).isEqualTo(180);
         assertThat(response.remainingTapsToNextBox()).isEqualTo(80);
+        assertThat(response.boxProgressTapCount()).isEqualTo(120);
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(200);
     }
 
     @Test
@@ -86,5 +88,7 @@ class TapStatusServiceTest {
 
         assertThat(response.remainingTapsToNextPoint()).isZero();
         assertThat(response.remainingTapsToNextBox()).isZero();
+        assertThat(response.boxProgressTapCount()).isEqualTo(150);
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(100);
     }
 }

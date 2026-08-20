@@ -77,10 +77,13 @@ public class TapBatchService {
         if (existing.isPresent()) {
             long balance = pointAccountService.getBalance(userId);
             UserTapDaily existingDaily = userTapDailyService.getOrCreate(user, tapDate);
-            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), existingDaily.getValidTapCount(), 0, 0, balance, false);
+            UserTapSession existingSession = userTapSessionService.getOrCreateActiveSession(user, acceptedAt, tapPolicyConfig);
+            return new TapBatchSubmitResponse(existing.get().getAcceptedCount(), existingDaily.getValidTapCount(), 0, 0, balance, false,
+                    existingSession.getSessionValidTapCount(), existingSession.getNextBoxTarget());
         }
 
         UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
+        UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, acceptedAt, tapPolicyConfig);
         int acceptedCount = request.submittedCount();
 
         TapBatch batch = TapBatch.createFor(user, request.tapSessionId(), request.sequence(), request.submittedCount(), requestHash(request));
@@ -118,7 +121,6 @@ public class TapBatchService {
                     awardIndex++;
                 }
 
-                UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, acceptedAt, tapPolicyConfig);
                 session.addValidTaps(creditedTaps);
                 while (session.hasReachedBoxTarget()) {
                     keycapBoxAccountService.addBoxes(userId, 1);
@@ -137,7 +139,8 @@ public class TapBatchService {
         }
 
         boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();
-        return new TapBatchSubmitResponse(acceptedCount, daily.getValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached);
+        return new TapBatchSubmitResponse(acceptedCount, daily.getValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached,
+                session.getSessionValidTapCount(), session.getNextBoxTarget());
     }
 
     private UUID deterministicIdempotencyKey(UUID batchPublicId, int awardIndex) {

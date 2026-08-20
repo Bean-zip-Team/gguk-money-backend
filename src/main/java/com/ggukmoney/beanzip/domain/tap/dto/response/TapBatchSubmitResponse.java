@@ -15,6 +15,10 @@ public record TapBatchSubmitResponse(
         @Schema(description = "제출 후 포인트 잔액", example = "15")
         long balance,
         @Schema(description = "오늘 포인트 지급 한도에 도달했는지 여부", example = "false")
-        boolean pointDailyCapReached
+        boolean pointDailyCapReached,
+        @Schema(description = "현재 상자 진행 탭 수", example = "45")
+        long boxProgressTapCount,
+        @Schema(description = "다음 상자 획득 필요 탭 수", example = "100")
+        int nextBoxRequiredTapCount
 ) {
 }
