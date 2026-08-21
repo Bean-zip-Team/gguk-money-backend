@@ -14,6 +14,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class UserTapSessionServiceTest {
@@ -66,19 +68,19 @@ class UserTapSessionServiceTest {
     }
 
     @Test
-    void getOrCreateActiveSessionKeepsProgressAndTouchesActivityWhenNotExpired() {
+    void getOrCreateActiveSessionReturnsExistingSessionWithoutWritingWhenNotExpired() {
         AppUser user = stubUser();
         Instant startedAt = now.minusSeconds(600);
         UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(3600), 100);
         existing.addValidTaps(40);
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
-        when(userTapSessionRepository.save(any(UserTapSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
 
         assertThat(session.getSessionValidTapCount()).isEqualTo(40);
         assertThat(session.getNextBoxTarget()).isEqualTo(100);
-        assertThat(session.getLastActivityAt()).isEqualTo(now);
+        assertThat(session.getLastActivityAt()).isEqualTo(startedAt);
+        verify(userTapSessionRepository, never()).save(any());
     }
 
     @Test
@@ -107,13 +109,13 @@ class UserTapSessionServiceTest {
         existing.addValidTaps(200);
         existing.recordActivity(now.minusSeconds(1801)); // long idle, but hard cap not reached
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
-        when(userTapSessionRepository.save(any(UserTapSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
 
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
         assertThat(session.getSessionStartedAt()).isEqualTo(startedAt);
-        assertThat(session.getLastActivityAt()).isEqualTo(now);
+        assertThat(session.getLastActivityAt()).isEqualTo(now.minusSeconds(1801));
+        verify(userTapSessionRepository, never()).save(any());
     }
 
     @Test

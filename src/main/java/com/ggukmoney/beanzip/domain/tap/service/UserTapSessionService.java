@@ -48,12 +48,11 @@ public class UserTapSessionService {
     }
 
     private UserTapSession refreshSession(UserTapSession session, Instant now, TapPolicyConfig config) {
-        if (session.isExpired(now)) {
-            Instant expiresAt = now.plusSeconds(config.boxSessionMaxDurationSeconds());
-            session.resetFor(now, expiresAt, drawNextBoxTargetInSession(0, 0, config));
-        } else {
-            session.recordActivity(now);
+        if (!session.isExpired(now)) {
+            return session;
         }
+        Instant expiresAt = now.plusSeconds(config.boxSessionMaxDurationSeconds());
+        session.resetFor(now, expiresAt, drawNextBoxTargetInSession(0, 0, config));
         return userTapSessionRepository.save(session);
     }
 
