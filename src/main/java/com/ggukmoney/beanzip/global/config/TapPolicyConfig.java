@@ -23,9 +23,6 @@ public class TapPolicyConfig {
     public static final String KEY_MAX_PER_DAY = "tap.validity.maxPerDay";
     public static final String KEY_CURVE_GENERAL_BASE = "tap.curve.general.base";
     public static final String KEY_CURVE_GENERAL_VARIANCE = "tap.curve.general.variance";
-    public static final String KEY_CURVE_DECEL_BASE = "tap.curve.decel.base";
-    public static final String KEY_CURVE_DECEL_VARIANCE = "tap.curve.decel.variance";
-    public static final String KEY_DECEL_THRESHOLD_POINTS = "tap.curve.decelThresholdPoints";
     public static final String KEY_POINT_DAILY_CAP = "tap.point.dailyCap";
     public static final String KEY_BOT_ENABLED = "tap.bot.enabled";
     public static final String KEY_BOT_SAMPLE_SIZE = "tap.bot.sampleSize";
@@ -50,9 +47,6 @@ public class TapPolicyConfig {
             Map.entry(KEY_MAX_PER_DAY, "3000"),
             Map.entry(KEY_CURVE_GENERAL_BASE, "20"),
             Map.entry(KEY_CURVE_GENERAL_VARIANCE, "0.25"),
-            Map.entry(KEY_CURVE_DECEL_BASE, "20"),
-            Map.entry(KEY_CURVE_DECEL_VARIANCE, "0.25"),
-            Map.entry(KEY_DECEL_THRESHOLD_POINTS, "7"),
             Map.entry(KEY_POINT_DAILY_CAP, "150"),
             Map.entry(KEY_BOT_ENABLED, "false"),
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
@@ -110,17 +104,8 @@ public class TapPolicyConfig {
         return getDouble(KEY_CURVE_GENERAL_VARIANCE);
     }
 
-    public int curveDecelBase() {
-        return getInt(KEY_CURVE_DECEL_BASE);
-    }
 
-    public double curveDecelVariance() {
-        return getDouble(KEY_CURVE_DECEL_VARIANCE);
-    }
 
-    public int decelThresholdPoints() {
-        return getInt(KEY_DECEL_THRESHOLD_POINTS);
-    }
 
     public int pointDailyCap() {
         return getInt(KEY_POINT_DAILY_CAP);
