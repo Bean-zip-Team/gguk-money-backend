@@ -1689,20 +1689,52 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ##### Response Body
 
+배치 확정 직후 화면을 그리는 데 필요한 값을 모두 담는다. `GET /api/tap/today`와 `GET /api/keycap-boxes/status`를 뒤이어 호출할 필요가 없다.
+
 | name | type | description |
 |---|---|---|
 | `success` | Boolean | 요청 성공 여부 |
 | `data.acceptedCount` | Number | 인정된 탭 수 |
-| `data.pointsAwarded` | Number | 지급 포인트 |
+| `data.validTapCount` | Number | 오늘 실제로 친 탭 수. 보상 상한(3000)과 무관하게 증가한다 |
+| `data.pointsAwarded` | Number | 이번 배치로 지급된 포인트 |
+| `data.boxesDropped` | Number | 이번 배치로 드롭된 키캡 상자 수 |
 | `data.balance` | Number | 처리 후 포인트 잔액 |
+| `data.pointDailyCapReached` | Boolean | 오늘 포인트 지급 한도 도달 여부 |
+| `data.boxProgressTapCount` | Number | 현재 상자 진행 탭 수 |
+| `data.nextBoxRequiredTapCount` | Number | 다음 상자 획득 필요 탭 수 |
+| `data.date` | String | 기준 일자 |
+| `data.pointEarnedToday` | Number | 오늘 지급된 포인트 누계 |
+| `data.remainingTapsToNextPoint` | Number | 다음 포인트까지 남은 탭 수 |
+| `data.remainingTapsToNextBox` | Number | 다음 상자까지 남은 탭 수 |
+| `data.boxBalance` | Number | 처리 후 보유 키캡 상자 수 |
+| `data.canFreeOpen` | Boolean | 상자 보유 + 무료 개봉 한도 잔여 여부 |
+| `data.canAdOpen` | Boolean | 상자 보유 + 광고 개봉 한도 잔여 여부 |
+| `data.charging` | Boolean | 무료·광고 개봉을 모두 소진해 공통 주기 충전 중인지 여부 |
+| `data.nextRechargeAt` | String | `charging=true`일 때 다음 공통 충전 시각. 아니면 `null` |
+
+개봉 가능 여부(`boxBalance`, `canFreeOpen`, `canAdOpen`)는 이번 배치의 상자 지급까지 반영한 값이다.
 
 ```json
 {
   "success": true,
   "data": {
     "acceptedCount": 87,
+    "validTapCount": 3763,
     "pointsAwarded": 1,
-    "balance": 42
+    "boxesDropped": 0,
+    "balance": 42,
+    "pointDailyCapReached": false,
+    "boxProgressTapCount": 45,
+    "nextBoxRequiredTapCount": 100,
+    "date": "2026-08-23",
+    "pointEarnedToday": 12,
+    "remainingTapsToNextPoint": 10,
+    "remainingTapsToNextBox": 55,
+    "boxBalance": 2,
+    "canFreeOpen": true,
+    "canAdOpen": true,
+    "charging": false,
+    "nextRechargeAt": null
   }
 }
 ```

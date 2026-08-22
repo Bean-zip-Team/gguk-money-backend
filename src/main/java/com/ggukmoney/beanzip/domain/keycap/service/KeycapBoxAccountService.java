@@ -26,6 +26,10 @@ public class KeycapBoxAccountService {
         return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
     }
 
+    public KeycapBoxAccount save(KeycapBoxAccount account) {
+        return keycapBoxAccountRepository.save(account);
+    }
+
     public KeycapBoxAccount addBoxes(UUID userId, int count) {
         KeycapBoxAccount account = keycapBoxAccountRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));

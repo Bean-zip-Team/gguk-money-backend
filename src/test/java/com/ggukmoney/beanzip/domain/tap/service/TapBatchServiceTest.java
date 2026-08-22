@@ -14,6 +14,8 @@ import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -36,6 +39,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -43,6 +47,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +64,7 @@ class TapBatchServiceTest {
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
+    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
     private final UserService userService = mock(UserService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final Instant acceptedAt = Instant.parse("2026-07-20T15:00:00Z");
@@ -69,12 +75,15 @@ class TapBatchServiceTest {
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, userTapSessionService,
             pointAccountService, pointLedgerService,
-            keycapBoxAccountService, redisService, tapPolicyConfig, userService,
+            keycapBoxAccountService, redisService, tapPolicyConfig, keycapBoxPolicyConfig, userService,
             eventPublisher, clock, businessZoneId
     );
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
+    private final AppUser accountOwner = mock(AppUser.class);
+    private final PointAccount pointAccount = PointAccount.createFor(accountOwner);
+    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner, acceptedAt);
 
     @BeforeEach
     void allowRateLimitByDefault() {
@@ -84,6 +93,13 @@ class TapBatchServiceTest {
         lenient().when(tapPolicyConfig.maxPerDay()).thenReturn(FAR_AWAY_TARGET);
         lenient().when(userTapSessionService.getOrCreateActiveSession(any(), any(), any()))
                 .thenReturn(farAwaySession());
+        // 배치 응답이 항상 담는 상태라 어떤 경로에서도 한 번씩 조회된다.
+        lenient().when(pointAccountService.getForUser(userId)).thenReturn(pointAccount);
+        lenient().when(keycapBoxAccountService.getForUser(userId)).thenReturn(boxAccount);
+        lenient().when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(accountOwner));
+        lenient().when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(Duration.ofSeconds(60));
+        lenient().when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
+        lenient().when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
     }
 
     @Test
@@ -105,7 +121,7 @@ class TapBatchServiceTest {
         TapBatch existing = mock(TapBatch.class);
         when(existing.getAcceptedCount()).thenReturn(42);
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
-        when(pointAccountService.getBalance(userId)).thenReturn(100L);
+        pointAccount.credit(100L);
         UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         // 실제 적립 경로는 두 카운트를 항상 함께 올린다.
         daily.addValidTaps(77);
@@ -136,7 +152,6 @@ class TapBatchServiceTest {
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
         when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 500);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -163,9 +178,6 @@ class TapBatchServiceTest {
 
         when(userTapProgressService.drawNextTarget(eq(100L), eq(1), eq(tapPolicyConfig))).thenReturn(400);
 
-        PointAccount account = PointAccount.createFor(user);
-        account.credit(1);
-        when(pointAccountService.credit(userId, 1)).thenReturn(account);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -183,7 +195,11 @@ class TapBatchServiceTest {
         inOrder.verify(userTapDailyService).save(daily);
         inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
-        verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
+        verify(pointLedgerService).recordCredit(eq(pointAccount), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
+        // 계정은 루프 밖에서 한 번만 조회·저장한다.
+        verify(pointAccountService).getForUser(userId);
+        verify(pointAccountService).save(pointAccount);
+        verify(pointAccountService, never()).credit(any(), anyLong());
     }
 
     @Test
@@ -199,7 +215,6 @@ class TapBatchServiceTest {
         TapBatch savedBatch = mock(TapBatch.class);
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
-        when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
@@ -216,7 +231,15 @@ class TapBatchServiceTest {
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
         assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
         assertThat(session.getNextBoxTarget()).isEqualTo(450);
-        verify(keycapBoxAccountService).addBoxes(userId, 1);
+        assertThat(boxAccount.getBoxBalance()).isEqualTo(1);
+        assertThat(response.boxBalance()).isEqualTo(1);
+        // 개봉 가능 여부는 이번 배치의 지급까지 반영된 잔고 기준이어야 한다.
+        assertThat(response.canFreeOpen()).isTrue();
+        assertThat(response.canAdOpen()).isTrue();
+        // 계정은 루프 밖에서 한 번만 조회·저장한다.
+        verify(keycapBoxAccountService).getForUser(userId);
+        verify(keycapBoxAccountService).save(boxAccount);
+        verify(keycapBoxAccountService, never()).addBoxes(any(), anyInt());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapSessionService).save(session);
     }
@@ -237,7 +260,7 @@ class TapBatchServiceTest {
         TapBatch savedBatch = mock(TapBatch.class);
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
-        when(pointAccountService.getBalance(userId)).thenReturn(7L);
+        pointAccount.credit(7L);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -248,6 +271,7 @@ class TapBatchServiceTest {
         assertThat(response.balance()).isEqualTo(7L);
         assertThat(response.pointDailyCapReached()).isTrue();
         verify(pointAccountService, never()).credit(any(), anyLong());
+        verify(pointAccountService, never()).save(any());
         verify(userTapDailyService).save(daily);
         verify(userTapProgressService).save(progress);
     }
@@ -264,7 +288,6 @@ class TapBatchServiceTest {
         when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(user));
 
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -290,7 +313,6 @@ class TapBatchServiceTest {
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -302,7 +324,8 @@ class TapBatchServiceTest {
         // 화면에 노출되는 값은 보상 상한에서 멈추지 않고 계속 증가해야 한다.
         assertThat(response.validTapCount()).isEqualTo(3200);
         verify(userTapDailyService).save(daily);
-        verify(userTapProgressService, never()).getForUser(any());
+        // 진행도는 응답에 담기므로 항상 조회하지만, 지급이 없으면 저장하지 않는다.
+        verify(userTapProgressService, never()).save(any());
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
@@ -320,7 +343,6 @@ class TapBatchServiceTest {
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(pointAccountService.getBalance(userId)).thenReturn(0L);
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
@@ -335,9 +357,78 @@ class TapBatchServiceTest {
         assertThat(response.boxProgressTapCount()).isEqualTo(200);
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(450);
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
-        verify(keycapBoxAccountService).addBoxes(userId, 1);
+        assertThat(boxAccount.getBoxBalance()).isEqualTo(1);
+        verify(keycapBoxAccountService).save(boxAccount);
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapSessionService).save(session);
+    }
+
+    @Test
+    void returnsTodayStatusFieldsSoClientNeedsNoFollowUpQueries() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
+        when(userTapProgressService.getForUser(userId)).thenReturn(UserTapProgress.createFor(user, 250));
+        when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 300);
+        when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        // 예전에는 이 값들을 채우려고 GET /tap/today 와 GET /keycap-boxes/status 를 뒤이어 호출해야 했다.
+        assertThat(response.date()).isEqualTo(tapDate);
+        assertThat(response.pointEarnedToday()).isZero();
+        assertThat(response.remainingTapsToNextPoint()).isEqualTo(150);
+        assertThat(response.remainingTapsToNextBox()).isEqualTo(200);
+        assertThat(response.boxBalance()).isZero();
+        assertThat(response.canFreeOpen()).isFalse();
+        assertThat(response.canAdOpen()).isFalse();
+        assertThat(response.charging()).isFalse();
+        assertThat(response.nextRechargeAt()).isNull();
+    }
+
+    @Test
+    void loadsAndSavesPointAccountOnceEvenWhenBatchAwardsMultiplePoints() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
+
+        UserTapProgress progress = UserTapProgress.createFor(user, 10);
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        TapBatch savedBatch = mock(TapBatch.class);
+        when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
+        when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
+
+        // 한 배치 안에서 목표를 세 번 넘기도록 다음 목표를 이어서 돌려준다.
+        when(userTapProgressService.drawNextTarget(eq(30L), anyInt(), eq(tapPolicyConfig)))
+                .thenReturn(20, 30, 40);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 30);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        assertThat(response.pointsAwarded()).isEqualTo(3);
+        assertThat(response.balance()).isEqualTo(3L);
+        assertThat(daily.getPointEarnedAmount()).isEqualTo(3);
+
+        // 지급 횟수와 무관하게 계정 조회·저장은 각각 한 번이어야 한다.
+        verify(pointAccountService, times(1)).getForUser(userId);
+        verify(pointAccountService, times(1)).save(pointAccount);
+        verify(pointAccountService, never()).credit(any(), anyLong());
+
+        // 원장은 지급 건마다 남고 멱등 키는 서로 달라야 한다.
+        ArgumentCaptor<UUID> keyCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(pointLedgerService, times(3))
+                .recordCredit(eq(pointAccount), eq(user), eq(1L), eq("TAP_REWARD"), keyCaptor.capture());
+        assertThat(keyCaptor.getAllValues()).doesNotHaveDuplicates();
     }
 
     private AppUser stubUser() {
