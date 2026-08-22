@@ -40,7 +40,7 @@ public class RankingBackfillService {
         String lastUserId = null;
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> rows =
-                    userTapDailyRepository.findValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
+                    userTapDailyRepository.findTotalValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
             if (rows.isEmpty()) {
                 return processed;
             }
@@ -78,7 +78,7 @@ public class RankingBackfillService {
         );
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> rows =
-                    userTapDailyRepository.findValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
+                    userTapDailyRepository.findTotalValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
             if (rows.isEmpty()) {
                 return processed;
             }

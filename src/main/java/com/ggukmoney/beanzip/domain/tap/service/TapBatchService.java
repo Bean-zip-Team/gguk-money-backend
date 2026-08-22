@@ -95,6 +95,8 @@ public class TapBatchService {
         long balance = pointAccountService.getBalance(userId);
 
         if (acceptedCount > 0) {
+            daily.addTotalValidTaps(acceptedCount);
+
             int remainingDailyTapAllowance = Math.max(tapPolicyConfig.maxPerDay() - daily.getValidTapCount(), 0);
             int creditedTaps = Math.min(acceptedCount, remainingDailyTapAllowance);
 
@@ -131,11 +133,11 @@ public class TapBatchService {
                     boxesDropped++;
                 }
                 userTapSessionService.save(session);
-
-                userTapDailyService.save(daily);
                 userTapProgressService.save(progress);
-                eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
             }
+
+            userTapDailyService.save(daily);
+            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
         boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();

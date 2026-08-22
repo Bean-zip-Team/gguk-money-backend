@@ -64,6 +64,7 @@ private UUID id;
 - `onboarding_reward_attempt` Entity는 회원가입 전 온보딩 보상 attempt 저장을 위해 추가됐다.
 - 공유/개발 DB에는 `(user_id, idempotency_key)` unique, `ad_reward_id` partial unique, `opened_at` 조회 index, 음수 방지 CHECK 등 실제 제약 적용 여부를 merge 전 확인해야 한다.
 - 현재 저장소에 Migration 적용 체계가 없으므로 `onboarding_reward_attempt` 실제 공유/개발 DB 생성과 제약 적용은 merge/deploy 전 별도 확인이 필요하다.
+- `user_tap_daily` Entity에 랭킹 집계 전용(일일 3000탭 보상 상한과 무관하게 계속 누적되는) `total_valid_tap_count` 컬럼이 추가됐다. 공유/개발/운영 DB에는 `ALTER TABLE user_tap_daily ADD COLUMN total_valid_tap_count INTEGER NOT NULL DEFAULT 0;`을 merge/deploy 전 별도로 적용해야 한다.
 - 키캡 상자 개봉 이력 조회는 추가 Entity 컬럼 없이 `keycap_box_open.user_id`, `opened_at`, 내부 PK 정렬과 `keycap_id` join을 사용한다.
 
 ## 트랜잭션 경계

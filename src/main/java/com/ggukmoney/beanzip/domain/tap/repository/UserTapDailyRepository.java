@@ -17,13 +17,13 @@ public interface UserTapDailyRepository extends JpaRepository<UserTapDaily, Long
     boolean existsByUserIdAndTapDateAndValidTapCountGreaterThan(UUID userId, LocalDate tapDate, Integer validTapCount);
 
     @Query("""
-            SELECT COALESCE(SUM(daily.validTapCount), 0)
+            SELECT COALESCE(SUM(daily.totalValidTapCount), 0)
             FROM UserTapDaily daily
             WHERE daily.user.id = :userId
               AND daily.tapDate >= :startDate
               AND daily.tapDate < :endDate
             """)
-    long sumValidTapCount(
+    long sumTotalValidTapCount(
             @Param("userId") UUID userId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
@@ -31,17 +31,17 @@ public interface UserTapDailyRepository extends JpaRepository<UserTapDaily, Long
 
     @Query(value = """
             SELECT daily.user_id AS userId,
-                   COALESCE(SUM(daily.valid_tap_count), 0) AS score
+                   COALESCE(SUM(daily.total_valid_tap_count), 0) AS score
             FROM user_tap_daily daily
             WHERE daily.tap_date >= :startDate
               AND daily.tap_date < :endDate
-              AND daily.valid_tap_count > 0
+              AND daily.total_valid_tap_count > 0
               AND (:lastUserId IS NULL OR CAST(daily.user_id AS text) > :lastUserId)
             GROUP BY daily.user_id
             ORDER BY CAST(daily.user_id AS text) ASC
             LIMIT :limit
             """, nativeQuery = true)
-    List<UserTapAggregateProjection> findValidTapAggregates(
+    List<UserTapAggregateProjection> findTotalValidTapAggregates(
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             @Param("lastUserId") String lastUserId,

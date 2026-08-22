@@ -129,7 +129,7 @@ public class RankingProjectionService {
     }
 
     private long weeklyScore(UUID userId, RankingSeason season) {
-        return userTapDailyRepository.sumValidTapCount(
+        return userTapDailyRepository.sumTotalValidTapCount(
                 userId,
                 LocalDate.ofInstant(season.getStartsAt(), businessZoneId),
                 LocalDate.ofInstant(season.getEndsAt(), businessZoneId)

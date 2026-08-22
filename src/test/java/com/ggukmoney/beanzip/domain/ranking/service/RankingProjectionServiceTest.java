@@ -56,7 +56,7 @@ class RankingProjectionServiceTest {
         when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
         RankingSeason season = weeklySeason();
         when(seasonService.findWeeklySeasonContaining(occurredAt)).thenReturn(Optional.of(season));
-        when(userTapDailyRepository.sumValidTapCount(
+        when(userTapDailyRepository.sumTotalValidTapCount(
                 userId,
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27)

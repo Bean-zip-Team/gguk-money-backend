@@ -177,8 +177,8 @@ class TapBatchServiceTest {
         assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         InOrder inOrder = org.mockito.Mockito.inOrder(userTapDailyService, userTapProgressService, eventPublisher);
-        inOrder.verify(userTapDailyService).save(daily);
         inOrder.verify(userTapProgressService).save(progress);
+        inOrder.verify(userTapDailyService).save(daily);
         inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         verify(pointLedgerService).recordCredit(eq(account), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
@@ -269,10 +269,40 @@ class TapBatchServiceTest {
 
         assertThat(response.acceptedCount()).isEqualTo(200);
         assertThat(daily.getValidTapCount()).isEqualTo(3000);
+        assertThat(daily.getTotalValidTapCount()).isEqualTo(200);
 
         ArgumentCaptor<TapBatch> batchCaptor = ArgumentCaptor.forClass(TapBatch.class);
         verify(tapBatchRepository).save(batchCaptor.capture());
         assertThat(batchCaptor.getValue().getAcceptedCount()).isEqualTo(200);
+    }
+
+    @Test
+    void keepsAccumulatingTotalValidTapsAndRankingSyncEvenAfterDailyCapReached() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapPolicyConfig.maxPerDay()).thenReturn(3000);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        daily.addValidTaps(3000);
+        daily.addTotalValidTaps(3000);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
+
+        when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pointAccountService.getBalance(userId)).thenReturn(0L);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        assertThat(response.acceptedCount()).isEqualTo(200);
+        assertThat(response.pointsAwarded()).isZero();
+        assertThat(response.boxesDropped()).isZero();
+        assertThat(daily.getValidTapCount()).isEqualTo(3000);
+        assertThat(daily.getTotalValidTapCount()).isEqualTo(3200);
+        verify(userTapDailyService).save(daily);
+        verify(userTapProgressService, never()).getForUser(any());
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
     }
 
     private AppUser stubUser() {

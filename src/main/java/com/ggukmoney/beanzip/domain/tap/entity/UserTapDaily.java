@@ -48,6 +48,9 @@ public class UserTapDaily {
     @Column(name = "valid_tap_count", nullable = false)
     private Integer validTapCount = 0;
 
+    @Column(name = "total_valid_tap_count", nullable = false)
+    private Integer totalValidTapCount = 0;
+
     @Column(name = "point_earned_amount", nullable = false)
     private Integer pointEarnedAmount = 0;
 
@@ -70,6 +73,10 @@ public class UserTapDaily {
 
     public void addValidTaps(int count) {
         this.validTapCount += count;
+    }
+
+    public void addTotalValidTaps(int count) {
+        this.totalValidTapCount += count;
     }
 
     public void incrementPointEarned() {

@@ -47,7 +47,7 @@ class RankingBackfillServiceTest {
                 Instant.parse("2026-07-26T15:00:00Z")
         );
         UserTapDailyRepository.UserTapAggregateProjection row = aggregateRow(userId, 123L);
-        when(dailyRepository.findValidTapAggregates(
+        when(dailyRepository.findTotalValidTapAggregates(
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27),
                 null,
@@ -74,7 +74,7 @@ class RankingBackfillServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(season, "id", 1L);
         season.startFinalizing();
         UserTapDailyRepository.UserTapAggregateProjection row = aggregateRow(userId, 80L);
-        when(dailyRepository.findValidTapAggregates(
+        when(dailyRepository.findTotalValidTapAggregates(
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27),
                 null,
