@@ -123,18 +123,21 @@ public class TapBatchService {
                     awardIndex++;
                 }
 
-                session.addValidTaps(creditedTaps);
-                while (session.hasReachedBoxTarget()) {
-                    keycapBoxAccountService.addBoxes(userId, 1);
-
-                    int nextBoxTarget = userTapSessionService.drawNextBoxTargetInSession(session.getSessionValidTapCount(), session.getBoxesDroppedInSession(), tapPolicyConfig);
-                    session.advanceBoxTarget(nextBoxTarget);
-
-                    boxesDropped++;
-                }
-                userTapSessionService.save(session);
                 userTapProgressService.save(progress);
             }
+
+            // 상자 진행도는 포인트 일일 상한(tap.validity.maxPerDay)과 무관하게 인정된 탭 전체로 누적한다.
+            // 상자 획득 속도의 실질 병목은 재고가 아니라 개봉 주기(무료 2회·광고 2회)이므로 여기서 막지 않는다.
+            session.addValidTaps(acceptedCount);
+            while (session.hasReachedBoxTarget()) {
+                keycapBoxAccountService.addBoxes(userId, 1);
+
+                int nextBoxTarget = userTapSessionService.drawNextBoxTargetInSession(session.getSessionValidTapCount(), session.getBoxesDroppedInSession(), tapPolicyConfig);
+                session.advanceBoxTarget(nextBoxTarget);
+
+                boxesDropped++;
+            }
+            userTapSessionService.save(session);
 
             userTapDailyService.save(daily);
             eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));

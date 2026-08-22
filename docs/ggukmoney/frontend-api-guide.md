@@ -1665,7 +1665,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 |---|---|---:|---|
 | `tapSessionId` | UUID | O | 클라이언트 탭 세션 ID |
 | `sequence` | Number | O | 세션 안에서 증가하는 배치 순번 |
-| `submittedCount` | Number | O | 제출 탭 수 |
+| `submittedCount` | Number | O | 제출 탭 수. 1 이상 1000 이하 |
 
 ```json
 {
