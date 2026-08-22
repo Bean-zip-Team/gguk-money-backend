@@ -13,6 +13,13 @@ on:
           - release
         default: verify
 
+  # TODO(병합 전 제거): workflow_dispatch 는 워크플로 파일이 기본 브랜치(main)에
+  # 있어야 트리거되므로, 병합 전 파이프라인 검증용으로만 두는 임시 트리거다.
+  # push 로 실행되면 mode 는 항상 verify 라 운영에 영향이 없다.
+  push:
+    branches:
+      - chore/deploy-pipeline
+
 concurrency:
   group: deploy-develop
   cancel-in-progress: false
@@ -24,6 +31,8 @@ env:
   DEPLOY_HOST: 52.79.67.165
   DEPLOY_USER: minjae
   REMOTE_BASE: /home/minjae/clickmoney
+  # push 트리거에는 inputs 가 없으므로 verify 로 떨어진다.
+  MODE: ${{ inputs.mode || 'verify' }}
 
 jobs:
   deploy:
@@ -88,10 +97,11 @@ jobs:
             echo "전송 중 체크섬이 달라졌습니다."; exit 1;
           }
 
-      - name: Run deploy.sh (${{ inputs.mode }})
+      - name: Run deploy.sh
         run: |
+          echo "mode = $MODE"
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash $REMOTE_BASE/deploy.sh ${{ inputs.mode }} ${{ github.sha }}"
+            "bash $REMOTE_BASE/deploy.sh $MODE ${{ github.sha }}"
 
       - name: Remove SSH key
         if: always()
