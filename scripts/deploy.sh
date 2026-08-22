@@ -13,6 +13,7 @@ set -euo pipefail
 BASE="${BASE:-$HOME/clickmoney}"
 INCOMING="$BASE/incoming.jar"
 KEEP_RELEASES=5
+READY_TIMEOUT=90
 
 log() { printf '[deploy] %s\n' "$*"; }
 fail() {
@@ -41,6 +42,24 @@ verify_jar() {
   log "무결성 OK  sha256=$(sha256sum "$INCOMING" | cut -c1-16)..."
 }
 
+# 앱이 HTTP 응답을 돌려줄 때까지 기다린다.
+# 인증이 걸린 엔드포인트라 401 이 정상 응답이며, 곧 "살아있다" 는 뜻이다.
+# actuator readiness 를 도입하면 이 함수만 그쪽으로 바꾸면 된다.
+wait_until_ready() {
+  local port="${PORT:-8080}" deadline=$((SECONDS + READY_TIMEOUT))
+  log "기동 대기 (최대 ${READY_TIMEOUT}초, 실측 기동 시간 약 20초)"
+  while [ $SECONDS -lt $deadline ]; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+      "http://127.0.0.1:$port/api/tap/today" 2>/dev/null || echo 000)
+    if [ "$code" != "000" ]; then
+      log "기동 완료 ($((SECONDS - deadline + READY_TIMEOUT))초, http=$code)"
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 case "$MODE" in
 verify)
   verify_jar
@@ -59,6 +78,7 @@ release)
   if systemctl is-active --quiet clickmoney 2>/dev/null; then
     log "clickmoney.service 재시작"
     sudo systemctl restart clickmoney
+    wait_until_ready || fail "재시작 후 응답이 없습니다. 롤백: scripts/rollback.sh"
   else
     log "[SKIP] clickmoney.service 가 active 가 아니라 재시작을 생략합니다."
     log "       현재 수동 nohup 으로 운영 중입니다. systemd 이관 후 자동화됩니다."
