@@ -295,7 +295,6 @@ class TapBatchServiceTest {
 
         assertThat(response.acceptedCount()).isEqualTo(200);
         assertThat(response.pointsAwarded()).isZero();
-        assertThat(response.boxesDropped()).isZero();
         assertThat(daily.getValidTapCount()).isEqualTo(3000);
         assertThat(daily.getTotalValidTapCount()).isEqualTo(3200);
         verify(userTapDailyService).save(daily);
@@ -303,6 +302,38 @@ class TapBatchServiceTest {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
+    }
+
+    @Test
+    void keepsDroppingBoxesAfterDailyPointTapCapReached() {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
+        when(tapPolicyConfig.maxPerDay()).thenReturn(3000);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        daily.addValidTaps(3000);
+        daily.addTotalValidTaps(3000);
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
+
+        when(tapBatchRepository.save(any(TapBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pointAccountService.getBalance(userId)).thenReturn(0L);
+
+        UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
+        when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
+
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
+        TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
+
+        // 포인트는 일일 상한에 막히지만 상자 진행도는 인정 탭 전체로 계속 누적된다.
+        assertThat(response.pointsAwarded()).isZero();
+        assertThat(response.boxesDropped()).isEqualTo(1);
+        assertThat(response.boxProgressTapCount()).isEqualTo(200);
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(450);
+        assertThat(session.getSessionValidTapCount()).isEqualTo(200);
+        verify(keycapBoxAccountService).addBoxes(userId, 1);
+        verify(pointAccountService, never()).credit(any(), anyLong());
+        verify(userTapSessionService).save(session);
     }
 
     private AppUser stubUser() {

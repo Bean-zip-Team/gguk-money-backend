@@ -1,5 +1,13 @@
 # 수정 내역
 
+## 2026-08-22 상자 진행도를 일일 탭 보상 상한에서 분리
+
+- 상자 진행도(`user_tap_session.session_valid_tap_count`)를 일일 탭 상한 적용 후의 `creditedTaps`가 아니라 인정된 탭 전체(`acceptedCount`)로 누적하도록 변경했다.
+- 기존에는 `tap.validity.maxPerDay`(3000)에 도달하면 포인트와 함께 상자 진행도도 멈춰 그날 더 이상 상자가 지급되지 않았다.
+- 상한 미만 구간의 동작은 변하지 않는다. 해당 구간에서는 `creditedTaps`와 `acceptedCount`가 같다.
+- 포인트 지급은 기존과 동일하게 일일 탭 상한과 `tap.point.dailyCap` 안에서만 이뤄진다.
+- 상자 획득 속도의 제한은 개봉 주기(무료 2회·광고 2회 공유)가 담당한다. DB 스키마와 `app_config` 변경은 없다.
+
 ## 2026-07-24 키캡 상자 무료/광고 공통 주기 정책 반영
 
 - 일반 키캡 상자 API 실제 경로를 `GET /api/keycap-boxes/status`, `POST /api/keycap-boxes/open`, `GET /api/keycap-boxes/history`로 정정했다.

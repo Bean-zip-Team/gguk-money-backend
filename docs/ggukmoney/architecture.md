@@ -164,7 +164,9 @@ tap_batch
 - `(user_id, tap_session_id, sequence)`로 중복을 차단한다.
 - `request_hash`가 다르면 동일 순번 재사용으로 판단한다.
 - 유효 탭만 포인트와 상자 진행도에 반영한다.
-- 상자 진행도는 `user_tap_progress.cumulative_valid_tap_count`와 `user_tap_progress.next_box_target`을 원본으로 사용하고, 목표 도달 시 `keycap_box_account.box_balance`만 증가시킨다.
+- 포인트 진행도는 `user_tap_progress.cumulative_valid_tap_count`와 `user_tap_progress.next_point_target`을 원본으로 사용하며, 일일 탭 상한(`tap.validity.maxPerDay`) 안에서 인정된 탭만 누적한다.
+- 상자 진행도는 `user_tap_session.session_valid_tap_count`와 `user_tap_session.next_box_target`을 원본으로 사용하고, 목표 도달 시 `keycap_box_account.box_balance`만 증가시킨다. 세션은 시작 시각 기준 `tap.box.session.maxDurationSeconds`가 지나면 누적 탭과 목표를 초기화한다.
+- 상자 진행도는 일일 탭 상한과 무관하게 인정된 탭 전체를 누적한다. 상한 도달 이후에도 상자는 계속 지급되며, 획득 속도는 개봉 주기(무료 2회·광고 2회)가 제한한다.
 - 개별 탭 간격 원문은 기본 저장하지 않고 `interval_stats` JSONB에 통계만 저장한다.
 
 ## 상자 개봉과 키캡 조각
