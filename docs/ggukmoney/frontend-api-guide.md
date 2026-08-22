@@ -34,7 +34,7 @@
 ### Base Path
 
 ```text
-/api/v1
+/api
 ```
 
 ### 인증
@@ -123,7 +123,7 @@ const idempotencyKey = crypto.randomUUID();
 ### 요청 Header 예시
 
 ```http
-POST /api/v1/cashouts
+POST /api/cashouts
 Authorization: Bearer {accessToken}
 Content-Type: application/json
 Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
@@ -193,7 +193,7 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 
 ## 인증과 회원
 
-### 1. `POST /api/v1/auth/toss/login`
+### 1. `POST /api/auth/toss/login`
 
 상태: 구현 확인
 
@@ -228,13 +228,13 @@ Request 예시:
 9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
 10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
 
-온보딩 상자 개봉 API는 `POST /api/v1/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT와 공통 개봉 주기를 사용하는 로그인 사용자 전용 `POST /api/keycap-boxes/open`과 구분한다.
+온보딩 상자 개봉 API는 `POST /api/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT와 공통 개봉 주기를 사용하는 로그인 사용자 전용 `POST /api/keycap-boxes/open`과 구분한다.
 
 ### 회원가입 전 온보딩 키캡 상자 개봉
 
 상태: 구현 확인
 
-Endpoint: `POST /api/v1/onboarding/keycap-boxes/open`
+Endpoint: `POST /api/onboarding/keycap-boxes/open`
 
 인증: 없음. `Authorization` Header를 요구하지 않는다.
 
@@ -390,7 +390,7 @@ Success `200 OK`:
 }
 ```
 
-### 2. `POST /api/v1/auth/refresh`
+### 2. `POST /api/auth/refresh`
 
 상태: 구현 확인
 
@@ -476,7 +476,7 @@ Refresh Token을 Request Body로 전달해 Access/Refresh Token을 회전한다.
 }
 ```
 
-### 3. `POST /api/v1/auth/logout`
+### 3. `POST /api/auth/logout`
 
 상태: 구현 확인
 
@@ -543,7 +543,7 @@ Body 없이도 호출 가능하다.
 }
 ```
 
-### 4. `POST /api/v1/auth/logout-all`
+### 4. `POST /api/auth/logout-all`
 
 상태: 구현 확인
 
@@ -599,7 +599,7 @@ Body 없이도 호출 가능하다.
 }
 ```
 
-### 5. `POST /api/v1/auth/toss/unlink-webhook`
+### 5. `POST /api/auth/toss/unlink-webhook`
 
 상태: 구현 확인
 
@@ -666,7 +666,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 6. `GET /api/v1/members/me`
+### 6. `GET /api/members/me`
 
 상태: 구현 확인
 
@@ -751,7 +751,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 7. `PATCH /api/v1/members/me`
+### 7. `PATCH /api/members/me`
 
 상태: 구현 확인
 
@@ -850,7 +850,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 8. `POST /api/v1/members/me/withdrawal`
+### 8. `POST /api/members/me/withdrawal`
 
 상태: 구현 확인
 
@@ -917,7 +917,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ## 설정과 키캡
 
-### 9. `GET /api/v1/app-config`
+### 9. `GET /api/app-config`
 
 상태: 구현 확인
 
@@ -950,19 +950,25 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `data.boxPolicy` | Object | 상자 정책 |
 | `data.boosterPolicy` | Object | 부스터 정책 |
 | `data.pointPolicy.dailyLimit` | Number | 일일 포인트 적립 한도 |
-| `data.boxPolicy.baseRequiredTapCount` | Number | 누적 유효 탭 기준 상자 지급 기본 간격 |
+| `data.boxPolicy.sessionStepTapCounts` | Number[] | 상자 세션 내 1~5번째 상자까지 필요한 탭 수(순서대로) |
+| `data.boxPolicy.tailStepTapCount` | Number | 6번째 상자부터 이후 매 상자마다 필요한 탭 수 |
+| `data.boxPolicy.sessionMaxDurationSeconds` | Number | 상자 세션 최대 지속 시간(초, 하드캡) |
 | `data.boosterPolicy.durationSeconds` | Number | 부스터 지속 시간(초) |
 | `data.boosterPolicy.dailyLimit` | Number | 일일 부스터 활성화 제한 |
+
+값은 `app_config`에서 오므로 배포 없이 바뀔 수 있다. 아래는 2026-08-22 운영 기준이다.
 
 ```json
 {
   "success": true,
   "data": {
     "pointPolicy": {
-      "dailyLimit": 20
+      "dailyLimit": 150
     },
     "boxPolicy": {
-      "baseRequiredTapCount": 200
+      "sessionStepTapCounts": [25, 35, 50, 70, 100],
+      "tailStepTapCount": 180,
+      "sessionMaxDurationSeconds": 3600
     },
     "boosterPolicy": {
       "durationSeconds": 300,
@@ -1004,7 +1010,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 10. `GET /api/v1/keycaps`
+### 10. `GET /api/keycaps`
 
 상태: 구현 확인
 
@@ -1090,7 +1096,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 11. `GET /api/v1/keycaps/me`
+### 11. `GET /api/keycaps/me`
 
 상태: 구현 확인
 
@@ -1160,7 +1166,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 12. `PUT /api/v1/keycaps/{keycapId}/equip`
+### 12. `PUT /api/keycaps/{keycapId}/equip`
 
 상태: 구현 확인
 
@@ -1642,7 +1648,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ## 탭
 
-### 16. `POST /api/v1/taps/batches`
+### 16. `POST /api/tap/batches`
 
 상태: 계약 초안
 
@@ -1650,7 +1656,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 프론트가 모은 탭 배치를 서버에 제출한다. 같은 `tapSessionId + sequence`는 같은 논리적 요청으로 처리한다.
 
-> 계약 초안: 현재 브랜치에는 `TapController`와 탭 Request/Response DTO가 없어 실제 구현 Path와 최종 필드는 확인되지 않았다. 현재 MVP 상위 계약인 `/api/v1/taps/batches`를 기준으로 작성한다.
+> 계약 초안: 현재 브랜치에는 `TapController`와 탭 Request/Response DTO가 없어 실제 구현 Path와 최종 필드는 확인되지 않았다. 현재 MVP 상위 계약인 `/api/tap/batches`를 기준으로 작성한다.
 
 #### Request Header
 
@@ -1717,7 +1723,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 같은 `tapSessionId + sequence`와 같은 요청은 기존 결과를 반환한다. 같은 키에 다른 요청 내용이 들어오면 계약상 `409 IDEMPOTENCY_KEY_REUSED`다. 현재 공통 `ErrorCode`에는 아직 해당 코드가 없다.
 
-### 17. `GET /api/v1/taps/today`
+### 17. `GET /api/tap/today`
 
 상태: 계약 초안
 
@@ -1748,29 +1754,25 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 | name | type | description |
 |---|---|---|
 | `success` | Boolean | 요청 성공 여부 |
-| `data.tapDate` | String | KST 기준일 |
-| `data.validTapCount` | Number | 오늘 유효 탭 수 |
-| `data.pointEarnedAmount` | Number | 오늘 획득 포인트 |
-| `data.boxDroppedCount` | Number | 오늘 드롭된 상자 수 |
-| `data.pointProgressRemainder` | Number | 다음 포인트 적립 진행값 |
-| `data.dailyPointLimitReached` | Boolean | 일일 포인트 상한 여부 |
-| `data.currentBooster` | Object | 현재 부스터 |
+| `data.date` | String | KST 기준일 |
+| `data.validTapCount` | Number | **오늘 실제로 친 탭 수.** 일일 보상 상한(`tap.validity.maxPerDay`, 3000)과 무관하게 계속 증가한다 |
+| `data.pointEarnedToday` | Number | 오늘 획득 포인트 |
+| `data.remainingTapsToNextPoint` | Number | 다음 포인트 적립까지 남은 탭 수 |
+| `data.remainingTapsToNextBox` | Number | 다음 키캡 상자까지 남은 탭 수 |
+| `data.boxProgressTapCount` | Number | 현재 상자 진행 탭 수 |
+| `data.nextBoxRequiredTapCount` | Number | 다음 상자 획득에 필요한 탭 수 |
 
 ```json
 {
   "success": true,
   "data": {
-    "tapDate": "2026-07-11",
-    "validTapCount": 120,
-    "pointEarnedAmount": 3,
-    "boxDroppedCount": 1,
-    "pointProgressRemainder": 20,
-    "dailyPointLimitReached": false,
-    "currentBooster": {
-      "active": true,
-      "multiplier": 2.0,
-      "endsAt": "2026-07-11T07:00:00Z"
-    }
+    "date": "2026-08-22",
+    "validTapCount": 3763,
+    "pointEarnedToday": 150,
+    "remainingTapsToNextPoint": 12,
+    "remainingTapsToNextBox": 55,
+    "boxProgressTapCount": 45,
+    "nextBoxRequiredTapCount": 100
   }
 }
 ```
@@ -1791,7 +1793,7 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 
 ## 포인트
 
-### 18. `GET /api/v1/points/me`
+### 18. `GET /api/points/me`
 
 상태: 계약 초안
 
@@ -1851,7 +1853,7 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 }
 ```
 
-### 19. `GET /api/v1/points/ledger`
+### 19. `GET /api/points/ledger`
 
 상태: 계약 초안
 
@@ -1933,7 +1935,7 @@ Query Parameter 초안:
 
 ## 출금
 
-### 20. `GET /api/v1/cashouts/quote`
+### 20. `GET /api/cashouts/quote`
 
 상태: 계약 초안
 
@@ -1995,7 +1997,7 @@ Query Parameter 초안:
 }
 ```
 
-### 21. `POST /api/v1/cashouts`
+### 21. `POST /api/cashouts`
 
 상태: 계약 초안
 
@@ -2073,7 +2075,7 @@ Query Parameter 초안:
 
 `IDEMPOTENCY_KEY_REUSED`는 계약상 예정이며 현재 `ErrorCode` 구현이 필요하다.
 
-### 22. `GET /api/v1/cashouts`
+### 22. `GET /api/cashouts`
 
 상태: 계약 초안
 
@@ -2154,7 +2156,7 @@ Query Parameter 초안:
 }
 ```
 
-### 23. `GET /api/v1/cashouts/{cashoutId}`
+### 23. `GET /api/cashouts/{cashoutId}`
 
 상태: 계약 초안
 
@@ -2228,7 +2230,7 @@ Query Parameter 초안:
 
 ## 부스터
 
-### 24. `POST /api/v1/boosters/activate`
+### 24. `POST /api/boosters/activate`
 
 상태: 계약 초안
 
@@ -2307,7 +2309,7 @@ Query Parameter 초안:
 }
 ```
 
-### 25. `GET /api/v1/boosters/current`
+### 25. `GET /api/boosters/current`
 
 상태: 계약 초안
 
@@ -2404,7 +2406,7 @@ Query Parameter 초안:
 
 ## 남은 정합화 필요 항목
 
-1. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
+1. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
 2. 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
 3. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
 4. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.

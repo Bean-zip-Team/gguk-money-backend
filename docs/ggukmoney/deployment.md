@@ -153,6 +153,49 @@ UPDATE user_tap_daily SET total_valid_tap_count = valid_tap_count;  -- 백필이
 
 Flyway 도입이 다음 단계다. 현재 마이그레이션 도구가 없어 수동 SQL에 의존한다.
 
+## 서버 재구축 절차
+
+앱 코드와 달리 아래 인프라 설정은 CI 가 배포하지 않는다. 서버를 새로 만들면 사람이 한 번 넣어야 한다.
+`scripts/infra/` 에 실제 파일이 그대로 들어 있다.
+
+| 파일 | 설치 위치 | 없으면 |
+|---|---|---|
+| `zram-generator.conf` | `/etc/systemd/zram-generator.conf` | `switch.sh` 가 전환을 거부한다 |
+| `clickmoney@.service` | `/etc/systemd/system/clickmoney@.service` | 인스턴스를 띄울 수 없다 |
+| `nginx-clickmoney.conf` | `/etc/nginx/conf.d/clickmoney.conf` | upstream 이 없어 전환 대상이 없다 |
+| `clickmoney-deploy.sudoers` | `/etc/sudoers.d/clickmoney-deploy` (0440) | CI 가 비밀번호를 못 넣어 배포가 멈춘다 |
+
+```bash
+# 1) zram — blue-green 의 전제 조건
+sudo cp scripts/infra/zram-generator.conf /etc/systemd/zram-generator.conf
+sudo systemctl daemon-reload
+swapon --show          # /dev/zram0 이 PRIO 100 으로 보여야 한다
+
+# 2) systemd 템플릿 유닛
+sudo cp 'scripts/infra/clickmoney@.service' /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# 3) sudoers — 문법 검사를 반드시 먼저 통과시킬 것
+sudo visudo -c -f scripts/infra/clickmoney-deploy.sudoers
+sudo install -m 0440 -o root -g root scripts/infra/clickmoney-deploy.sudoers /etc/sudoers.d/clickmoney-deploy
+
+# 4) nginx — ssl_* 경로는 이 서버 기준이므로 certbot 발급 후에 반영한다
+sudo cp scripts/infra/nginx-clickmoney.conf /etc/nginx/conf.d/clickmoney.conf
+sudo nginx -t && sudo nginx -s reload
+
+# 5) 앱 디렉토리 뼈대
+mkdir -p ~/clickmoney/{config,releases,nginx,logs}
+printf 'upstream clickmoney {\n    server 127.0.0.1:8080 max_fails=0;\n}\n' > ~/clickmoney/nginx/upstream.conf
+# config/application.properties 는 시크릿이라 repo 에 없다. 별도로 확보해야 한다.
+
+# 6) 첫 릴리스는 Actions 의 Deploy develop 워크플로로 배포한다
+sudo systemctl enable clickmoney@8080
+```
+
+`clickmoney.service`(포트가 박힌 비템플릿 유닛)는 `clickmoney@.service` 로 대체됐다.
+서버에 남아 있다면 지우는 편이 안전하다 — `systemctl start clickmoney` 를 실행하면 8080 바인딩에 실패하고
+`Restart=on-failure` 로 10초마다 무한 재시도한다.
+
 ## 남은 작업
 
 | 항목 | 상태 | 비고 |

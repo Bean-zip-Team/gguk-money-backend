@@ -58,7 +58,7 @@
 - `KeycapBoxOpenServiceTest`: FREE 개봉, 자원 차감, 미보유 키캡 지급, 완성 전환, 멱등 재응답, 다른 요청 hash 차단, 광고 미지원, 후보 없음과 자원 미차감 확인
 - `KeycapBoxOpenRequestHasherTest`: `openMethod`, 정규화된 `adRewardId` 기반 SHA-256 Base64URL requestHash 확인
 - `KeycapRewardSelectorTest`: 후보 중 인덱스 기반 균등 랜덤 선택과 빈 후보 차단 확인
-- `KeycapControllerTest`: `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip` Access JWT 필수 정책과 `success/data` 응답 확인
+- `KeycapControllerTest`: `GET /api/keycaps`, `GET /api/keycaps/me`, `PUT /api/keycaps/{keycapId}/equip` Access JWT 필수 정책과 `success/data` 응답 확인
 - `KeycapBoxHistoryCursorCodecTest`: 상자 개봉 이력 cursor의 Base64URL 인코딩/디코딩, 빈 cursor, 잘못된 cursor의 `COMMON_VALIDATION_ERROR` 확인
 - `KeycapBoxQueryServiceTest`: `GET /api/keycap-boxes/status`의 read-only 상태 조립과 일반 계정 조회, `GET /api/keycap-boxes/history`의 빈 이력, 기본 size, `size + 1` 기반 `hasNext`, `nextCursor`, cursor 디코딩 전달, invalid size 차단, 조회 중 저장 미호출 확인
 - `KeycapBoxAccountTest`: 무료/광고 공통 1시간 주기 계산, 여러 주기 경과 시 기준점 전진, 상자 없음이어도 무료·광고 한도를 모두 사용하면 `charging=true`와 다음 충전 시각을 반환하는지, 상자 없이 한도가 남으면 `charging=false`인지, 잘못된 정책값 거부 확인
@@ -69,7 +69,7 @@
 - `BoosterGrantServiceTest`: 부스터 활성화, 중복 활성화 차단, 일일 제한, 현재 상태, 활성 배율 조회 확인
 - `TapPolicyConfigTest`: `app_config` row 누락 또는 Repository 조회 실패 시 기본값 fallback 확인
 - `AppConfigServiceTest`: `TapPolicyConfig` 공개값을 typed `AppConfigResponse`로 매핑하고 내부 설정 구조를 노출하지 않음 확인
-- `AppConfigControllerTest`: Access JWT 필수 정책, `GET /api/v1/app-config` 성공 응답 구조, 내부 설정 키와 원본 JSON 미노출 확인
+- `AppConfigControllerTest`: Access JWT 필수 정책, `GET /api/app-config` 성공 응답 구조, 내부 설정 키와 원본 JSON 미노출 확인
 
 ## 코드 존재·환경 문제로 실행 미확인
 

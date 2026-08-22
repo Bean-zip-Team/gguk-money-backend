@@ -51,12 +51,30 @@ grep -q zram0 /proc/swaps || fail "zram swap 이 비활성입니다. 전환을 �
 log "활성 $ACTIVE → 유휴 $IDLE 로 전환"
 log "current = $(readlink "$BASE/current")"
 
-running_on "$IDLE" && {
+if running_on "$IDLE"; then
   log "유휴 포트 $IDLE 가 점유 중입니다. 정리합니다."
   sudo systemctl stop "clickmoney@$IDLE" 2>/dev/null
   sleep 3
+
+  # systemd 가 유닛을 정지 처리했는데도 JVM 이 살아남아 포트를 잡고 있는 경우가 있다.
+  # (실측: 유닛은 Deactivated successfully 인데 프로세스가 PPID=1 로 잔존)
+  # 이 상태를 방치하면 다음 배포가 계속 막히므로 직접 정리한다.
+  if running_on "$IDLE"; then
+    orphan=$(pgrep -f -- "--server.port=$IDLE" | head -1)
+    if [ -n "$orphan" ]; then
+      log "유닛 정지 후에도 남은 프로세스를 종료한다 (pid=$orphan)"
+      kill -15 "$orphan" 2>/dev/null
+      for _ in $(seq 1 20); do
+        kill -0 "$orphan" 2>/dev/null || break
+        sleep 1
+      done
+      kill -9 "$orphan" 2>/dev/null
+      sleep 2
+    fi
+  fi
+
   running_on "$IDLE" && fail "$IDLE 를 비우지 못했습니다."
-}
+fi
 
 log "새 인스턴스 기동: clickmoney@$IDLE"
 sudo systemctl start "clickmoney@$IDLE" || fail "유닛 기동 실패"
@@ -110,11 +128,6 @@ sleep "$DRAIN_SECONDS"
 log "구 인스턴스 종료 (포트 $ACTIVE)"
 if systemctl is-active --quiet "clickmoney@$ACTIVE" 2>/dev/null; then
   sudo systemctl stop "clickmoney@$ACTIVE"
-elif systemctl is-active --quiet clickmoney 2>/dev/null; then
-  # 템플릿 이전 형태에서 넘어오는 첫 전환
-  sudo systemctl stop clickmoney
-  sudo systemctl disable clickmoney 2>/dev/null
-  log "구 clickmoney.service 정지·비활성화 (템플릿으로 이관 완료)"
 fi
 
 sudo systemctl enable "clickmoney@$IDLE" >/dev/null 2>&1
