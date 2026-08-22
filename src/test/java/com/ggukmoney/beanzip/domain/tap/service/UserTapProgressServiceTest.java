@@ -42,31 +42,33 @@ class UserTapProgressServiceTest {
     }
 
     @Test
-    void drawsGeneralCurveTargetWithinConfiguredVarianceWhenBelowDecelThreshold() {
+    void drawsTargetWithinConfiguredVariance() {
         TapPolicyConfig config = configWithGeneralCurve();
 
         for (int i = 0; i < 200; i++) {
-            int target = userTapProgressService.drawNextTarget(1000, 6, config);
+            int target = userTapProgressService.drawNextTarget(1000, config);
             assertThat(target - 1000).isBetween(270, 330);
         }
     }
 
+    /**
+     * 운영 정책(base 20, variance 25%)을 그대로 넣어 "평균 20탭당 1P, 실제로는 15~25탭" 이
+     * 유지되는지 못박는다. 감속 커브가 사라진 뒤로 이 간격은 하루 내내 균일하다.
+     */
     @Test
-    void drawsDecelCurveTargetWithinConfiguredVarianceWhenAtOrAboveDecelThreshold() {
+    void keepsLivePolicyIntervalBetween15And25Taps() {
         TapPolicyConfig config = mock(TapPolicyConfig.class);
-        when(config.decelThresholdPoints()).thenReturn(7);
-        when(config.curveDecelBase()).thenReturn(600);
-        when(config.curveDecelVariance()).thenReturn(0.05);
+        when(config.curveGeneralBase()).thenReturn(20);
+        when(config.curveGeneralVariance()).thenReturn(0.25);
 
-        for (int i = 0; i < 200; i++) {
-            int target = userTapProgressService.drawNextTarget(5000, 7, config);
-            assertThat(target - 5000).isBetween(570, 630);
+        for (int i = 0; i < 500; i++) {
+            int target = userTapProgressService.drawNextTarget(0, config);
+            assertThat(target).isBetween(15, 25);
         }
     }
 
     private TapPolicyConfig configWithGeneralCurve() {
         TapPolicyConfig config = mock(TapPolicyConfig.class);
-        when(config.decelThresholdPoints()).thenReturn(7);
         when(config.curveGeneralBase()).thenReturn(300);
         when(config.curveGeneralVariance()).thenReturn(0.10);
         return config;

@@ -88,6 +88,7 @@ main HEAD: e9a6abb73320e61869f91b14293e5da3d1fbe4f2
 | [architecture.md](architecture.md) | 13개 테이블 구조와 트랜잭션 경계 |
 | [table-spec.md](table-spec.md) | 컬럼, 제약, 인덱스 Source of Truth |
 | [api-contract.md](api-contract.md) | 전체 Endpoint와 상위 계약 |
+| [reward-policy.md](reward-policy.md) | 포인트·상자·개봉·출금 정책 수치와 설정 키 |
 | [frontend-api-guide.md](frontend-api-guide.md) | 프론트 연동용 상세 요청, 응답, 헤더, 재시도 규칙 |
 | [auth-lifecycle.md](auth-lifecycle.md) | 인증 생명주기 |
 | [data-infra.md](data-infra.md) | 트랜잭션, 동시성, Redis, 멱등성 |

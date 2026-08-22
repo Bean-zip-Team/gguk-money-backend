@@ -161,7 +161,7 @@ class TapBatchServiceTest {
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
 
-        when(userTapProgressService.drawNextTarget(eq(100L), eq(1), eq(tapPolicyConfig))).thenReturn(400);
+        when(userTapProgressService.drawNextTarget(eq(100L), eq(tapPolicyConfig))).thenReturn(400);
 
         PointAccount account = PointAccount.createFor(user);
         account.credit(1);

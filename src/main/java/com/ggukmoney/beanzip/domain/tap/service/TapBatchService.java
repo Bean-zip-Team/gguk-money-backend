@@ -115,7 +115,7 @@ public class TapBatchService {
                     pointLedgerService.recordCredit(account, user, creditAmount, CREDIT_REASON_TAP, idempotencyKey);
                     daily.incrementPointEarned();
 
-                    int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), daily.getPointEarnedAmount(), tapPolicyConfig);
+                    int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), tapPolicyConfig);
                     progress.advancePointTarget(nextTarget);
 
                     balance = account.getBalance();
