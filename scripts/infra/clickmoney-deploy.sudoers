@@ -1,0 +1,11 @@
+# /etc/sudoers.d/clickmoney-deploy  (0440 root:root)
+#
+# CI 가 비밀번호 없이 배포를 끝낼 수 있도록 필요한 명령만 허용한다.
+# 설치 전 반드시 문법 검사를 통과시킬 것:
+#   sudo visudo -c -f scripts/infra/clickmoney-deploy.sudoers
+#
+# nginx 설정 파일 자체는 이 목록에 없다. 활성 포트를 담은
+# ~/clickmoney/nginx/upstream.conf 를 minjae 가 소유하므로
+# 전환할 때 root 쓰기가 필요 없다. (nginx master 는 root 로 읽는다)
+
+minjae ALL=(root) NOPASSWD: /usr/bin/systemctl start clickmoney@*, /usr/bin/systemctl stop clickmoney@*, /usr/bin/systemctl restart clickmoney@*, /usr/bin/systemctl enable clickmoney@*, /usr/bin/systemctl disable clickmoney@*, /usr/bin/systemctl stop clickmoney, /usr/bin/systemctl restart clickmoney, /usr/bin/systemctl disable clickmoney, /usr/bin/systemctl is-active *, /usr/bin/systemctl status clickmoney*, /usr/bin/journalctl -u clickmoney*, /usr/sbin/nginx -t, /usr/sbin/nginx -s reload
