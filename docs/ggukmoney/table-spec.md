@@ -110,13 +110,15 @@ Unique:
 
 - `(config_key, effective_at)`
 
-설정 키 예시:
+설정 키 예시 (전체 목록은 운영 DB의 `app_config`가 원본이다):
 
-- `tap.point.dailyCap`
-- `tap.box.dropBase`
-- `tap.box.dropVariance`
-- `tap.booster.durationSeconds`
-- `tap.booster.dailyLimit`
+- `tap.validity.maxPerDay` — 일일 탭 보상 상한
+- `tap.point.dailyCap` — 일일 포인트 적립 상한
+- `tap.booster.durationSeconds`, `tap.booster.dailyLimit`
+- `tap.box.session.step1`~`step5`, `tap.box.session.tailStep` — 상자 세션 단계별 필요 탭 수
+- `keycapBox.openCycle.durationSeconds`, `keycapBox.freeOpen.limit`, `keycapBox.adOpen.limit`
+
+`tap.box.dropBase`, `tap.box.dropVariance`는 상자 세션 방식으로 바뀌면서 사라진 키다.
 
 ## 4. keycap
 

@@ -950,19 +950,25 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `data.boxPolicy` | Object | 상자 정책 |
 | `data.boosterPolicy` | Object | 부스터 정책 |
 | `data.pointPolicy.dailyLimit` | Number | 일일 포인트 적립 한도 |
-| `data.boxPolicy.baseRequiredTapCount` | Number | 누적 유효 탭 기준 상자 지급 기본 간격 |
+| `data.boxPolicy.sessionStepTapCounts` | Number[] | 상자 세션 내 1~5번째 상자까지 필요한 탭 수(순서대로) |
+| `data.boxPolicy.tailStepTapCount` | Number | 6번째 상자부터 이후 매 상자마다 필요한 탭 수 |
+| `data.boxPolicy.sessionMaxDurationSeconds` | Number | 상자 세션 최대 지속 시간(초, 하드캡) |
 | `data.boosterPolicy.durationSeconds` | Number | 부스터 지속 시간(초) |
 | `data.boosterPolicy.dailyLimit` | Number | 일일 부스터 활성화 제한 |
+
+값은 `app_config`에서 오므로 배포 없이 바뀔 수 있다. 아래는 2026-08-22 운영 기준이다.
 
 ```json
 {
   "success": true,
   "data": {
     "pointPolicy": {
-      "dailyLimit": 20
+      "dailyLimit": 150
     },
     "boxPolicy": {
-      "baseRequiredTapCount": 200
+      "sessionStepTapCounts": [25, 35, 50, 70, 100],
+      "tailStepTapCount": 180,
+      "sessionMaxDurationSeconds": 3600
     },
     "boosterPolicy": {
       "durationSeconds": 300,
