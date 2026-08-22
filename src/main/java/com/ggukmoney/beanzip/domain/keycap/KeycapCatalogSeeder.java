@@ -26,20 +26,20 @@ public class KeycapCatalogSeeder implements CommandLineRunner {
     private static final int SEASON = 1;
 
     private static final List<CatalogEntry> CATALOG = List.of(
-            new CatalogEntry("biscuit", "비스킷 키캡", Grade.RARE, "c01_biscuit_crack.m4a"),
-            new CatalogEntry("cheer", "치어 키캡", Grade.COMMON, "37_chime.m4a"),
-            new CatalogEntry("dolphin", "돌고래 키캡", Grade.COMMON, "35_droplet.m4a"),
-            new CatalogEntry("earth", "지구 키캡", Grade.EPIC, "c10_earth_thunder.m4a"),
-            new CatalogEntry("jellyfoot", "젤리발 키캡", Grade.RARE, "55_soft_tap.m4a"),
-            new CatalogEntry("lucky", "럭키 키캡", Grade.COMMON, "31_chord.m4a"),
-            new CatalogEntry("main", "메인 키캡", Grade.COMMON, "m05_black.m4a"),
-            new CatalogEntry("moon", "달 키캡", Grade.EPIC, "c04_nature_breeze.m4a"),
-            new CatalogEntry("pinkjelly", "핑크젤리 키캡", Grade.RARE, "36_wobble.m4a"),
-            new CatalogEntry("pudding", "푸딩 키캡", Grade.LEGENDARY, "c02_slime_squish.m4a"),
-            new CatalogEntry("redlego", "레드레고 키캡", Grade.COMMON, "m05_black.m4a"),
-            new CatalogEntry("yellowlego", "옐로우레고 키캡", Grade.COMMON, "m05_black.m4a"),
-            new CatalogEntry("radio", "라디오 키캡", Grade.LEGENDARY, "c07_earth_radio.m4a"),
-            new CatalogEntry("space", "스페이스 키캡", Grade.EPIC, "c11_elephant.m4a")
+            new CatalogEntry("biscuit", "비스킷 키캡", Grade.RARE, "c01_biscuit_crack.wav"),
+            new CatalogEntry("cheer", "치어 키캡", Grade.COMMON, "37_chime.wav"),
+            new CatalogEntry("dolphin", "돌고래 키캡", Grade.COMMON, "35_droplet.wav"),
+            new CatalogEntry("earth", "지구 키캡", Grade.EPIC, "c10_earth_thunder.wav"),
+            new CatalogEntry("jellyfoot", "젤리발 키캡", Grade.RARE, "55_soft_tap.wav"),
+            new CatalogEntry("lucky", "럭키 키캡", Grade.COMMON, "31_chord.wav"),
+            new CatalogEntry("main", "메인 키캡", Grade.COMMON, "m05_black.wav"),
+            new CatalogEntry("moon", "달 키캡", Grade.EPIC, "c04_nature_breeze.wav"),
+            new CatalogEntry("pinkjelly", "핑크젤리 키캡", Grade.RARE, "36_wobble.wav"),
+            new CatalogEntry("pudding", "푸딩 키캡", Grade.LEGENDARY, "c02_slime_squish.wav"),
+            new CatalogEntry("redlego", "레드레고 키캡", Grade.COMMON, "m05_black.wav"),
+            new CatalogEntry("yellowlego", "옐로우레고 키캡", Grade.COMMON, "m05_black.wav"),
+            new CatalogEntry("radio", "라디오 키캡", Grade.LEGENDARY, "c07_earth_radio.wav"),
+            new CatalogEntry("space", "스페이스 키캡", Grade.EPIC, "c11_elephant.wav")
     );
 
     private final KeycapRepository keycapRepository;
