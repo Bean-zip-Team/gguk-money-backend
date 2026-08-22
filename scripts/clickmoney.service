@@ -1,0 +1,43 @@
+# /etc/systemd/system/clickmoney.service
+#
+# 설치:
+#   sudo cp scripts/clickmoney.service /etc/systemd/system/clickmoney.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable clickmoney
+#
+# 기존 유닛과 달라진 점
+#   - jar 경로를 releases/<sha> 를 가리키는 current 심볼릭 링크로 바꿔 롤백을 링크 교체로 처리한다
+#   - 존재하지 않던 EnvironmentFile 지시자를 제거했다
+#   - 설정은 빌드 산출물이 아니라 config/ 에서 읽는다 (CI 가 만든 jar 에는 설정이 없다)
+#   - 메타스페이스 상한을 둬 폭주 시 OOM 대신 명확한 실패로 끝나게 한다
+
+[Unit]
+Description=Clickmoney Spring Boot API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minjae
+WorkingDirectory=/home/minjae/clickmoney
+
+ExecStart=/usr/bin/java \
+  -Xms128m -Xmx256m \
+  -XX:MaxMetaspaceSize=256m \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/home/minjae/clickmoney/logs \
+  -jar /home/minjae/clickmoney/current/app.jar \
+  --spring.config.additional-location=file:/home/minjae/clickmoney/config/
+
+# 앱이 죽으면 되살린다. 수동 nohup 운영에는 없던 안전망이다.
+Restart=on-failure
+RestartSec=10
+
+# SIGTERM 을 받은 Spring Boot 의 정상 종료 코드
+SuccessExitStatus=143
+
+# graceful shutdown 이 끝날 때까지 기다린다 (실측 종료 시간 약 2초)
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

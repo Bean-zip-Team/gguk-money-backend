@@ -1,0 +1,103 @@
+name: Deploy develop
+
+# 수동 실행 전용이다. push 트리거를 두지 않아 실수로 배포되지 않는다.
+# 자동 배포로 전환할 준비가 되면 아래 on: 에 push 트리거를 추가한다.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "verify = jar 무결성만 검사 (운영 무영향) / release = 실제 배포"
+        type: choice
+        options:
+          - verify
+          - release
+        default: verify
+
+concurrency:
+  group: deploy-develop
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_HOST: 52.79.67.165
+  DEPLOY_USER: minjae
+  REMOTE_BASE: /home/minjae/clickmoney
+  # push 트리거에는 inputs 가 없으므로 verify 로 떨어진다.
+  MODE: ${{ inputs.mode || 'verify' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "26"
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant Gradle permission
+        run: chmod +x gradlew
+
+      # 테스트는 Ggukmoney Backend CI 워크플로가 담당하므로 여기서는 패키징만 한다.
+      - name: Build jar
+        run: ./gradlew --no-daemon clean bootJar
+
+      - name: Resolve jar
+        id: jar
+        run: |
+          JAR=$(ls build/libs/*.jar | grep -v -- '-plain' | head -1)
+          [ -n "$JAR" ] || { echo "실행 가능한 jar 를 찾지 못했습니다."; exit 1; }
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$JAR" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          ls -la "$JAR"
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # 스크립트도 매번 함께 올려 repo 와 서버가 어긋나지 않게 한다.
+      - name: Upload jar and scripts
+        run: |
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes \
+            "${{ steps.jar.outputs.path }}" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/incoming.jar"
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes \
+            scripts/deploy.sh scripts/switch.sh scripts/rollback.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/"
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod +x $REMOTE_BASE/deploy.sh $REMOTE_BASE/switch.sh $REMOTE_BASE/rollback.sh"
+
+      - name: Verify checksum on server
+        run: |
+          REMOTE=$(ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sha256sum $REMOTE_BASE/incoming.jar | awk '{print \$1}'")
+          echo "local  = ${{ steps.jar.outputs.sha256 }}"
+          echo "remote = $REMOTE"
+          [ "$REMOTE" = "${{ steps.jar.outputs.sha256 }}" ] || {
+            echo "전송 중 체크섬이 달라졌습니다."; exit 1;
+          }
+
+      - name: Run deploy.sh
+        run: |
+          echo "mode = $MODE"
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash $REMOTE_BASE/deploy.sh $MODE ${{ github.sha }}"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

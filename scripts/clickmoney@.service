@@ -1,0 +1,38 @@
+# /etc/systemd/system/clickmoney@.service
+#
+# blue-green 용 템플릿 유닛. %i 가 포트다.
+#   sudo systemctl start clickmoney@8081
+#
+# 설치:
+#   sudo cp scripts/clickmoney@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#
+# 두 인스턴스가 겹치는 약 20초 동안 메모리 압력이 발생한다. zram 이 반드시 활성이어야 한다.
+# (EBS swapfile 로 밀리면 이후 full GC 가 약 20초 멈춘다 — 실측 19,669ms vs zram 1,021ms)
+
+[Unit]
+Description=Clickmoney Spring Boot API (port %i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minjae
+WorkingDirectory=/home/minjae/clickmoney
+
+ExecStart=/usr/bin/java \
+  -Xms128m -Xmx256m \
+  -XX:MaxMetaspaceSize=256m \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/home/minjae/clickmoney/logs \
+  -jar /home/minjae/clickmoney/current/app.jar \
+  --spring.config.additional-location=file:/home/minjae/clickmoney/config/ \
+  --server.port=%i
+
+Restart=on-failure
+RestartSec=10
+SuccessExitStatus=143
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
