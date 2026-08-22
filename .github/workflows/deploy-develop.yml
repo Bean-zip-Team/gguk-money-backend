@@ -13,13 +13,6 @@ on:
           - release
         default: verify
 
-  # TODO(병합 전 제거): workflow_dispatch 는 워크플로 파일이 기본 브랜치(main)에
-  # 있어야 트리거되므로, 병합 전 파이프라인 검증용으로만 두는 임시 트리거다.
-  # push 로 실행되면 mode 는 항상 verify 라 운영에 영향이 없다.
-  push:
-    branches:
-      - chore/deploy-pipeline
-
 concurrency:
   group: deploy-develop
   cancel-in-progress: false
