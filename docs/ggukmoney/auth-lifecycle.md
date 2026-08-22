@@ -227,7 +227,7 @@ WITHDRAWAL_TOSS
 Webhook 처리 결과는 Toss 식별정보 없이 다음 구조화 로그로 확인한다.
 
 ```bash
-sudo journalctl -fu clickmoney.service \
+sudo journalctl -fu clickmoney@8081.service   # 활성 포트는 ./switch.sh --status 로 확인 \
   | grep --line-buffered 'TOSS_UNLINK_WEBHOOK_PROCESSED'
 ```
 

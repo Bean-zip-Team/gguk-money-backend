@@ -1748,29 +1748,25 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 | name | type | description |
 |---|---|---|
 | `success` | Boolean | 요청 성공 여부 |
-| `data.tapDate` | String | KST 기준일 |
-| `data.validTapCount` | Number | 오늘 유효 탭 수 |
-| `data.pointEarnedAmount` | Number | 오늘 획득 포인트 |
-| `data.boxDroppedCount` | Number | 오늘 드롭된 상자 수 |
-| `data.pointProgressRemainder` | Number | 다음 포인트 적립 진행값 |
-| `data.dailyPointLimitReached` | Boolean | 일일 포인트 상한 여부 |
-| `data.currentBooster` | Object | 현재 부스터 |
+| `data.date` | String | KST 기준일 |
+| `data.validTapCount` | Number | **오늘 실제로 친 탭 수.** 일일 보상 상한(`tap.validity.maxPerDay`, 3000)과 무관하게 계속 증가한다 |
+| `data.pointEarnedToday` | Number | 오늘 획득 포인트 |
+| `data.remainingTapsToNextPoint` | Number | 다음 포인트 적립까지 남은 탭 수 |
+| `data.remainingTapsToNextBox` | Number | 다음 키캡 상자까지 남은 탭 수 |
+| `data.boxProgressTapCount` | Number | 현재 상자 진행 탭 수 |
+| `data.nextBoxRequiredTapCount` | Number | 다음 상자 획득에 필요한 탭 수 |
 
 ```json
 {
   "success": true,
   "data": {
-    "tapDate": "2026-07-11",
-    "validTapCount": 120,
-    "pointEarnedAmount": 3,
-    "boxDroppedCount": 1,
-    "pointProgressRemainder": 20,
-    "dailyPointLimitReached": false,
-    "currentBooster": {
-      "active": true,
-      "multiplier": 2.0,
-      "endsAt": "2026-07-11T07:00:00Z"
-    }
+    "date": "2026-08-22",
+    "validTapCount": 3763,
+    "pointEarnedToday": 150,
+    "remainingTapsToNextPoint": 12,
+    "remainingTapsToNextBox": 55,
+    "boxProgressTapCount": 45,
+    "nextBoxRequiredTapCount": 100
   }
 }
 ```

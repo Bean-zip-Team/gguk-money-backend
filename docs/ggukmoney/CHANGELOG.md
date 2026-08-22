@@ -1,5 +1,15 @@
 # 수정 내역
 
+## 2026-08-22 무중단 배포 전환과 오늘 탭 수 상한 분리
+
+- `/tap/today`, `/tap/batches` 응답의 `validTapCount`가 `total_valid_tap_count`를 반환하도록 바꿨다. 화면의 "오늘 탭"이 일일 보상 상한(3000)에서 멈추던 문제를 고친 것이다. 필드명을 유지해 클라이언트 변경 없이 반영된다.
+- `validTapCount` 컬럼 자체의 상한 로직은 그대로다. 포인트 적립 기준으로 계속 쓰인다.
+- 배포를 blue-green으로 바꿨다. nginx upstream 뒤에 8080/8081을 교대로 띄우며, 전환은 `nginx -s reload` 한 번이라 중단이 없다. 전환 중 요청 315건을 실측해 실패 0건을 확인했다.
+- 빌드를 GitHub Actions로 옮겼다. 서버에서 gradle을 돌리면 데몬이 RSS 312MB를 상주로 잡아 913MB 서버가 고갈된다.
+- `spring.jpa.hibernate.ddl-auto`를 `update`에서 `validate`로 바꿨다. `update`가 DDL 실패를 WARN으로 삼키고 기동해 26분 장애를 낸 뒤의 조치다.
+- 운영 DB에 `user_tap_daily.total_valid_tap_count`를 적용했다.
+- 상세는 [deployment.md](deployment.md)를 참고한다.
+
 ## 2026-08-22 상자 진행도를 일일 탭 보상 상한에서 분리
 
 - 상자 진행도(`user_tap_session.session_valid_tap_count`)를 일일 탭 상한 적용 후의 `creditedTaps`가 아니라 인정된 탭 전체(`acceptedCount`)로 누적하도록 변경했다.

@@ -110,11 +110,6 @@ sleep "$DRAIN_SECONDS"
 log "구 인스턴스 종료 (포트 $ACTIVE)"
 if systemctl is-active --quiet "clickmoney@$ACTIVE" 2>/dev/null; then
   sudo systemctl stop "clickmoney@$ACTIVE"
-elif systemctl is-active --quiet clickmoney 2>/dev/null; then
-  # 템플릿 이전 형태에서 넘어오는 첫 전환
-  sudo systemctl stop clickmoney
-  sudo systemctl disable clickmoney 2>/dev/null
-  log "구 clickmoney.service 정지·비활성화 (템플릿으로 이관 완료)"
 fi
 
 sudo systemctl enable "clickmoney@$IDLE" >/dev/null 2>&1
