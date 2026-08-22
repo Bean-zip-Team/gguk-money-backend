@@ -107,7 +107,9 @@ class TapBatchServiceTest {
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         when(pointAccountService.getBalance(userId)).thenReturn(100L);
         UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
+        // 실제 적립 경로는 두 카운트를 항상 함께 올린다.
         daily.addValidTaps(77);
+        daily.addTotalValidTaps(77);
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 50);
@@ -297,6 +299,8 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isZero();
         assertThat(daily.getValidTapCount()).isEqualTo(3000);
         assertThat(daily.getTotalValidTapCount()).isEqualTo(3200);
+        // 화면에 노출되는 값은 보상 상한에서 멈추지 않고 계속 증가해야 한다.
+        assertThat(response.validTapCount()).isEqualTo(3200);
         verify(userTapDailyService).save(daily);
         verify(userTapProgressService, never()).getForUser(any());
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);

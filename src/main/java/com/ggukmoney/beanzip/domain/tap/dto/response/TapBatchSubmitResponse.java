@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record TapBatchSubmitResponse(
         @Schema(description = "인정된 탭 수", example = "10")
         int acceptedCount,
-        @Schema(description = "오늘 누적 인정 탭 수", example = "42")
+        @Schema(description = "오늘 실제로 친 탭 수. 보상 상한(3000)과 무관하게 계속 증가한다.", example = "3763")
         int validTapCount,
         @Schema(description = "지급된 포인트", example = "1")
         int pointsAwarded,

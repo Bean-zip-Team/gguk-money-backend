@@ -39,9 +39,11 @@ public class TapStatusService {
         int remainingToNextPoint = (int) Math.max(progress.getNextPointTarget() - progress.getCumulativeValidTapCount(), 0);
         int remainingToNextBox = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
 
+        // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
+        // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
         return new TapTodayStatusResponse(
                 daily.getTapDate(),
-                daily.getValidTapCount(),
+                daily.getTotalValidTapCount(),
                 daily.getPointEarnedAmount(),
                 remainingToNextPoint,
                 remainingToNextBox,
