@@ -45,7 +45,9 @@ class TapStatusServiceTest {
         when(userService.getById(userId)).thenReturn(user);
 
         UserTapDaily daily = UserTapDaily.createFor(user, today);
+        // 실제 적립 경로는 두 카운트를 항상 함께 올린다.
         daily.addValidTaps(120);
+        daily.addTotalValidTaps(120);
         daily.incrementPointEarned();
         when(userTapDailyService.getOrCreate(eq(user), eq(today))).thenReturn(daily);
 

@@ -8,7 +8,7 @@ import java.time.LocalDate;
 public record TapTodayStatusResponse(
         @Schema(description = "기준 일자", example = "2026-07-15")
         LocalDate date,
-        @Schema(description = "오늘 인정된 탭 수", example = "120")
+        @Schema(description = "오늘 실제로 친 탭 수. 보상 상한(3000)과 무관하게 계속 증가한다.", example = "3763")
         int validTapCount,
         @Schema(description = "오늘 지급된 포인트", example = "12")
         int pointEarnedToday,

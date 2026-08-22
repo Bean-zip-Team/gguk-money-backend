@@ -144,7 +144,9 @@ public class TapBatchService {
         }
 
         boolean pointDailyCapReached = daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap();
-        return new TapBatchSubmitResponse(acceptedCount, daily.getValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached,
+        // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
+        // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
+        return new TapBatchSubmitResponse(acceptedCount, daily.getTotalValidTapCount(), pointsAwarded, boxesDropped, balance, pointDailyCapReached,
                 session.getSessionValidTapCount(), session.getNextBoxTarget());
     }
 
