@@ -179,7 +179,7 @@ class TapBatchServiceTest {
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
 
-        when(userTapProgressService.drawNextTarget(eq(100L), eq(1), eq(tapPolicyConfig))).thenReturn(400);
+        when(userTapProgressService.drawNextTarget(eq(100L), eq(tapPolicyConfig))).thenReturn(400);
 
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 100);
@@ -411,7 +411,7 @@ class TapBatchServiceTest {
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
 
         // 한 배치 안에서 목표를 세 번 넘기도록 다음 목표를 이어서 돌려준다.
-        when(userTapProgressService.drawNextTarget(eq(30L), anyInt(), eq(tapPolicyConfig)))
+        when(userTapProgressService.drawNextTarget(eq(30L), eq(tapPolicyConfig)))
                 .thenReturn(20, 30, 40);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 30);

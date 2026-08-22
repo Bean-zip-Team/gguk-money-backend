@@ -10,6 +10,14 @@
 - 호출부가 없어진 `KeycapBoxAccountService.addBoxes(UUID, int)`를 제거했다. 지급 루프를 계정 1회 조회로 바꾸면서 마지막 호출부가 사라졌다.
 - 지급 수량·원장 row·멱등 키는 변하지 않는다. DB 스키마와 `app_config` 변경은 없다.
 
+## 2026-08-23 보상 정책 문서화와 폐기 정책 잔재 제거
+
+- [reward-policy.md](reward-policy.md)를 새로 썼다. 그동안 포인트·상자 수치의 원본이 캡처와 코드에만 있어서, 값을 확인하려면 매번 `TapPolicyConfig`를 읽어야 했다.
+- 감속 커브를 코드에서 제거했다. 하루 적립량이 임계치(`tap.curve.decelThresholdPoints`)를 넘으면 지급 간격을 벌리는 로직으로, 정책에서 빠진 뒤 감속 쪽 값을 일반 커브와 같게 맞춰 무력화만 해둔 상태였다. **분기가 살아 있어 누가 `tap.curve.decel.base`를 건드리면 되살아나는 함정이었다.** 값이 동일했으므로 동작 변화는 없다.
+- 제거한 키: `tap.curve.decel.base`, `tap.curve.decel.variance`, `tap.curve.decelThresholdPoints`.
+- `TapConfigSeeder`가 부팅 시 "코드가 읽지 않는 정책 키"를 찾아 경고하도록 했다. 시더가 append-only라 코드에서 키를 없애도 DB 행이 남는데, 그 값을 고치면 반영되는 줄 오해하게 된다. 실제로 `tap.box.session.variance`가 이렇게 남아 "상자 간격에 랜덤이 있다"는 오해를 만들었다.
+- 운영 DB에서 유령 키 행을 정리했다: `tap.box.session.variance`, `tap.box.session.idleThresholdSeconds`(08-20 `008fe8e`에서 코드가 제거됨), 그리고 위 감속 키 3개.
+
 ## 2026-08-22 무중단 배포 전환과 오늘 탭 수 상한 분리
 
 - `/tap/today`, `/tap/batches` 응답의 `validTapCount`가 `total_valid_tap_count`를 반환하도록 바꿨다. 화면의 "오늘 탭"이 일일 보상 상한(3000)에서 멈추던 문제를 고친 것이다. 필드명을 유지해 클라이언트 변경 없이 반영된다.
