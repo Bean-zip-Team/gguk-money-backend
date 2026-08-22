@@ -59,20 +59,10 @@ log "대상: $TARGET"
 ln -sfn "$RELEASES/$TARGET" "$BASE/current"
 log "current 링크 교체 완료"
 
-if systemctl is-active --quiet clickmoney 2>/dev/null; then
-  sudo systemctl restart clickmoney
-  deadline=$((SECONDS + READY_TIMEOUT))
-  while [ $SECONDS -lt $deadline ]; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
-      "http://127.0.0.1:${PORT:-8080}/api/tap/today" 2>/dev/null || echo 000)
-    if [ "$code" != "000" ]; then
-      log "롤백 완료 — $TARGET 기동 확인 (http=$code)"
-      exit 0
-    fi
-    sleep 2
-  done
-  fail "재시작했으나 응답이 없습니다. journalctl -u clickmoney -n 50 을 확인하세요."
+# 롤백도 blue-green 으로 무중단 전환한다.
+if [ -x "$BASE/switch.sh" ]; then
+  bash "$BASE/switch.sh" || fail "전환 실패 — 기존 인스턴스가 계속 서비스 중입니다. current 는 $TARGET 을 가리킵니다."
+  log "롤백 완료 — $TARGET 무중단 적용"
 else
-  log "[SKIP] clickmoney.service 가 active 가 아니라 재시작을 생략합니다."
-  log "       링크만 바꿨습니다. 수동으로 재시작하세요."
+  log "[SKIP] switch.sh 가 없습니다. 링크만 바꿨으니 수동으로 재시작하세요."
 fi

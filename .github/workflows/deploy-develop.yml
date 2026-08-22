@@ -70,15 +70,17 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      # deploy.sh 도 매번 함께 올려 repo 와 서버 스크립트가 어긋나지 않게 한다.
-      - name: Upload jar and deploy script
+      # 스크립트도 매번 함께 올려 repo 와 서버가 어긋나지 않게 한다.
+      - name: Upload jar and scripts
         run: |
           scp -i ~/.ssh/id_deploy -o BatchMode=yes \
             "${{ steps.jar.outputs.path }}" \
             "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/incoming.jar"
           scp -i ~/.ssh/id_deploy -o BatchMode=yes \
-            scripts/deploy.sh \
-            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/deploy.sh"
+            scripts/deploy.sh scripts/switch.sh scripts/rollback.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/"
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod +x $REMOTE_BASE/deploy.sh $REMOTE_BASE/switch.sh $REMOTE_BASE/rollback.sh"
 
       - name: Verify checksum on server
         run: |
