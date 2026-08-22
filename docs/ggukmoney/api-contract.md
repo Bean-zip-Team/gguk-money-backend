@@ -6,7 +6,7 @@
 
 ## 공통 규칙
 
-- API Prefix: `/api/v1`
+- API Prefix: `/api`
 - 인증: `Authorization: Bearer {accessToken}`
 - 사용자 식별자: `app_user.id` UUID를 그대로 사용
 - 다른 외부 리소스 식별자: UUID `public_id` 또는 안정 코드
@@ -18,11 +18,11 @@
 
 | 상태 | API |
 |---|---|
-| 구현 확인 | `POST /api/v1/auth/toss/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`, `POST /api/v1/auth/toss/unlink-webhook`, `GET /api/v1/members/me`, `PATCH /api/v1/members/me`, `POST /api/v1/members/me/withdrawal`, `GET /api/v1/app-config`, `GET /api/v1/keycaps`, `GET /api/v1/keycaps/me`, `PUT /api/v1/keycaps/{keycapId}/equip`, `GET /api/keycap-boxes/status`, `POST /api/keycap-boxes/open`, `GET /api/keycap-boxes/history`, `POST /api/v1/onboarding/keycap-boxes/open`, `POST /api/v1/tap/batches`, `POST /api/v1/boosters/activate`, `GET /api/v1/boosters/current` |
+| 구현 확인 | `POST /api/auth/toss/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `POST /api/auth/logout-all`, `POST /api/auth/toss/unlink-webhook`, `GET /api/members/me`, `PATCH /api/members/me`, `POST /api/members/me/withdrawal`, `GET /api/app-config`, `GET /api/keycaps`, `GET /api/keycaps/me`, `PUT /api/keycaps/{keycapId}/equip`, `GET /api/keycap-boxes/status`, `POST /api/keycap-boxes/open`, `GET /api/keycap-boxes/history`, `POST /api/onboarding/keycap-boxes/open`, `POST /api/tap/batches`, `POST /api/boosters/activate`, `GET /api/boosters/current` |
 | 계약 초안 | 위 구현 확인 API를 제외한 MVP API |
 
 - Toss 로그인 API는 `onboardingAttemptId` 선택 필드를 받아 신규 사용자에게 서버 저장 온보딩 보상을 1회 귀속하고, 응답에 `onboardingRewardApplied`를 반환한다.
-- 탭 배치 API는 현재 코드에서 `/api/v1/tap/batches`로 구현되어 있다. 기존 문서의 `/api/v1/taps/batches` 표기는 후속 정합화가 필요하다.
+- 탭 배치 API 경로는 `/api/tap/batches`다. `taps`(복수)가 아니다.
 - 앱 설정 API는 Access JWT 필수이며 원본 `app_config` JSON이 아니라 공개 typed DTO만 반환한다.
 - 키캡 장착 API는 Access JWT 필수이며 Request Body 없이 `Keycap.publicId`를 Path Variable로 사용한다. 완성 키캡만 장착 가능하고 기존 장착 키캡은 같은 트랜잭션에서 해제한다.
 - 키캡 상자 상태 API는 Access JWT 필수이며 `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`, `boxProgressTapCount`, `nextBoxRequiredTapCount`를 반환한다. 화면에는 잔여 횟수를 직접 노출하지 않고, 상자 잔액과 공통 개봉 주기는 `keycap_box_account`, 상자 진행도는 `user_tap_progress`를 원본으로 사용한다.
@@ -35,37 +35,40 @@
 
 | Method | Path | 인증 | 핵심 저장소 | 설명 |
 |---|---|---|---|---|
-| POST | `/api/v1/auth/toss/login` | 불필요 | `app_user`, `auth_identity`, Redis | Toss 로그인, 회원 생성, JWT 발급. 신규 사용자의 `onboardingAttemptId` 보상 귀속 구현 확인 |
-| POST | `/api/v1/auth/refresh` | Refresh JWT | Redis | Access/Refresh Rotation |
-| POST | `/api/v1/auth/logout` | Access JWT | Redis | 현재 Session 로그아웃 |
-| POST | `/api/v1/auth/logout-all` | Access JWT | Redis | 모든 Session 로그아웃 |
-| POST | `/api/v1/auth/toss/unlink-webhook` | Basic Secret | `app_user`, `auth_identity`, Redis | Toss 연결 해제·탈퇴 Webhook |
-| GET | `/api/v1/members/me` | Access JWT | `app_user`, `user_keycap`, `point_account` | 내 정보 조회 |
-| PATCH | `/api/v1/members/me` | Access JWT | `app_user` | 닉네임 등 프로필 수정 |
-| POST | `/api/v1/members/me/withdrawal` | Access JWT + 새 Toss Code | `app_user`, `auth_identity`, Redis | Toss 연결 해제 후 회원 탈퇴 |
+| POST | `/api/auth/toss/login` | 불필요 | `app_user`, `auth_identity`, Redis | Toss 로그인, 회원 생성, JWT 발급. 신규 사용자의 `onboardingAttemptId` 보상 귀속 구현 확인 |
+| POST | `/api/auth/refresh` | Refresh JWT | Redis | Access/Refresh Rotation |
+| POST | `/api/auth/logout` | Access JWT | Redis | 현재 Session 로그아웃 |
+| POST | `/api/auth/logout-all` | Access JWT | Redis | 모든 Session 로그아웃 |
+| POST | `/api/auth/toss/unlink-webhook` | Basic Secret | `app_user`, `auth_identity`, Redis | Toss 연결 해제·탈퇴 Webhook |
+| GET | `/api/members/me` | Access JWT | `app_user`, `user_keycap`, `point_account` | 내 정보 조회 |
+| PATCH | `/api/members/me` | Access JWT | `app_user` | 닉네임 등 프로필 수정 |
+| POST | `/api/members/me/withdrawal` | Access JWT + 새 Toss Code | `app_user`, `auth_identity`, Redis | Toss 연결 해제 후 회원 탈퇴 |
+| GET | `/api/notifications/preferences` | Access JWT | `notification_preference` | 알림 수신 동의 목록 조회 |
+| PATCH | `/api/notifications/preferences` | Access JWT | `notification_preference` | 알림 유형별 수신 동의 변경 |
+| PATCH | `/api/notifications/preferences/enabled` | Access JWT | `notification_preference` | 알림 유형별 발송 on/off 변경 |
 
 ## 기능 API
 
 | 영역 | Method | Path | 핵심 테이블 |
 |---|---|---|---|
-| 설정 | GET | `/api/v1/app-config` | `app_config` |
-| 키캡 | GET | `/api/v1/keycaps` | `keycap` |
-| 키캡 | GET | `/api/v1/keycaps/me` | `user_keycap`, `keycap` |
-| 키캡 | PUT | `/api/v1/keycaps/{keycapId}/equip` | `user_keycap` |
+| 설정 | GET | `/api/app-config` | `app_config` |
+| 키캡 | GET | `/api/keycaps` | `keycap` |
+| 키캡 | GET | `/api/keycaps/me` | `user_keycap`, `keycap` |
+| 키캡 | PUT | `/api/keycaps/{keycapId}/equip` | `user_keycap` |
 | 상자 | GET | `/api/keycap-boxes/status` | `keycap_box_account`, `user_tap_progress` |
 | 상자 | POST | `/api/keycap-boxes/open` | `keycap_box_account`, `keycap_box_open`, `user_keycap`, `keycap` |
 | 상자 | GET | `/api/keycap-boxes/history` | `keycap_box_open`, `keycap` |
-| 온보딩 | POST | `/api/v1/onboarding/keycap-boxes/open` | `onboarding_reward_attempt`, `keycap`, `app_config` |
-| 탭 | POST | `/api/v1/taps/batches` | `tap_batch`, `user_tap_daily`, `point_account`, `point_ledger`, `keycap_box_account`, `booster_grant` |
-| 탭 | GET | `/api/v1/taps/today` | `user_tap_daily`, `booster_grant` |
-| 포인트 | GET | `/api/v1/points/me` | `point_account` |
-| 포인트 | GET | `/api/v1/points/ledger` | `point_ledger` |
-| 출금 | GET | `/api/v1/cashouts/quote` | `app_config`, `point_account` |
-| 출금 | POST | `/api/v1/cashouts` | `cashout_request`, `point_account`, `point_ledger` |
-| 출금 | GET | `/api/v1/cashouts` | `cashout_request` |
-| 출금 | GET | `/api/v1/cashouts/{cashoutId}` | `cashout_request` |
-| 부스터 | POST | `/api/v1/boosters/activate` | `booster_grant` |
-| 부스터 | GET | `/api/v1/boosters/current` | `booster_grant` |
+| 온보딩 | POST | `/api/onboarding/keycap-boxes/open` | `onboarding_reward_attempt`, `keycap`, `app_config` |
+| 탭 | POST | `/api/tap/batches` | `tap_batch`, `user_tap_daily`, `point_account`, `point_ledger`, `keycap_box_account`, `booster_grant` |
+| 탭 | GET | `/api/tap/today` | `user_tap_daily`, `booster_grant` |
+| 포인트 | GET | `/api/points/me` | `point_account` |
+| 포인트 | GET | `/api/points/ledger` | `point_ledger` |
+| 출금 | GET | `/api/cashouts/quote` | `app_config`, `point_account` |
+| 출금 | POST | `/api/cashouts` | `cashout_request`, `point_account`, `point_ledger` |
+| 출금 | GET | `/api/cashouts` | `cashout_request` |
+| 출금 | GET | `/api/cashouts/{cashoutId}` | `cashout_request` |
+| 부스터 | POST | `/api/boosters/activate` | `booster_grant` |
+| 부스터 | GET | `/api/boosters/current` | `booster_grant` |
 
 ## 로그인 응답 사용자 ID
 
@@ -132,7 +135,7 @@ Header 기반 멱등성과 업무 키 기반 멱등성을 구분한다. 자연 �
 
 상태: 온보딩 상자 개봉과 attempt 저장, Toss 신규 가입 보상 귀속 구현 확인.
 
-- 회원가입 전 온보딩 45탭을 서버가 검증한 뒤 `POST /api/v1/onboarding/keycap-boxes/open`에서 보상 결과를 생성하고, 서버 저장 기록에 연결된 `onboardingAttemptId`만 프론트에 반환한다.
+- 회원가입 전 온보딩 45탭을 서버가 검증한 뒤 `POST /api/onboarding/keycap-boxes/open`에서 보상 결과를 생성하고, 서버 저장 기록에 연결된 `onboardingAttemptId`만 프론트에 반환한다.
 - Request에는 `tapSessionId`, `tapEvents[].sequence`, `tapEvents[].occurredAt`만 받는다. `tapCount`, `keycapId`, `code`, `rewardPoint`, `completed`, `onboardingAttemptId`는 받지 않는다.
 - `tapEvents`는 정확히 45개이고 sequence 1~45가 중복·누락 없이 존재해야 하며 `occurredAt`은 sequence 순으로 감소하지 않아야 한다.
 - `tapSessionId`는 업무 멱등키다. 서버는 sequence 순으로 정렬한 tap 이벤트와 `tapSessionId`를 정규화해 `request_hash`를 만들고, 같은 `tapSessionId`와 같은 hash는 기존 결과를 반환하며 다른 hash는 `ONBOARDING_TAP_SESSION_REUSED`를 반환한다.
@@ -232,7 +235,7 @@ Header 기반 멱등성과 업무 키 기반 멱등성을 구분한다. 자연 �
 ## BEA-158 weekly ranking contract addendum
 
 - Actual endpoint: `GET /api/rankings/current`.
-- This endpoint intentionally does not use `/api/v1`; do not change global API prefix as part of BEA-158.
+- This endpoint intentionally does not use `/api`; do not change global API prefix as part of BEA-158.
 - Authentication: Access JWT required.
 - Query parameter: `limit`, default `50`, allowed range `1..100`. `limit=100` remains valid for backward compatibility; pagination/infinite scroll is not provided.
 - Source season: active `RankingType.WEEKLY` only. The query path must not call `ensureCurrentWeeklySeason`, rollover, backfill, Redis rebuild, DB save, or final-rank snapshot.

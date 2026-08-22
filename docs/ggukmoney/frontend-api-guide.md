@@ -34,7 +34,7 @@
 ### Base Path
 
 ```text
-/api/v1
+/api
 ```
 
 ### 인증
@@ -123,7 +123,7 @@ const idempotencyKey = crypto.randomUUID();
 ### 요청 Header 예시
 
 ```http
-POST /api/v1/cashouts
+POST /api/cashouts
 Authorization: Bearer {accessToken}
 Content-Type: application/json
 Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
@@ -193,7 +193,7 @@ Idempotency-Key: 4b9c7f7e-d914-4c91-9d1f-6f2e57e48298
 
 ## 인증과 회원
 
-### 1. `POST /api/v1/auth/toss/login`
+### 1. `POST /api/auth/toss/login`
 
 상태: 구현 확인
 
@@ -228,13 +228,13 @@ Request 예시:
 9. 온보딩 포인트와 완성 키캡을 신규 사용자에게 귀속한다.
 10. attempt를 claimed 상태로 전환해 재사용을 방지한다.
 
-온보딩 상자 개봉 API는 `POST /api/v1/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT와 공통 개봉 주기를 사용하는 로그인 사용자 전용 `POST /api/keycap-boxes/open`과 구분한다.
+온보딩 상자 개봉 API는 `POST /api/onboarding/keycap-boxes/open`으로 구현되어 있다. 이 API는 회원가입 전 공개 API이며 Access JWT와 공통 개봉 주기를 사용하는 로그인 사용자 전용 `POST /api/keycap-boxes/open`과 구분한다.
 
 ### 회원가입 전 온보딩 키캡 상자 개봉
 
 상태: 구현 확인
 
-Endpoint: `POST /api/v1/onboarding/keycap-boxes/open`
+Endpoint: `POST /api/onboarding/keycap-boxes/open`
 
 인증: 없음. `Authorization` Header를 요구하지 않는다.
 
@@ -390,7 +390,7 @@ Success `200 OK`:
 }
 ```
 
-### 2. `POST /api/v1/auth/refresh`
+### 2. `POST /api/auth/refresh`
 
 상태: 구현 확인
 
@@ -476,7 +476,7 @@ Refresh Token을 Request Body로 전달해 Access/Refresh Token을 회전한다.
 }
 ```
 
-### 3. `POST /api/v1/auth/logout`
+### 3. `POST /api/auth/logout`
 
 상태: 구현 확인
 
@@ -543,7 +543,7 @@ Body 없이도 호출 가능하다.
 }
 ```
 
-### 4. `POST /api/v1/auth/logout-all`
+### 4. `POST /api/auth/logout-all`
 
 상태: 구현 확인
 
@@ -599,7 +599,7 @@ Body 없이도 호출 가능하다.
 }
 ```
 
-### 5. `POST /api/v1/auth/toss/unlink-webhook`
+### 5. `POST /api/auth/toss/unlink-webhook`
 
 상태: 구현 확인
 
@@ -666,7 +666,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 6. `GET /api/v1/members/me`
+### 6. `GET /api/members/me`
 
 상태: 구현 확인
 
@@ -751,7 +751,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 7. `PATCH /api/v1/members/me`
+### 7. `PATCH /api/members/me`
 
 상태: 구현 확인
 
@@ -850,7 +850,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 8. `POST /api/v1/members/me/withdrawal`
+### 8. `POST /api/members/me/withdrawal`
 
 상태: 구현 확인
 
@@ -917,7 +917,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ## 설정과 키캡
 
-### 9. `GET /api/v1/app-config`
+### 9. `GET /api/app-config`
 
 상태: 구현 확인
 
@@ -1010,7 +1010,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 10. `GET /api/v1/keycaps`
+### 10. `GET /api/keycaps`
 
 상태: 구현 확인
 
@@ -1096,7 +1096,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 11. `GET /api/v1/keycaps/me`
+### 11. `GET /api/keycaps/me`
 
 상태: 구현 확인
 
@@ -1166,7 +1166,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 }
 ```
 
-### 12. `PUT /api/v1/keycaps/{keycapId}/equip`
+### 12. `PUT /api/keycaps/{keycapId}/equip`
 
 상태: 구현 확인
 
@@ -1648,7 +1648,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 ## 탭
 
-### 16. `POST /api/v1/taps/batches`
+### 16. `POST /api/tap/batches`
 
 상태: 계약 초안
 
@@ -1656,7 +1656,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 프론트가 모은 탭 배치를 서버에 제출한다. 같은 `tapSessionId + sequence`는 같은 논리적 요청으로 처리한다.
 
-> 계약 초안: 현재 브랜치에는 `TapController`와 탭 Request/Response DTO가 없어 실제 구현 Path와 최종 필드는 확인되지 않았다. 현재 MVP 상위 계약인 `/api/v1/taps/batches`를 기준으로 작성한다.
+> 계약 초안: 현재 브랜치에는 `TapController`와 탭 Request/Response DTO가 없어 실제 구현 Path와 최종 필드는 확인되지 않았다. 현재 MVP 상위 계약인 `/api/tap/batches`를 기준으로 작성한다.
 
 #### Request Header
 
@@ -1723,7 +1723,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 
 같은 `tapSessionId + sequence`와 같은 요청은 기존 결과를 반환한다. 같은 키에 다른 요청 내용이 들어오면 계약상 `409 IDEMPOTENCY_KEY_REUSED`다. 현재 공통 `ErrorCode`에는 아직 해당 코드가 없다.
 
-### 17. `GET /api/v1/taps/today`
+### 17. `GET /api/tap/today`
 
 상태: 계약 초안
 
@@ -1793,7 +1793,7 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 
 ## 포인트
 
-### 18. `GET /api/v1/points/me`
+### 18. `GET /api/points/me`
 
 상태: 계약 초안
 
@@ -1853,7 +1853,7 @@ KST 기준 오늘 탭 집계와 현재 부스터 정보를 조회한다.
 }
 ```
 
-### 19. `GET /api/v1/points/ledger`
+### 19. `GET /api/points/ledger`
 
 상태: 계약 초안
 
@@ -1935,7 +1935,7 @@ Query Parameter 초안:
 
 ## 출금
 
-### 20. `GET /api/v1/cashouts/quote`
+### 20. `GET /api/cashouts/quote`
 
 상태: 계약 초안
 
@@ -1997,7 +1997,7 @@ Query Parameter 초안:
 }
 ```
 
-### 21. `POST /api/v1/cashouts`
+### 21. `POST /api/cashouts`
 
 상태: 계약 초안
 
@@ -2075,7 +2075,7 @@ Query Parameter 초안:
 
 `IDEMPOTENCY_KEY_REUSED`는 계약상 예정이며 현재 `ErrorCode` 구현이 필요하다.
 
-### 22. `GET /api/v1/cashouts`
+### 22. `GET /api/cashouts`
 
 상태: 계약 초안
 
@@ -2156,7 +2156,7 @@ Query Parameter 초안:
 }
 ```
 
-### 23. `GET /api/v1/cashouts/{cashoutId}`
+### 23. `GET /api/cashouts/{cashoutId}`
 
 상태: 계약 초안
 
@@ -2230,7 +2230,7 @@ Query Parameter 초안:
 
 ## 부스터
 
-### 24. `POST /api/v1/boosters/activate`
+### 24. `POST /api/boosters/activate`
 
 상태: 계약 초안
 
@@ -2309,7 +2309,7 @@ Query Parameter 초안:
 }
 ```
 
-### 25. `GET /api/v1/boosters/current`
+### 25. `GET /api/boosters/current`
 
 상태: 계약 초안
 
@@ -2406,7 +2406,7 @@ Query Parameter 초안:
 
 ## 남은 정합화 필요 항목
 
-1. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/v1/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
+1. 현재 코드에는 `TapController`와 탭 DTO가 존재하며 실제 경로는 `/api/tap/batches`다. 이 문서의 탭 세부 섹션은 후속 정합화가 필요하다.
 2. 광고 검증 관련 ErrorCode의 최종 세부 정책은 구현 이슈에서 정합화가 필요하다.
 3. 목록 API의 `page/size` 또는 cursor 방식 확정이 필요하다.
 4. 계약 초안 API의 도메인별 에러 코드 확정이 필요하다.

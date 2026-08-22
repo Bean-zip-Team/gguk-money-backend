@@ -113,7 +113,7 @@ erDiagram
 
 1. 회원가입 전 온보딩을 시작한다.
 2. 온보딩 45탭을 수행한다.
-3. 프론트가 `POST /api/v1/onboarding/keycap-boxes/open`에 `tapSessionId`와 45개 `tapEvents`를 제출한다.
+3. 프론트가 `POST /api/onboarding/keycap-boxes/open`에 `tapSessionId`와 45개 `tapEvents`를 제출한다.
 4. 서버가 45탭 완료, sequence 연속성, 발생 시각 순서를 검증한다.
 5. 서버가 `app_config` 기준 보상 설정을 조회하고 보상 결과를 `onboarding_reward_attempt`에 저장한 뒤 `onboardingAttemptId`를 반환한다.
 6. 프론트는 `onboardingAttemptId`만 보관한다.
@@ -138,7 +138,7 @@ erDiagram
 
 ## 회원 탈퇴
 
-1. 인증된 사용자가 `POST /api/v1/members/me/withdrawal`을 호출한다.
+1. 인증된 사용자가 `POST /api/members/me/withdrawal`을 호출한다.
 2. Request Body의 새 Toss `authorizationCode`, `referrer`를 `generate-token`과 `login-me`로 검증한다.
 3. 응답 `userKey`가 현재 사용자의 `auth_identity.provider_user_id`와 같아야 한다.
 4. 같은 Toss Access Token으로 `remove-by-user-key`를 호출한다.

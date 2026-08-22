@@ -31,7 +31,7 @@
 ### Endpoint
 
 ```http
-POST /api/v1/auth/toss/login
+POST /api/auth/toss/login
 ```
 
 ### Request
@@ -82,7 +82,7 @@ POST /api/v1/auth/toss/login
 ## 2. Refresh
 
 ```http
-POST /api/v1/auth/refresh
+POST /api/auth/refresh
 ```
 
 - Refresh Token은 Header가 아니라 Request Body의 `refreshToken`으로 전달한다.
@@ -102,7 +102,7 @@ POST /api/v1/auth/refresh
 ## 3. 현재 Session 로그아웃
 
 ```http
-POST /api/v1/auth/logout
+POST /api/auth/logout
 Authorization: Bearer {accessToken}
 ```
 
@@ -126,7 +126,7 @@ Body 없이도 호출할 수 있다.
 ## 4. 전체 로그아웃
 
 ```http
-POST /api/v1/auth/logout-all
+POST /api/auth/logout-all
 Authorization: Bearer {accessToken}
 ```
 
@@ -140,7 +140,7 @@ Authorization: Bearer {accessToken}
 ### Endpoint
 
 ```http
-POST /api/v1/members/me/withdrawal
+POST /api/members/me/withdrawal
 Authorization: Bearer {accessToken}
 ```
 
@@ -181,7 +181,7 @@ Authorization: Bearer {accessToken}
 ## 6. Toss unlink Webhook
 
 ```http
-POST /api/v1/auth/toss/unlink-webhook
+POST /api/auth/toss/unlink-webhook
 Authorization: Basic {base64(secret)}
 ```
 
