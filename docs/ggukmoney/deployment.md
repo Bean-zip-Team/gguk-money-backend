@@ -134,18 +134,39 @@ Flyway 도입이 다음 단계다. 현재 마이그레이션 도구가 없어 �
 |---|---|---|
 | `ddl-auto=validate` | ✅ 완료 | 2026-08-22 적용 |
 | CI 빌드 파이프라인 | ✅ 완료 | `verify` 모드 검증 완료 |
-| 릴리스 디렉토리 + 롤백 | ✅ 스크립트 완료 | systemd 이관 후 동작 |
-| **systemd 이관** | ⬜ 미완 | 재시작 1회 필요. 아래 참고 |
-| Flyway 도입 | ⬜ 미완 | |
+| 릴리스 디렉토리 + 롤백 | ✅ 완료 | `current` → `releases/<sha>` |
+| systemd 이관 | ✅ 완료 | 2026-08-22 08:46Z, 중단 21.2초, 유실 요청 0건 |
+| 설정 외부화 | ✅ 완료 | 설정 미포함 jar 로 기동 검증 |
+| Flyway 도입 | ⬜ 미완 | 현재 마이그레이션은 수동 SQL |
 | actuator readiness | ⬜ 미완 | blue-green 재검토 시 필요 |
 | Swagger 프로덕션 비활성화 | ⬜ 미완 | `springdoc.api-docs.enabled=true` — API 문서가 공개돼 있다 |
+| 배포 직후 낙관적 락 충돌 | ⬜ 미완 | 아래 참고 |
 
-### systemd 이관이 필요한 이유
+### 배포 직후 낙관적 락 충돌
 
-현재 앱은 SSH 셸에서 띄운 **수동 nohup 프로세스**다. 그런데 `clickmoney.service`가 **enabled 상태로 남아 있다**(2026-08-18 이후 inactive).
+2026-08-22 07:16 재배포 직후 실제 500이 1건 났다.
 
-- 서버를 재부팅하면 systemd가 앱을 띄우는데, 수동 실행과 설정 소스가 다르다
-- `systemctl start clickmoney`를 실행하면 8080 바인딩 실패 → `Restart=on-failure`로 10초마다 무한 재시도
-- 수동 프로세스라 크래시 시 되살아나지 않는다
+```
+07:16:49  ObjectOptimisticLockingFailureException
+          Unexpected row count (expected 1 but was 0) [update user_tap_session ...]
+```
 
-`scripts/clickmoney.service`가 교정된 유닛이다. 이관은 배포 창에서 재시작 1회로 끝난다.
+기동 완료 2초 뒤, **1초 안에 8건이 몰린 구간**에서 발생했다. 중단 동안 대기하던 클라이언트가 한꺼번에 재시도하는 thundering herd다.
+커밋 `04e7906`에서 유사한 충돌을 한 번 수정했으나 남은 경로가 있다. 배포 창(02~04시)을 지키면 몰릴 클라이언트 자체가 없어 완화되지만, 근본 수정이 필요하다.
+
+## 이관 기록 (2026-08-22)
+
+수동 nohup → systemd 전환을 08:46Z(17:46 KST)에 수행했다.
+
+| 항목 | 값 |
+|---|---|
+| 중단 시간 | **21.2초** (08:46:02.3 kill → 08:46:23.5 Tomcat 기동) |
+| 유실된 실사용자 요청 | **0건** (nginx 502 3건은 전부 확인용 curl) |
+| 기동 시간 | 18.5초 |
+| 전환 후 | `MainPID=849789`, `parent=1`, RSS 361MB, 응답 20~28ms |
+
+전환과 함께 정리한 것:
+
+- 7일간 정지 상태로 방치돼 있던 root `vim /etc/systemd/system/clickmoney.service` 종료
+- `app.pid` 제거 (PID 관리 주체가 systemd 로 이동)
+- `/etc/sudoers.d/clickmoney-deploy` 추가 — CI 가 비밀번호 없이 `systemctl restart clickmoney` 를 실행할 수 있어야 배포가 자동화된다
