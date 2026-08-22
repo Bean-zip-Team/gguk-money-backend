@@ -170,7 +170,7 @@ public class TapBatchService {
             PointAccount pointAccount,
             KeycapBoxAccount boxAccount
     ) {
-        int remainingToNextPoint = (int) Math.max(progress.getNextPointTarget() - progress.getCumulativeValidTapCount(), 0);
+        int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
         int remainingToNextBox = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
         KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot = boxAccount.calculateOpenCycleSnapshot(
                 now,

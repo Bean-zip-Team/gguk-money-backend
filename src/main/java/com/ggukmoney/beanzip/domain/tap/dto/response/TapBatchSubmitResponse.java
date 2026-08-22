@@ -35,7 +35,7 @@ public record TapBatchSubmitResponse(
         LocalDate date,
         @Schema(description = "오늘 지급된 포인트", example = "12")
         int pointEarnedToday,
-        @Schema(description = "다음 포인트까지 남은 탭 수", example = "10")
+        @Schema(description = "다음 포인트까지 남은 탭 수. 0이면 오늘은 더 이상 지급되지 않는다(포인트 상한 또는 일일 탭 상한 도달). 상한 이전에는 항상 1 이상이다.", example = "10")
         int remainingTapsToNextPoint,
         @Schema(description = "다음 키캡 상자까지 남은 탭 수", example = "55")
         int remainingTapsToNextBox,

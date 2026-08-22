@@ -30,13 +30,6 @@ public class KeycapBoxAccountService {
         return keycapBoxAccountRepository.save(account);
     }
 
-    public KeycapBoxAccount addBoxes(UUID userId, int count) {
-        KeycapBoxAccount account = keycapBoxAccountRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
-        account.addBoxes(count);
-        return keycapBoxAccountRepository.save(account);
-    }
-
     /**
      * 마지막 충전 이후 경과한 시간만큼 무료 개봉권을 충전하고 저장한다. 비관적 락으로 조회해
      * 동시 요청(상태 조회·개봉 시도)이 겹쳐도 충전 계산이 꼬이지 않는다.

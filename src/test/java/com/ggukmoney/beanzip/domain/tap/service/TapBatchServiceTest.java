@@ -100,6 +100,9 @@ class TapBatchServiceTest {
         lenient().when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(Duration.ofSeconds(60));
         lenient().when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
         lenient().when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
+        // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
+        lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
+        lenient().when(tapPolicyConfig.pointDailyCap()).thenReturn(150);
     }
 
     @Test
@@ -239,7 +242,6 @@ class TapBatchServiceTest {
         // 계정은 루프 밖에서 한 번만 조회·저장한다.
         verify(keycapBoxAccountService).getForUser(userId);
         verify(keycapBoxAccountService).save(boxAccount);
-        verify(keycapBoxAccountService, never()).addBoxes(any(), anyInt());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapSessionService).save(session);
     }

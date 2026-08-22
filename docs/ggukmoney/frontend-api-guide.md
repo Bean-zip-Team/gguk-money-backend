@@ -1704,7 +1704,7 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `data.nextBoxRequiredTapCount` | Number | 다음 상자 획득 필요 탭 수 |
 | `data.date` | String | 기준 일자 |
 | `data.pointEarnedToday` | Number | 오늘 지급된 포인트 누계 |
-| `data.remainingTapsToNextPoint` | Number | 다음 포인트까지 남은 탭 수 |
+| `data.remainingTapsToNextPoint` | Number | 다음 포인트까지 남은 탭 수. `0`이면 오늘은 더 지급되지 않는다 |
 | `data.remainingTapsToNextBox` | Number | 다음 상자까지 남은 탭 수 |
 | `data.boxBalance` | Number | 처리 후 보유 키캡 상자 수 |
 | `data.canFreeOpen` | Boolean | 상자 보유 + 무료 개봉 한도 잔여 여부 |
@@ -1713,6 +1713,8 @@ Toss 서버가 호출하는 연결 해제 Webhook이다. 프론트 앱이 직접
 | `data.nextRechargeAt` | String | `charging=true`일 때 다음 공통 충전 시각. 아니면 `null` |
 
 개봉 가능 여부(`boxBalance`, `canFreeOpen`, `canAdOpen`)는 이번 배치의 상자 지급까지 반영한 값이다.
+
+`remainingTapsToNextPoint`는 상한 이전에는 항상 1 이상이다. `0`은 오늘 더 이상 포인트가 지급되지 않는다는 뜻이며, 포인트 상한(`tap.point.dailyCap`)과 일일 탭 상한(`tap.validity.maxPerDay`) 두 경우 모두 `0`이다. 이 값이 줄어드는 것을 근거로 지급을 예고하는 화면은 `0`을 "곧 지급"으로 해석하지 않아야 한다. 같은 규칙이 `GET /api/tap/today`에도 적용된다.
 
 ```json
 {

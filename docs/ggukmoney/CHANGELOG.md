@@ -6,6 +6,8 @@
 - 포인트 지급 루프가 반복마다 `PointAccount`를 다시 조회·저장하던 것을 계정 1회 조회로 바꿨다. `findByUserId`는 파생 쿼리라 1차 캐시로 대체되지 않고 매번 SELECT를, 직전 수정 때문에 auto-flush UPDATE를 함께 발생시켰다.
 - 상자 지급 루프도 같은 이유로 `KeycapBoxAccount` 1회 조회로 바꿨다. 한 배치에서 상자가 3개 드롭되면 SELECT 3회와 UPDATE 3회가 나가던 구간이다.
 - 멱등 재전송 응답의 `validTapCount`가 상한이 걸린 `valid_tap_count`를 반환하던 것을 `total_valid_tap_count`로 맞췄다. 재전송 때만 화면의 "오늘 탭"이 3000에서 멈춰 보이던 불일치를 없앤 것이다.
+- `remainingTapsToNextPoint`가 오늘 더 이상 포인트를 줄 수 없는 상태에서 항상 `0`을 반환하도록 정리했다. 포인트 상한에서는 `0`이, 일일 탭 상한에서는 진행도가 멈춘 시점의 양수가 고정돼 둘 다 "곧 지급된다"로 읽히던 값이다. `/tap/today`와 배치 응답에 같은 규칙을 적용했다. 필드 타입과 이름은 그대로다.
+- 호출부가 없어진 `KeycapBoxAccountService.addBoxes(UUID, int)`를 제거했다. 지급 루프를 계정 1회 조회로 바꾸면서 마지막 호출부가 사라졌다.
 - 지급 수량·원장 row·멱등 키는 변하지 않는다. DB 스키마와 `app_config` 변경은 없다.
 
 ## 2026-08-22 무중단 배포 전환과 오늘 탭 수 상한 분리

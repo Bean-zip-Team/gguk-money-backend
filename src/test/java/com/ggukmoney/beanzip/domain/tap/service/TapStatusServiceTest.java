@@ -7,6 +7,7 @@ import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -17,7 +18,9 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +41,14 @@ class TapStatusServiceTest {
 
     private final UUID userId = UUID.randomUUID();
     private final LocalDate today = LocalDate.of(2026, 7, 21);
+
+    @BeforeEach
+    void useRealRemainingTapsCalculation() {
+        // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
+        lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
+        lenient().when(tapPolicyConfig.pointDailyCap()).thenReturn(150);
+        lenient().when(tapPolicyConfig.maxPerDay()).thenReturn(3000);
+    }
 
     @Test
     void returnsTodayCountsAndRemainingTapsToNextTargets() {
@@ -92,5 +103,29 @@ class TapStatusServiceTest {
         assertThat(response.remainingTapsToNextBox()).isZero();
         assertThat(response.boxProgressTapCount()).isEqualTo(150);
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(100);
+    }
+
+    @Test
+    void reportsZeroRemainingTapsWhenNoMorePointsCanBeAwardedToday() {
+        AppUser user = mock(AppUser.class);
+        when(userService.getById(userId)).thenReturn(user);
+
+        // 일일 탭 상한에 걸리면 진행도가 멈춰 목표와의 차이가 양수로 고정된다.
+        UserTapDaily daily = UserTapDaily.createFor(user, today);
+        daily.addValidTaps(3000);
+        daily.addTotalValidTaps(3000);
+        when(userTapDailyService.getOrCreate(eq(user), eq(today))).thenReturn(daily);
+
+        UserTapProgress progress = UserTapProgress.createFor(user, 3010);
+        progress.addValidTaps(3000);
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 200);
+        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
+
+        TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
+
+        // 10탭 남은 것처럼 보이면 안 된다. 오늘은 더 지급되지 않는다.
+        assertThat(response.remainingTapsToNextPoint()).isZero();
     }
 }
