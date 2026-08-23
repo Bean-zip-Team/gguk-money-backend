@@ -36,7 +36,7 @@ public class TapStatusService {
         UserTapProgress progress = userTapProgressService.getForUser(userId);
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig);
 
-        int remainingToNextPoint = (int) Math.max(progress.getNextPointTarget() - progress.getCumulativeValidTapCount(), 0);
+        int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
         int remainingToNextBox = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
 
         // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
