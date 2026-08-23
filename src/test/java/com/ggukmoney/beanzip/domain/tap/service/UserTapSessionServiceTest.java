@@ -34,7 +34,7 @@ class UserTapSessionServiceTest {
         assertThat(session.getNextBoxTarget()).isEqualTo(25); // step1=25, fixed
         assertThat(session.getSessionValidTapCount()).isZero();
         assertThat(session.getBoxesDroppedInSession()).isZero();
-        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(3600));
+        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(1800));
     }
 
     @Test
@@ -64,14 +64,14 @@ class UserTapSessionServiceTest {
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
 
         assertThat(session.getSessionStartedAt()).isEqualTo(now);
-        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(3600));
+        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(1800));
     }
 
     @Test
     void getOrCreateActiveSessionReturnsExistingSessionWithoutWritingWhenNotExpired() {
         AppUser user = stubUser();
         Instant startedAt = now.minusSeconds(600);
-        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(3600), 100);
+        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(1800), 100);
         existing.addValidTaps(40);
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
 
@@ -84,12 +84,12 @@ class UserTapSessionServiceTest {
     }
 
     @Test
-    void getOrCreateActiveSessionResetsWhenHardCapExceeded() {
+    void getOrCreateActiveSessionResetsWhenIdleTimeoutExceeded() {
         AppUser user = stubUser();
         Instant startedAt = now.minusSeconds(7200);
-        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(3600), 999);
+        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(1800), 999);
         existing.addValidTaps(500);
-        existing.recordActivity(now.minusSeconds(10));
+        existing.recordActivity(now.minusSeconds(1801), 1800); // 마지막 탭이 유휴 시간보다 오래됐다
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
         when(userTapSessionRepository.save(any(UserTapSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -97,39 +97,103 @@ class UserTapSessionServiceTest {
 
         assertThat(session.getSessionValidTapCount()).isZero();
         assertThat(session.getBoxesDroppedInSession()).isZero();
+        assertThat(session.getNextBoxTarget()).isEqualTo(25); // 싼 스텝부터 다시 시작
         assertThat(session.getSessionStartedAt()).isEqualTo(now);
-        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(3600));
+        assertThat(session.getSessionExpiresAt()).isEqualTo(now.plusSeconds(1800));
     }
 
     @Test
-    void getOrCreateActiveSessionKeepsProgressWhenIdleButWithinHardCap() {
+    void getOrCreateActiveSessionKeepsProgressWhileTappingRegardlessOfSessionAge() {
         AppUser user = stubUser();
-        Instant startedAt = now.minusSeconds(300);
-        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(3600), 999);
-        existing.addValidTaps(200);
-        existing.recordActivity(now.minusSeconds(1801)); // long idle, but hard cap not reached
+        Instant startedAt = now.minusSeconds(7200); // 2시간 전에 시작했지만
+        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(1800), 999);
+        existing.addValidTaps(500);
+        existing.recordActivity(now.minusSeconds(60), 1800); // 1분 전까지 계속 쳤다
+
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
 
         UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
 
-        assertThat(session.getSessionValidTapCount()).isEqualTo(200);
+        assertThat(session.getSessionValidTapCount()).isEqualTo(500);
+        assertThat(session.getNextBoxTarget()).isEqualTo(999); // tailStep 유지, 싼 사다리 재시작 없음
         assertThat(session.getSessionStartedAt()).isEqualTo(startedAt);
-        assertThat(session.getLastActivityAt()).isEqualTo(now.minusSeconds(1801));
         verify(userTapSessionRepository, never()).save(any());
+    }
+
+    @Test
+    void getOrCreateActiveSessionDoesNotExtendIdleDeadlineOnReadOnlyAccess() {
+        AppUser user = stubUser();
+        Instant startedAt = now.minusSeconds(600);
+        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(1800), 100);
+        existing.addValidTaps(40);
+        when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
+
+        userTapSessionService.getOrCreateActiveSession(user, now, sessionConfig());
+
+        // 조회만으로 마감이 밀리면 상태 폴링으로 유휴 만료를 영원히 피할 수 있다.
+        assertThat(existing.getSessionExpiresAt()).isEqualTo(startedAt.plusSeconds(1800));
+        assertThat(existing.getLastActivityAt()).isEqualTo(startedAt);
+    }
+
+    @Test
+    void recordActivitySlidesIdleDeadlineFromLastTap() {
+        AppUser user = stubUser();
+        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(1800), 25);
+
+        Instant tappedAt = now.plusSeconds(1500);
+        session.recordActivity(tappedAt, 1800);
+
+        assertThat(session.getLastActivityAt()).isEqualTo(tappedAt);
+        assertThat(session.getSessionExpiresAt()).isEqualTo(tappedAt.plusSeconds(1800));
+        assertThat(session.isExpired(tappedAt.plusSeconds(1799))).isFalse();
+        assertThat(session.isExpired(tappedAt.plusSeconds(1800))).isTrue();
     }
 
     @Test
     void getBoxProgressReturnsSnapshotFromSession() {
         AppUser user = stubUser();
-        UserTapSession existing = UserTapSession.createFor(user, now, now.plusSeconds(3600), 100);
+        UserTapSession existing = UserTapSession.createFor(user, now, now.plusSeconds(1800), 100);
         existing.addValidTaps(45);
         when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
-        when(userTapSessionRepository.save(any(UserTapSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         BoxProgressSnapshot snapshot = userTapSessionService.getBoxProgress(user, now, sessionConfig());
 
         assertThat(snapshot.cumulativeValidTapCount()).isEqualTo(45);
         assertThat(snapshot.nextBoxTarget()).isEqualTo(100);
+        verify(userTapSessionRepository, never()).save(any());
+    }
+
+    @Test
+    void getBoxProgressShowsPostResetValuesWithoutPersistingWhenIdleExpired() {
+        AppUser user = stubUser();
+        Instant startedAt = now.minusSeconds(7200);
+        UserTapSession existing = UserTapSession.createFor(user, startedAt, startedAt.plusSeconds(1800), 999);
+        existing.addValidTaps(500);
+        existing.recordActivity(now.minusSeconds(1801), 1800);
+        when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.of(existing));
+
+        BoxProgressSnapshot snapshot = userTapSessionService.getBoxProgress(user, now, sessionConfig());
+
+        // 화면에는 리셋 이후 값을 보여준다. 다음 탭이 확정할 값과 같다.
+        assertThat(snapshot.cumulativeValidTapCount()).isZero();
+        assertThat(snapshot.nextBoxTarget()).isEqualTo(25);
+
+        // 그러나 저장하지 않는다. 저장하면 탭 배치와 같은 행을 동시에 갱신해 낙관적 락이 깨진다.
+        verify(userTapSessionRepository, never()).save(any());
+        assertThat(existing.getSessionValidTapCount()).isEqualTo(500);
+        assertThat(existing.getNextBoxTarget()).isEqualTo(999);
+    }
+
+    @Test
+    void getBoxProgressReturnsFreshLadderWithoutCreatingSessionWhenNoneExists() {
+        AppUser user = stubUser();
+        when(userTapSessionRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
+
+        BoxProgressSnapshot snapshot = userTapSessionService.getBoxProgress(user, now, sessionConfig());
+
+        assertThat(snapshot.cumulativeValidTapCount()).isZero();
+        assertThat(snapshot.nextBoxTarget()).isEqualTo(25);
+        verify(userTapSessionRepository, never()).save(any()); // 조회가 세션을 만들지 않는다
     }
 
     private AppUser stubUser() {
@@ -146,7 +210,7 @@ class UserTapSessionServiceTest {
         when(config.boxSessionStep4()).thenReturn(70);
         when(config.boxSessionStep5()).thenReturn(100);
         when(config.boxSessionTailStep()).thenReturn(180);
-        when(config.boxSessionMaxDurationSeconds()).thenReturn(3600);
+        when(config.boxSessionIdleTimeoutSeconds()).thenReturn(1800);
         return config;
     }
 }

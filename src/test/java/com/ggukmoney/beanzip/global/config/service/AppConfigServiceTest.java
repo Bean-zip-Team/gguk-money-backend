@@ -22,7 +22,7 @@ class AppConfigServiceTest {
         when(tapPolicyConfig.boxSessionStep4()).thenReturn(70);
         when(tapPolicyConfig.boxSessionStep5()).thenReturn(100);
         when(tapPolicyConfig.boxSessionTailStep()).thenReturn(180);
-        when(tapPolicyConfig.boxSessionMaxDurationSeconds()).thenReturn(3600);
+        when(tapPolicyConfig.boxSessionIdleTimeoutSeconds()).thenReturn(1800);
         when(tapPolicyConfig.boosterDurationSeconds()).thenReturn(300);
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
 
@@ -31,7 +31,7 @@ class AppConfigServiceTest {
         assertThat(response.pointPolicy().dailyLimit()).isEqualTo(150);
         assertThat(response.boxPolicy().sessionStepTapCounts()).containsExactly(25, 35, 50, 70, 100);
         assertThat(response.boxPolicy().tailStepTapCount()).isEqualTo(180);
-        assertThat(response.boxPolicy().sessionMaxDurationSeconds()).isEqualTo(3600);
+        assertThat(response.boxPolicy().sessionIdleTimeoutSeconds()).isEqualTo(1800);
         assertThat(response.boosterPolicy().durationSeconds()).isEqualTo(300);
         assertThat(response.boosterPolicy().dailyLimit()).isEqualTo(3);
     }
@@ -44,6 +44,6 @@ class AppConfigServiceTest {
 
         assertThat(AppConfigResponse.BoxPolicy.class.getRecordComponents())
                 .extracting(component -> component.getName())
-                .containsExactly("sessionStepTapCounts", "tailStepTapCount", "sessionMaxDurationSeconds");
+                .containsExactly("sessionStepTapCounts", "tailStepTapCount", "sessionIdleTimeoutSeconds");
     }
 }

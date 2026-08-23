@@ -1,9 +1,9 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
+import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapTodayStatusResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
-import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
@@ -66,9 +66,8 @@ class TapStatusServiceTest {
         progress.addValidTaps(120);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
 
-        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 200);
-        session.addValidTaps(120);
-        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
+        when(userTapSessionService.getBoxProgress(user, now, tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(120, 200));
 
         TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
 
@@ -93,9 +92,8 @@ class TapStatusServiceTest {
         progress.addValidTaps(150);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
 
-        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 100);
-        session.addValidTaps(150);
-        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
+        when(userTapSessionService.getBoxProgress(user, now, tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(150, 100));
 
         TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
 
@@ -120,8 +118,8 @@ class TapStatusServiceTest {
         progress.addValidTaps(3000);
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
 
-        UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 200);
-        when(userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig)).thenReturn(session);
+        when(userTapSessionService.getBoxProgress(user, now, tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(0, 200));
 
         TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
 

@@ -135,6 +135,9 @@ public class TapBatchService {
             // 상자 진행도는 포인트 일일 상한(tap.validity.maxPerDay)과 무관하게 인정된 탭 전체로 누적한다.
             // 상자 획득 속도의 실질 병목은 재고가 아니라 개봉 주기(무료 2회·광고 2회)이므로 여기서 막지 않는다.
             session.addValidTaps(acceptedCount);
+            // 유휴 마감을 마지막 탭 기준으로 다시 민다. 계속 치는 동안에는 세션이 리셋되지 않으므로
+            // 상자 간격은 tailStep 에 머무른다. 손을 뗀 뒤 유휴 시간이 지나야 싼 스텝부터 다시 시작한다.
+            session.recordActivity(acceptedAt, tapPolicyConfig.boxSessionIdleTimeoutSeconds());
             while (session.hasReachedBoxTarget()) {
                 boxAccount.addBoxes(1);
 

@@ -1,9 +1,9 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
+import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapTodayStatusResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
-import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
@@ -34,10 +34,12 @@ public class TapStatusService {
         LocalDate tapDate = LocalDate.ofInstant(now, businessZoneId);
         UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
         UserTapProgress progress = userTapProgressService.getForUser(userId);
-        UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, now, tapPolicyConfig);
+        // 조회는 세션을 저장하지 않는다. 만료된 세션의 리셋을 여기서 영속화하면 탭 배치와
+        // 같은 행을 동시에 갱신하게 된다 (UserTapSessionService#getBoxProgress 참고).
+        BoxProgressSnapshot boxProgress = userTapSessionService.getBoxProgress(user, now, tapPolicyConfig);
 
         int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
-        int remainingToNextBox = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
+        int remainingToNextBox = (int) Math.max(boxProgress.nextBoxTarget() - boxProgress.cumulativeValidTapCount(), 0);
 
         // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
         // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
@@ -47,8 +49,8 @@ public class TapStatusService {
                 daily.getPointEarnedAmount(),
                 remainingToNextPoint,
                 remainingToNextBox,
-                session.getSessionValidTapCount(),
-                session.getNextBoxTarget()
+                boxProgress.cumulativeValidTapCount(),
+                boxProgress.nextBoxTarget()
         );
     }
 }

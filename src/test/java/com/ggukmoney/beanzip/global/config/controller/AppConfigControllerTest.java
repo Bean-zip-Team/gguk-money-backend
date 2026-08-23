@@ -36,7 +36,7 @@ class AppConfigControllerTest {
         stubAuthenticatedAccessToken("access-token");
         when(appConfigService.getAppConfig()).thenReturn(new AppConfigResponse(
                 new AppConfigResponse.PointPolicy(20),
-                new AppConfigResponse.BoxPolicy(java.util.List.of(25, 35, 50, 70, 100), 180, 3600),
+                new AppConfigResponse.BoxPolicy(java.util.List.of(25, 35, 50, 70, 100), 180, 1800),
                 new AppConfigResponse.BoosterPolicy(300, 3)
         ));
 
@@ -47,7 +47,7 @@ class AppConfigControllerTest {
                 .andExpect(jsonPath("$.data.pointPolicy.dailyLimit").value(20))
                 .andExpect(jsonPath("$.data.boxPolicy.sessionStepTapCounts[0]").value(25))
                 .andExpect(jsonPath("$.data.boxPolicy.tailStepTapCount").value(180))
-                .andExpect(jsonPath("$.data.boxPolicy.sessionMaxDurationSeconds").value(3600))
+                .andExpect(jsonPath("$.data.boxPolicy.sessionIdleTimeoutSeconds").value(1800))
                 .andExpect(jsonPath("$.data.boosterPolicy.durationSeconds").value(300))
                 .andExpect(jsonPath("$.data.boosterPolicy.dailyLimit").value(3))
                 .andExpect(jsonPath("$.data.configKey").doesNotExist())

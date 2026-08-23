@@ -25,7 +25,7 @@ public class AppConfigService {
                                 tapPolicyConfig.boxSessionStep5()
                         ),
                         tapPolicyConfig.boxSessionTailStep(),
-                        tapPolicyConfig.boxSessionMaxDurationSeconds()
+                        tapPolicyConfig.boxSessionIdleTimeoutSeconds()
                 ),
                 new AppConfigResponse.BoosterPolicy(
                         tapPolicyConfig.boosterDurationSeconds(),

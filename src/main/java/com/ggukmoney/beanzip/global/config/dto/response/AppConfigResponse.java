@@ -27,8 +27,8 @@ public record AppConfigResponse(
             List<Integer> sessionStepTapCounts,
             @Schema(description = "6번째 상자부터 이후 매 상자마다 필요한 탭 수", example = "180")
             int tailStepTapCount,
-            @Schema(description = "상자 세션 최대 지속 시간(초, 하드캡)", example = "3600")
-            int sessionMaxDurationSeconds
+            @Schema(description = "상자 세션이 리셋되는 유휴 시간(초). 마지막 탭 이후 이만큼 쉬면 스텝이 처음으로 돌아간다.", example = "1800")
+            int sessionIdleTimeoutSeconds
     ) {
     }
 

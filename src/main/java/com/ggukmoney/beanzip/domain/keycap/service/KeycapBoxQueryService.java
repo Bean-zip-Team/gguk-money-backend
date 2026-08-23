@@ -43,10 +43,13 @@ public class KeycapBoxQueryService {
     private final KeycapBoxHistoryCursorCodec cursorCodec;
 
     /**
-     * Not read-only: an expired/idle tap session is lazily reset here so status reads
-     * stay fresh, and that reset must be persisted (see UserTapSessionService).
+     * 읽기 전용이다. 개봉 주기 계산({@code calculateOpenCycleSnapshot})과 상자 진행도 조회
+     * ({@code getBoxProgress}) 모두 순수 계산이라 아무것도 저장하지 않는다.
+     *
+     * <p>유휴로 만료된 탭 세션의 리셋도 여기서 영속화하지 않는다. 조회가 리셋을 저장하면
+     * 탭 배치와 같은 행을 동시에 갱신해 낙관적 락이 깨진다 (UserTapSessionService 참고).
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public KeycapBoxStatusResponse getStatus(UUID userId) {
         KeycapBoxAccount account = keycapBoxAccountService.getForUser(userId);
         Instant now = clock.instant();

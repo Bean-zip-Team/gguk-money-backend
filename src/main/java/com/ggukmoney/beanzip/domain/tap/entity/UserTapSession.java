@@ -75,6 +75,10 @@ public class UserTapSession {
         return session;
     }
 
+    /**
+     * 세션은 마지막 탭으로부터 유휴 시간이 지나면 만료된다. {@code sessionExpiresAt} 은
+     * 세션 시작 시각에 못 박힌 하드캡이 아니라 탭이 들어올 때마다 뒤로 밀리는 유휴 마감이다.
+     */
     public boolean isExpired(Instant now) {
         return !now.isBefore(sessionExpiresAt);
     }
@@ -88,8 +92,15 @@ public class UserTapSession {
         this.nextBoxTarget = initialBoxTarget;
     }
 
-    public void recordActivity(Instant now) {
+    /**
+     * 탭이 실제로 인정됐을 때만 부른다. 유휴 마감을 {@code now + idleTimeoutSeconds} 로 다시 민다.
+     *
+     * <p>조회성 요청에서 부르면 안 된다. 상태 조회만 반복해도 세션이 영원히 살아남아
+     * 유휴 만료가 무력화된다.
+     */
+    public void recordActivity(Instant now, int idleTimeoutSeconds) {
         this.lastActivityAt = now;
+        this.sessionExpiresAt = now.plusSeconds(idleTimeoutSeconds);
     }
 
     public void addValidTaps(long count) {
