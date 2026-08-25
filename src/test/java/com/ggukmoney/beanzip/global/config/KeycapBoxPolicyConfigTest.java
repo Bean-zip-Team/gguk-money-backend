@@ -20,13 +20,26 @@ class KeycapBoxPolicyConfigTest {
     private final KeycapBoxPolicyConfig config = new KeycapBoxPolicyConfig(appConfigRepository);
 
     @Test
+    void managesOnlySharedCyclePolicyKeys() {
+        assertThat(KeycapBoxPolicyConfig.DEFAULT_VALUES)
+                .containsOnlyKeys(
+                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                        KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                        KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT
+                )
+                .containsEntry(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, "3600")
+                .containsEntry(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, "2")
+                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "2");
+    }
+
+    @Test
     void usesDefaultsWhenRowsAreMissing() {
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(any(), any()))
                 .thenReturn(Optional.empty());
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
         assertThat(config.freeOpenLimit()).isEqualTo(2);
         assertThat(config.adOpenLimit()).isEqualTo(2);
     }
@@ -74,7 +87,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
     }
 
     @Test
@@ -119,7 +132,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
     }
 
     @Test
@@ -201,7 +214,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
         assertThat(config.freeOpenLimit()).isEqualTo(1);
         assertThat(config.adOpenLimit()).isEqualTo(3);
     }

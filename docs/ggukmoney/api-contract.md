@@ -25,7 +25,7 @@
 - 탭 배치 API 경로는 `/api/tap/batches`다. `taps`(복수)가 아니다.
 - 앱 설정 API는 Access JWT 필수이며 원본 `app_config` JSON이 아니라 공개 typed DTO만 반환한다.
 - 키캡 장착 API는 Access JWT 필수이며 Request Body 없이 `Keycap.publicId`를 Path Variable로 사용한다. 완성 키캡만 장착 가능하고 기존 장착 키캡은 같은 트랜잭션에서 해제한다.
-- 키캡 상자 상태 API는 Access JWT 필수이며 `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`, `boxProgressTapCount`, `nextBoxRequiredTapCount`를 반환한다. 화면에는 잔여 횟수를 직접 노출하지 않고, 상자 잔액과 공통 개봉 주기는 `keycap_box_account`, 상자 진행도는 `user_tap_progress`를 원본으로 사용한다.
+- 키캡 상자 상태 API는 Access JWT 필수이며 `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`, `boxProgressTapCount`, `nextBoxRequiredTapCount`를 반환한다. 화면에는 잔여 횟수를 직접 노출하지 않고, 상자 잔액과 공통 개봉 주기는 `keycap_box_account`, 상자 진행도는 `user_tap_session`을 원본으로 사용한다.
 - `IDEMPOTENCY_KEY_REUSED`는 공통 `ErrorCode`에 구현되어 있으며 `409`로 반환한다.
 - 키캡 상자 개봉 이력 API는 Access JWT 필수이며 `cursor`/`size` 기반 cursor 목록을 반환한다. `Idempotency-Key` Header는 사용하지 않는다.
 - 회원가입 전 온보딩 키캡 상자 API는 인증 없는 공개 API이며 정확히 45개 탭 이벤트를 검증하고 `onboarding_reward_attempt`에 서버 보상 결과를 저장한 뒤 `onboardingAttemptId`를 반환한다.
@@ -55,7 +55,7 @@
 | 키캡 | GET | `/api/keycaps` | `keycap` |
 | 키캡 | GET | `/api/keycaps/me` | `user_keycap`, `keycap` |
 | 키캡 | PUT | `/api/keycaps/{keycapId}/equip` | `user_keycap` |
-| 상자 | GET | `/api/keycap-boxes/status` | `keycap_box_account`, `user_tap_progress` |
+| 상자 | GET | `/api/keycap-boxes/status` | `keycap_box_account`, `user_tap_session` |
 | 상자 | POST | `/api/keycap-boxes/open` | `keycap_box_account`, `keycap_box_open`, `user_keycap`, `keycap` |
 | 상자 | GET | `/api/keycap-boxes/history` | `keycap_box_open`, `keycap` |
 | 온보딩 | POST | `/api/onboarding/keycap-boxes/open` | `onboarding_reward_attempt`, `keycap`, `app_config` |

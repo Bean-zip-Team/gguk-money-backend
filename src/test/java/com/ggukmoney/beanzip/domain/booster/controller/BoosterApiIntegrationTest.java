@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -110,7 +111,7 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TestTokens registerUserWithSession(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, Instant.now()));
         userTapProgressService.createFor(user, tapPolicyConfig);
         return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
     }

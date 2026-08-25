@@ -110,9 +110,10 @@ tap_batch
 + point_ledger
 + keycap_box_account
 + user_tap_progress
++ user_tap_session
 ```
 
-상자 상태 조회의 잔액과 공통 1시간 개봉 주기는 `keycap_box_account`를 읽고, 상자 진행도는 `user_tap_progress`를 읽어 조합한다. 조회 API는 두 Entity를 생성하거나 저장하지 않는다.
+상자 상태 조회의 잔액과 공통 1시간 개봉 주기는 `keycap_box_account`를 읽고, 상자 진행도는 `user_tap_session`을 읽어 조합한다. 조회 API는 두 Entity를 생성하거나 저장하지 않는다.
 
 ### 상자 개봉
 

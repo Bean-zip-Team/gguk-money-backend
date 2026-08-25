@@ -143,7 +143,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TestTokens registerUserWithSession(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, Instant.now()));
         userTapProgressService.createFor(user, tapPolicyConfig);
         return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
     }

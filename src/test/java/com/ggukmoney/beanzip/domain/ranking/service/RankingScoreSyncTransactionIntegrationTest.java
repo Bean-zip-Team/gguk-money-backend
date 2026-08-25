@@ -143,7 +143,7 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
     private AppUser registerUserWithProgressTargets(int pointTarget, int boxTarget) {
         AppUser user = appUserRepository.save(AppUser.createActive("ranking-tx-" + UUID.randomUUID(), null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
         userTapProgressRepository.save(UserTapProgress.createFor(user, pointTarget));
         Instant now = clock.instant();
         userTapSessionRepository.save(UserTapSession.createFor(user, now, now.plusSeconds(3600), boxTarget));
