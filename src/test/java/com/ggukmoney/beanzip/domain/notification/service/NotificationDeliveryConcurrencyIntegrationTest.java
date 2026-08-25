@@ -83,7 +83,7 @@ class NotificationDeliveryConcurrencyIntegrationTest extends FullStackIntegratio
     void concurrentKeycapPreparationCreatesOneDeliveryAndRefreshesOneCycle() throws Exception {
         AppUser user = appUserRepository.save(AppUser.createActive("keycap-concurrent", null));
         Instant cycleStartedAt = Instant.parse("2026-08-03T00:00:00Z");
-        Instant now = Instant.parse("2026-08-03T00:01:01Z");
+        Instant now = Instant.parse("2026-08-03T01:00:01Z");
         KeycapBoxAccount account = KeycapBoxAccount.createFor(user, cycleStartedAt);
         ReflectionTestUtils.setField(account, "boxBalance", 1);
         ReflectionTestUtils.setField(account, "freeOpenUsedCount", 2);
@@ -115,11 +115,11 @@ class NotificationDeliveryConcurrencyIntegrationTest extends FullStackIntegratio
         }
 
         KeycapBoxAccount refreshed = keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow();
-        assertThat(refreshed.getOpenCycleStartedAt()).isEqualTo(Instant.parse("2026-08-03T00:01:00Z"));
+        assertThat(refreshed.getOpenCycleStartedAt()).isEqualTo(Instant.parse("2026-08-03T01:00:00Z"));
         assertThat(refreshed.getFreeOpenUsedCount()).isZero();
         assertThat(refreshed.getAdOpenUsedCount()).isZero();
         assertThat(deliveryRepository.findByDedupeKey(
-                "KEYCAP_BOX_OPEN_AVAILABLE:" + user.getId() + ":2026-08-03T00:01:00Z"
+                "KEYCAP_BOX_OPEN_AVAILABLE:" + user.getId() + ":2026-08-03T01:00:00Z"
         )).isPresent();
     }
 
