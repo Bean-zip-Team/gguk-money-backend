@@ -79,7 +79,6 @@ class KeycapBoxQueryServiceTest {
 
         assertThat(response).isEqualTo(mapped);
         verify(keycapBoxAccountService).getForUser(userId);
-        verify(keycapBoxAccountService, never()).refillFreeTickets(userId);
         verify(userTapSessionService).getBoxProgress(user, clock.instant(), tapPolicyConfig);
         verify(keycapBoxMapper).mapToStatusResponse(account, snapshot, progress);
     }

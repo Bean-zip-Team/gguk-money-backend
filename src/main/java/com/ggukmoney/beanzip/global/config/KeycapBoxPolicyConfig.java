@@ -19,18 +19,12 @@ public class KeycapBoxPolicyConfig {
 
     private static final Logger log = LoggerFactory.getLogger(KeycapBoxPolicyConfig.class);
 
-    public static final String KEY_FREE_TICKET_REFILL_PER_HOUR = "keycapBox.freeTicket.refillPerHour";
-    public static final String KEY_FREE_TICKET_CAP = "keycapBox.freeTicket.cap";
-    public static final String KEY_AD_OPEN_DAILY_LIMIT = "keycapBox.adOpen.dailyLimit";
     public static final String KEY_OPEN_CYCLE_DURATION_SECONDS = "keycapBox.openCycle.durationSeconds";
     public static final String KEY_FREE_OPEN_LIMIT = "keycapBox.freeOpen.limit";
     public static final String KEY_AD_OPEN_LIMIT = "keycapBox.adOpen.limit";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
-            Map.entry(KEY_FREE_TICKET_REFILL_PER_HOUR, "1"),
-            Map.entry(KEY_FREE_TICKET_CAP, "8"),
-            Map.entry(KEY_AD_OPEN_DAILY_LIMIT, "2"),
-            Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "60"),
+            Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "3600"),
             Map.entry(KEY_FREE_OPEN_LIMIT, "2"),
             Map.entry(KEY_AD_OPEN_LIMIT, "2")
     );
@@ -54,18 +48,6 @@ public class KeycapBoxPolicyConfig {
                         exception);
             }
         }
-    }
-
-    public int refillPerHour() {
-        return getInt(KEY_FREE_TICKET_REFILL_PER_HOUR);
-    }
-
-    public int cap() {
-        return getInt(KEY_FREE_TICKET_CAP);
-    }
-
-    public int adOpenDailyLimit() {
-        return getInt(KEY_AD_OPEN_DAILY_LIMIT);
     }
 
     public Duration openCycleDuration() {

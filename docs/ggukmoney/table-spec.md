@@ -116,6 +116,7 @@ Unique:
 - `tap.point.dailyCap` — 일일 포인트 적립 상한
 - `tap.booster.durationSeconds`, `tap.booster.dailyLimit`
 - `tap.box.session.step1`~`step5`, `tap.box.session.tailStep` — 상자 세션 단계별 필요 탭 수
+- `tap.box.session.idleTimeoutSeconds` — 마지막 유효 탭 이후 세션 유휴 만료 시간
 - `keycapBox.openCycle.durationSeconds`, `keycapBox.freeOpen.limit`, `keycapBox.adOpen.limit`
 
 `tap.box.dropBase`, `tap.box.dropVariance`는 상자 세션 방식으로 바뀌면서 사라진 키다.
@@ -189,7 +190,7 @@ Unique와 인덱스:
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
 
-현재 구현에서 상자 진행도는 `keycap_box_account`가 아니라 `user_tap_progress.cumulative_valid_tap_count`, `user_tap_progress.next_box_target`을 원본으로 사용한다.
+현재 구현에서 상자 진행도는 `keycap_box_account`가 아니라 `user_tap_session.session_valid_tap_count`, `user_tap_session.next_box_target`을 원본으로 사용한다.
 
 BEA-156 배포 시 Flyway/Liquibase를 새로 도입하지 않고 공유/개발 DB에 수동 SQL을 먼저 적용한다. 기존 광고 카운터는 일 단위이고 신규 카운터는 한 시간 단위이므로 억지 변환하지 않는다.
 
@@ -240,7 +241,7 @@ END $$;
 
 `TIMESTAMPTZ '2026-07-24 00:00:00+09'` 값은 예시이며 실제 적용 시 정책 배포 적용 시각으로 치환한다. Entity 배포 전 신규 컬럼과 `app_config` 신규 키를 먼저 적용하고, 구 컬럼은 이번 배포에서 제거하지 않는다.
 
-신규 `app_config` 값도 Entity 배포 전에 등록 여부를 확인한다. 기존 키는 즉시 삭제하지 않고 deprecated로 보존한다.
+신규 `app_config` 값도 Entity 배포 전에 등록 여부를 확인한다. 아래 값은 운영 반영 전에 선등록해 애플리케이션의 최대 60초 정책 캐시 갱신 지연을 피한다.
 
 ```sql
 INSERT INTO app_config (config_key, config_value, effective_at, created_at, updated_at)
@@ -253,7 +254,18 @@ SET config_value = EXCLUDED.config_value,
     updated_at = now();
 ```
 
-Deprecated 키: `keycapBox.freeTicket.refillPerHour`, `keycapBox.freeTicket.cap`, `keycapBox.adOpen.dailyLimit`.
+아래 세 키는 코드 정책 원장에서 제거됐다. 시더가 append-only라 자동 삭제되지 않으므로 배포 후 유령 키 경고와 조회 결과를 확인한 뒤 모든 버전 행을 수동 삭제한다.
+
+```sql
+DELETE FROM app_config
+WHERE config_key IN (
+    'keycapBox.freeTicket.refillPerHour',
+    'keycapBox.freeTicket.cap',
+    'keycapBox.adOpen.dailyLimit'
+);
+```
+
+`keycap_box_account.free_open_ticket_count`, `last_free_ticket_granted_at`, `ad_open_count`, `ad_open_count_date`는 이번 배포에서 Entity 매핑과 DB 컬럼을 유지한다. 애플리케이션 동작은 더 이상 이 값을 읽거나 갱신하지 않으며, 물리 컬럼 삭제는 별도 마이그레이션에서 진행한다.
 
 배포 전후 검증 쿼리:
 

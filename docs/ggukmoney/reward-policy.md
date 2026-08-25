@@ -50,8 +50,9 @@ DB에서 값을 바꾼다  →  다음 배포까지는 적용된다  →  배포
 **랜덤이 아니라 고정값이다.** 포인트와 달리 분산이 없다.
 
 기준 카운터는 `user_tap_session.session_valid_tap_count`(**세션 누적**)다.
-세션은 시작 후 1시간(`tap.box.session.maxDurationSeconds` = 3600)이 지나면 리셋되고,
-카운터가 0으로 돌아가면서 다시 25탭부터 시작한다.
+세션은 마지막 유효 탭 이후 30분(`tap.box.session.idleTimeoutSeconds` = 1800) 동안 탭이 없으면 리셋되고,
+카운터가 0으로 돌아가면서 다시 25탭부터 시작한다. 유효 탭이 들어올 때마다 만료 시각이 30분 뒤로
+밀리므로 계속 탭하는 동안에는 세션 수명에 따른 하드 리셋이 없다.
 
 **상자에는 일일 상한이 없다.** 포인트가 멈추는 3000탭 이후에도 상자는 계속 나온다.
 실질 병목은 상자 재고가 아니라 아래의 개봉 주기다.
@@ -62,7 +63,7 @@ DB에서 값을 바꾼다  →  다음 배포까지는 적용된다  →  배포
 
 | | 포인트 | 상자 |
 |---|---|---|
-| 기준 카운터 | 전 기간 누적 탭 | 세션 누적 탭 (1시간마다 리셋) |
+| 기준 카운터 | 전 기간 누적 탭 | 세션 누적 탭 (30분 유휴 시 리셋) |
 | 간격 | 15~25탭 랜덤 | 25/60/110/180/280/460… 고정 |
 | 일일 상한 | 있음 (150P / 3000탭) | 없음 |
 | 원장 기록 | `point_ledger` + 멱등키 | 없음 (`keycap_box_account` 카운터 증가) |
@@ -74,12 +75,12 @@ DB에서 값을 바꾼다  →  다음 배포까지는 적용된다  →  배포
 
 | 항목 | 값 | 설정 키 |
 |---|---|---|
-| 개봉 주기 | 60초 | `keycapBox.openCycle.durationSeconds` |
+| 개봉 주기 | 1시간(3600초) | `keycapBox.openCycle.durationSeconds` |
 | 주기당 무료 개봉 | 2회 | `keycapBox.freeOpen.limit` |
 | 주기당 광고 개봉 | 2회 | `keycapBox.adOpen.limit` |
-| 광고 개봉 일일 한도 | 2회 | `keycapBox.adOpen.dailyLimit` |
-| 무료 개봉권 충전 | 시간당 1장 | `keycapBox.freeTicket.refillPerHour` |
-| 무료 개봉권 보유 상한 | 8장 | `keycapBox.freeTicket.cap` |
+
+무료와 광고는 같은 1시간 주기를 공유하지만 각 사용 횟수는 별도로 센다. 무료 개봉권 재화와 광고 개봉
+일일 한도는 현재 정책에 없다. 사용하지 않은 횟수는 다음 주기로 이월되지 않는다.
 
 ## 5. 출금
 
@@ -100,6 +101,13 @@ AppConfig 에 코드가 읽지 않는 정책 키가 남아 있습니다 (값을 
 ```
 
 로그에 뜨는 키는 DB에서 지워도 안전하다. 판단이 필요하므로 자동 삭제는 하지 않는다.
+
+이번 정책 변경으로 아래 키는 코드가 더 이상 읽지 않는다. 배포 후 유령 키 경고와 실제 DB 행을 확인한 뒤
+`app_config`의 모든 버전 행을 수동 삭제한다.
+
+- `keycapBox.freeTicket.refillPerHour`
+- `keycapBox.freeTicket.cap`
+- `keycapBox.adOpen.dailyLimit`
 
 ## 확인 방법
 

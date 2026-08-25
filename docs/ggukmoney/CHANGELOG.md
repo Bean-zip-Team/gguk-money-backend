@@ -1,5 +1,13 @@
 # 수정 내역
 
+## 2026-08-25 키캡 상자 개봉 정책 원장 정리
+
+- `keycapBox.openCycle.durationSeconds` 코드 기본값을 임시 운영값 60초에서 정책값 3600초(1시간)로 복구했다. 무료 2회와 광고 2회는 같은 1시간 주기를 사용한다.
+- 광고 개봉의 별도 일일 한도와 무료 개봉권 재화는 현재 정책에 없으므로 `keycapBox.adOpen.dailyLimit`, `keycapBox.freeTicket.refillPerHour`, `keycapBox.freeTicket.cap`을 코드 정책 원장에서 제거했다.
+- 레거시 무료권 충전 서비스와 Entity 동작 메서드를 제거했다. DB 무중단 호환을 위해 구 컬럼 4개의 Entity 매핑은 이번 배포에 유지하고, 물리 컬럼 삭제는 별도 마이그레이션으로 넘겼다.
+- 상자 진행도는 `user_tap_session`을 사용하고 3000탭 일일 포인트 상한 이후에도 누적된다는 기존 동작을 유지했다.
+- 운영 배포 전 `keycapBox.openCycle.durationSeconds=3600`을 선등록하고, 배포 후 코드가 읽지 않는 위 세 정책 키의 모든 `app_config` 버전 행을 수동 정리한다.
+
 ## 2026-08-23 탭 배치 응답 확장과 지급 루프 쿼리 절감
 
 - `POST /tap/batches` 응답에 `date`, `pointEarnedToday`, `remainingTapsToNextPoint`, `remainingTapsToNextBox`, `boxBalance`, `canFreeOpen`, `canAdOpen`, `charging`, `nextRechargeAt`를 추가했다. 앱이 배치 확정 뒤에 `GET /tap/today`와 `GET /keycap-boxes/status`를 이어서 호출하던 것을 없애기 위한 것이다. 필드 추가만 있어 두 조회를 그대로 쓰는 구버전 앱도 동작한다.

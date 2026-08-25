@@ -22,7 +22,7 @@ class KeycapBoxMapperTest {
 
     @Test
     void mapsBoxAccountAndProgressSnapshotToStatusResponse() {
-        KeycapBoxAccount account = keycapBoxAccount(UUID.randomUUID(), 2, 1);
+        KeycapBoxAccount account = keycapBoxAccount(UUID.randomUUID(), 2);
         KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot =
                 new KeycapBoxAccount.OpenCycleSnapshot(true, false, false, null);
         BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
@@ -109,7 +109,7 @@ class KeycapBoxMapperTest {
                 .containsExactly("content", "nextCursor", "hasNext");
     }
 
-    private static KeycapBoxAccount keycapBoxAccount(UUID userId, int boxBalance, int freeOpenTicketCount) {
+    private static KeycapBoxAccount keycapBoxAccount(UUID userId, int boxBalance) {
         AppUser user = AppUser.createActive("Bean", null);
         ReflectionTestUtils.setField(user, "id", userId);
 
@@ -118,7 +118,6 @@ class KeycapBoxMapperTest {
         ReflectionTestUtils.setField(account, "publicId", UUID.randomUUID());
         ReflectionTestUtils.setField(account, "user", user);
         ReflectionTestUtils.setField(account, "boxBalance", boxBalance);
-        ReflectionTestUtils.setField(account, "freeOpenTicketCount", freeOpenTicketCount);
         return account;
     }
 

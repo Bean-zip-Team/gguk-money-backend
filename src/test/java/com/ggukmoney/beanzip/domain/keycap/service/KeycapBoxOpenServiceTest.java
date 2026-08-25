@@ -182,7 +182,7 @@ class KeycapBoxOpenServiceTest {
     }
 
     @Test
-    void opensAdvertisementBoxAndConsumesDailyQuotaWithoutTouchingFreeTickets() {
+    void opensAdvertisementBoxAndConsumesSharedCycleQuotaWithoutTouchingFreeQuota() {
         AppUser user = user(userId);
         KeycapBoxAccount account = account(user, 2, 1);
         Keycap keycap = keycap(10);
@@ -351,7 +351,7 @@ class KeycapBoxOpenServiceTest {
     }
 
     @Test
-    void rejectsMissingFreeTicketBeforeRewardSelection() {
+    void rejectsFreeOpenWhenSharedCycleLimitIsReachedBeforeRewardSelection() {
         AppUser user = user(userId);
         KeycapBoxAccount account = account(user, 1, 2);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
