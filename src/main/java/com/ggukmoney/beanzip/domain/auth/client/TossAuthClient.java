@@ -1,15 +1,13 @@
 package com.ggukmoney.beanzip.domain.auth.client;
 
+import com.ggukmoney.beanzip.global.config.TossClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -18,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 
 @Component
@@ -45,9 +43,24 @@ public class TossAuthClient {
             ObjectMapper objectMapper,
             @Value("${app.auth.toss.base-url:}") String baseUrl,
             SslBundles sslBundles,
-            TossPersonalDataDecryptor personalDataDecryptor
+            TossPersonalDataDecryptor personalDataDecryptor,
+            @Value("${app.auth.toss.connect-timeout:3s}") Duration connectTimeout,
+            @Value("${app.auth.toss.read-timeout:10s}") Duration readTimeout
     ) {
-        this(objectMapper, baseUrl, sslBundles, personalDataDecryptor, RestClient.builder());
+        this(
+                objectMapper,
+                baseUrl,
+                sslBundles,
+                personalDataDecryptor,
+                RestClient.builder().requestFactory(TossClientHttpRequestFactory.create(
+                        sslBundles,
+                        MTLS_BUNDLE_NAME,
+                        connectTimeout,
+                        readTimeout
+                ))
+        );
+        log.info("TossAuthClient timeouts configured: connectTimeout={} readTimeout={}",
+                connectTimeout, readTimeout);
     }
 
     TossAuthClient(
@@ -65,19 +78,9 @@ public class TossAuthClient {
         }
         List<String> bundleNames = sslBundles == null ? List.of() : sslBundles.getBundleNames();
         this.mtlsEnabled = bundleNames.contains(MTLS_BUNDLE_NAME);
-        if (mtlsEnabled) {
-            builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
-        }
         this.restClient = builder.build();
         log.info("TossAuthClient initialized: baseUrlConfigured={} mtlsEnabled={}",
                 StringUtils.hasText(this.baseUrl), mtlsEnabled);
-    }
-
-    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .sslContext(sslBundle.createSslContext())
-                .build();
-        return new JdkClientHttpRequestFactory(httpClient);
     }
 
     public TossToken generateToken(String authorizationCode, String referrer) {

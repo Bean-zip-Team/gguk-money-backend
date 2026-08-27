@@ -1,13 +1,20 @@
 package com.ggukmoney.beanzip.domain.notification.client;
 
+import com.ggukmoney.beanzip.support.DelayedHttpServer;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -19,6 +26,28 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class TossSmartMessageClientTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void timeoutIsReturnedAsRetryableFailure() throws Exception {
+        try (DelayedHttpServer server = DelayedHttpServer.start(Duration.ofSeconds(2), "{}")) {
+            SslBundles sslBundles = mock(SslBundles.class);
+            when(sslBundles.getBundleNames()).thenReturn(List.of());
+            TossSmartMessageClient client = new TossSmartMessageClient(
+                    objectMapper,
+                    server.baseUrl(),
+                    sslBundles,
+                    "toss-auth",
+                    Duration.ofSeconds(1),
+                    Duration.ofMillis(150)
+            );
+
+            TossSmartMessageClient.SendResult result = client.sendMessage("toss-user-1", "TPL_RANK");
+
+            assertThat(result.succeeded()).isFalse();
+            assertThat(result.retryable()).isTrue();
+            assertThat(result.errorCode()).isEqualTo("TOSS_SMART_MESSAGE_FAILED");
+        }
+    }
 
     @Test
     void sendsTossUserKeyAndTemplateSetCode() {
