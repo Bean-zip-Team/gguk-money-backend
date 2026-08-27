@@ -91,7 +91,7 @@ class KeycapBoxOpenServiceTest {
     void stubPolicyDefaults() {
         when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(OPEN_CYCLE_DURATION);
         when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
-        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
+        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(6);
         when(shardCountGenerator.generate()).thenReturn(1);
         when(boosterGrantService.findActiveMultiplier(any(UUID.class), any(Instant.class))).thenReturn(BigDecimal.ONE);
     }
@@ -281,7 +281,7 @@ class KeycapBoxOpenServiceTest {
     void rejectsAdvertisementOpenWhenCycleLimitReached() {
         AppUser user = user(userId);
         KeycapBoxAccount account = account(user, 1, 0);
-        ReflectionTestUtils.setField(account, "adOpenUsedCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", 6);
         when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
                 .thenReturn(Optional.empty());
         when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
@@ -293,6 +293,8 @@ class KeycapBoxOpenServiceTest {
                 .isEqualTo("AD_OPEN_LIMIT_EXCEEDED");
 
         verify(keycapRepository, never()).findIncompleteActiveRewardCandidates(userId);
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(6);
     }
 
     @Test

@@ -77,7 +77,7 @@ DB에서 값을 바꾼다  →  다음 배포까지는 적용된다  →  배포
 |---|---|---|
 | 개봉 주기 | 1시간(3600초) | `keycapBox.openCycle.durationSeconds` |
 | 주기당 무료 개봉 | 2회 | `keycapBox.freeOpen.limit` |
-| 주기당 광고 개봉 | 2회 | `keycapBox.adOpen.limit` |
+| 주기당 광고 개봉 | 6회 | `keycapBox.adOpen.limit` |
 
 무료와 광고는 같은 1시간 주기를 공유하지만 각 사용 횟수는 별도로 센다. 무료 개봉권 재화와 광고 개봉
 일일 한도는 현재 정책에 없다. 사용하지 않은 횟수는 다음 주기로 이월되지 않는다.

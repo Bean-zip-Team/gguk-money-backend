@@ -29,7 +29,7 @@ class KeycapBoxPolicyConfigTest {
                 )
                 .containsEntry(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, "3600")
                 .containsEntry(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, "2")
-                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "2");
+                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "6");
     }
 
     @Test
@@ -41,7 +41,7 @@ class KeycapBoxPolicyConfigTest {
 
         assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
         assertThat(config.freeOpenLimit()).isEqualTo(2);
-        assertThat(config.adOpenLimit()).isEqualTo(2);
+        assertThat(config.adOpenLimit()).isEqualTo(6);
     }
 
     @Test
@@ -117,7 +117,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.adOpenLimit()).isEqualTo(2);
+        assertThat(config.adOpenLimit()).isEqualTo(6);
     }
 
     @Test
@@ -162,7 +162,7 @@ class KeycapBoxPolicyConfigTest {
 
         config.refresh();
 
-        assertThat(config.adOpenLimit()).isEqualTo(2);
+        assertThat(config.adOpenLimit()).isEqualTo(6);
     }
 
     @Test

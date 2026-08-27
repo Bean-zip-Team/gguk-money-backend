@@ -172,17 +172,27 @@ class KeycapBoxAccountTest {
     }
 
     @Test
-    void consumesFreeAndAdOpenAgainstSharedCycleLimits() {
-        KeycapBoxAccount account = accountWithCycle(4, 0, 0, Instant.parse("2026-07-16T00:00:00Z"));
+    void allowsSixAdvertisementOpensWithinCycle() {
+        KeycapBoxAccount account = accountWithCycle(6, 0, 0, Instant.parse("2026-07-16T00:00:00Z"));
 
-        account.consumeFreeOpen(2);
-        account.consumeAdOpen(2);
-        account.consumeFreeOpen(2);
-        account.consumeAdOpen(2);
+        for (int attempt = 1; attempt <= 6; attempt++) {
+            account.consumeAdOpen(6);
+        }
 
         assertThat(account.getBoxBalance()).isZero();
-        assertThat(account.getFreeOpenUsedCount()).isEqualTo(2);
-        assertThat(account.getAdOpenUsedCount()).isEqualTo(2);
+        assertThat(account.getFreeOpenUsedCount()).isZero();
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(6);
+    }
+
+    @Test
+    void rejectsSeventhAdvertisementOpenWithoutConsumingBox() {
+        KeycapBoxAccount account = accountWithCycle(1, 0, 6, Instant.parse("2026-07-16T00:00:00Z"));
+
+        assertThatThrownBy(() -> account.consumeAdOpen(6))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(account.getBoxBalance()).isEqualTo(1);
+        assertThat(account.getAdOpenUsedCount()).isEqualTo(6);
     }
 
     @Test

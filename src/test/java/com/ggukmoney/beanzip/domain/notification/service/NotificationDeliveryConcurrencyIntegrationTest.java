@@ -87,7 +87,7 @@ class NotificationDeliveryConcurrencyIntegrationTest extends FullStackIntegratio
         KeycapBoxAccount account = KeycapBoxAccount.createFor(user, cycleStartedAt);
         ReflectionTestUtils.setField(account, "boxBalance", 1);
         ReflectionTestUtils.setField(account, "freeOpenUsedCount", 2);
-        ReflectionTestUtils.setField(account, "adOpenUsedCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", 6);
         keycapBoxAccountRepository.saveAndFlush(account);
         NotificationPreference preference = NotificationPreference.defaultOf(
                 user.getId(), NotificationType.KEYCAP_BOX_OPEN_AVAILABLE
