@@ -91,9 +91,7 @@ class KeycapBoxControllerTest {
                 .andExpect(jsonPath("$.data.nextBoxRequiredTapCount").value(100))
                 .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.publicId").doesNotExist())
-                .andExpect(jsonPath("$.data.freeOpenTicketCount").doesNotExist())
                 .andExpect(jsonPath("$.data.nextFreeTicketAt").doesNotExist())
-                .andExpect(jsonPath("$.data.adOpenCount").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist())
                 .andReturn();
 

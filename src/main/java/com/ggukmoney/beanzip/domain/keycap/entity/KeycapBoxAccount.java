@@ -19,7 +19,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.UUID;
 
 @Getter
@@ -41,22 +40,6 @@ public class KeycapBoxAccount {
 
     @Column(name = "box_balance", nullable = false)
     private Integer boxBalance = 0;
-
-    @Deprecated
-    @Column(name = "free_open_ticket_count", nullable = false)
-    private Integer freeOpenTicketCount = 0;
-
-    @Deprecated
-    @Column(name = "last_free_ticket_granted_at", nullable = false)
-    private Instant lastFreeTicketGrantedAt;
-
-    @Deprecated
-    @Column(name = "ad_open_count", nullable = false)
-    private Integer adOpenCount = 0;
-
-    @Deprecated
-    @Column(name = "ad_open_count_date")
-    private LocalDate adOpenCountDate;
 
     @Column(name = "free_open_used_count", nullable = false)
     private Integer freeOpenUsedCount = 0;
@@ -83,7 +66,6 @@ public class KeycapBoxAccount {
         }
         KeycapBoxAccount account = new KeycapBoxAccount();
         account.user = user;
-        account.lastFreeTicketGrantedAt = createdAt;
         account.openCycleStartedAt = createdAt;
         return account;
     }

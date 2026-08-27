@@ -40,7 +40,6 @@ class KeycapBoxAccountServiceTest {
 
         assertThat(result.getUser()).isSameAs(user);
         assertThat(result.getOpenCycleStartedAt()).isEqualTo(clock.instant());
-        assertThat(result.getLastFreeTicketGrantedAt()).isEqualTo(clock.instant());
         verify(keycapBoxAccountRepository).save(result);
     }
 
