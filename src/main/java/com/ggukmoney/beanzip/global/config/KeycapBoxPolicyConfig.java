@@ -26,7 +26,7 @@ public class KeycapBoxPolicyConfig {
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "3600"),
             Map.entry(KEY_FREE_OPEN_LIMIT, "2"),
-            Map.entry(KEY_AD_OPEN_LIMIT, "2")
+            Map.entry(KEY_AD_OPEN_LIMIT, "6")
     );
 
     private final AppConfigRepository appConfigRepository;
