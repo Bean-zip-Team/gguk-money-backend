@@ -20,7 +20,6 @@ class KeycapBoxAccountTest {
         KeycapBoxAccount account = KeycapBoxAccount.createFor(null, createdAt);
 
         assertThat(account.getOpenCycleStartedAt()).isEqualTo(createdAt);
-        assertThat(account.getLastFreeTicketGrantedAt()).isEqualTo(createdAt);
     }
 
     @Test

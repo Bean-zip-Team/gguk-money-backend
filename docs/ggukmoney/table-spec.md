@@ -182,10 +182,6 @@ Unique와 인덱스:
 | `free_open_used_count` | INTEGER | N | 0 | CHECK `>= 0` |
 | `ad_open_used_count` | INTEGER | N | 0 | CHECK `>= 0` |
 | `open_cycle_started_at` | TIMESTAMPTZ | N | 정책 배포 적용 시각 | 무료/광고 공통 1시간 주기 기준점 |
-| `free_open_ticket_count` | INTEGER | N | 0 | Deprecated. 구 무료권 정책 호환 컬럼 |
-| `last_free_ticket_granted_at` | TIMESTAMPTZ | N | | Deprecated. 구 무료권 정책 호환 컬럼 |
-| `ad_open_count` | INTEGER | N | 0 | Deprecated. 구 광고 일일 카운터 호환 컬럼 |
-| `ad_open_count_date` | DATE | Y | | Deprecated. 구 광고 일일 카운터 호환 컬럼 |
 | `version` | BIGINT | N | 0 | 동시성 제어 |
 | `created_at` | TIMESTAMPTZ | N | now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | N | now() | 수정 시각 |
@@ -264,8 +260,6 @@ WHERE config_key IN (
     'keycapBox.adOpen.dailyLimit'
 );
 ```
-
-`keycap_box_account.free_open_ticket_count`, `last_free_ticket_granted_at`, `ad_open_count`, `ad_open_count_date`는 이번 배포에서 Entity 매핑과 DB 컬럼을 유지한다. 애플리케이션 동작은 더 이상 이 값을 읽거나 갱신하지 않으며, 물리 컬럼 삭제는 별도 마이그레이션에서 진행한다.
 
 배포 전후 검증 쿼리:
 
