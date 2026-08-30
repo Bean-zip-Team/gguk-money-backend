@@ -40,7 +40,10 @@ class TossAuthClientTest {
 
     @Test
     void generateTokenTimeoutUsesExistingServerFailureClassification() throws Exception {
-        try (DelayedHttpServer server = DelayedHttpServer.start(Duration.ofSeconds(2), "{}")) {
+        String successfulTokenResponse = """
+                {"resultType":"SUCCESS","success":{"accessToken":"late-access-token","refreshToken":"late-refresh-token","tokenType":"Bearer","expiresIn":3600}}
+                """;
+        try (DelayedHttpServer server = DelayedHttpServer.start(Duration.ofSeconds(2), successfulTokenResponse)) {
             SslBundles sslBundles = mock(SslBundles.class);
             when(sslBundles.getBundleNames()).thenReturn(List.of());
             TossCryptoTestFixture.Context context = TossCryptoTestFixture.context();
@@ -53,6 +56,7 @@ class TossAuthClientTest {
                     Duration.ofMillis(150)
             );
 
+            long startedAt = System.nanoTime();
             assertThatThrownBy(() -> client.generateToken("code", "DEFAULT"))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(exception -> {
@@ -60,6 +64,8 @@ class TossAuthClientTest {
                         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                         assertThat(response.getReason()).isEqualTo("TOSS_SERVER_ERROR");
                     });
+            assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
+                    .isLessThan(Duration.ofSeconds(1));
         }
     }
 
