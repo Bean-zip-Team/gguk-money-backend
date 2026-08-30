@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.cashout.client;
+package com.ggukmoney.beanzip.global.client.toss;
 
 import com.ggukmoney.beanzip.support.DelayedHttpServer;
 import org.junit.jupiter.api.Test;

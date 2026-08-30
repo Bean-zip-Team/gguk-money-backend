@@ -1,4 +1,4 @@
-package com.ggukmoney.beanzip.domain.cashout.client;
+package com.ggukmoney.beanzip.global.client.toss;
 
 import com.ggukmoney.beanzip.global.config.TossClientHttpRequestFactory;
 import com.ggukmoney.beanzip.global.util.PayloadLoggingInterceptor;
