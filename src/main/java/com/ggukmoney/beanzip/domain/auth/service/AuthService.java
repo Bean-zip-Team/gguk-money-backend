@@ -8,14 +8,10 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
-import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
-import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
-import com.ggukmoney.beanzip.domain.user.entity.AppUser;
-import com.ggukmoney.beanzip.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +20,6 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -60,10 +55,8 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisService redisService;
     private final TossAuthClient tossAuthClient;
-    private final AuthIdentityRepository authIdentityRepository;
-    private final UserService userService;
     private final AuthLoginTransactionService authLoginTransactionService;
-    private final TossLoginConsentHistoryService tossLoginConsentHistoryService;
+    private final AuthWithdrawalTransactionService authWithdrawalTransactionService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -192,39 +185,45 @@ public class AuthService {
         return new LogoutAllResponse(true, revokedSessionCount);
     }
 
-    @Transactional
     public UserWithdrawalResponse withdrawCurrentUser(
             UUID userId,
             String accessJti,
             Instant accessExpiresAt,
             UserWithdrawalRequest request
     ) {
-        AppUser user = userService.getById(userId);
-        if (user.isWithdrawn()) {
-            revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
+        AuthWithdrawalTransactionService.WithdrawalPreparation preparation =
+                authWithdrawalTransactionService.prepare(userId);
+        if (preparation.alreadyWithdrawn()) {
+            revokeWithdrawalSessions(userId, accessJti, accessExpiresAt, "WITHDRAWAL", "IDEMPOTENT_RETRY");
             return new UserWithdrawalResponse(true);
         }
 
-        AuthIdentity identity = authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "TOSS_IDENTITY_NOT_FOUND"));
         TossAuthClient.TossToken tossToken = tossAuthClient.generateToken(
                 requireText(request.authorizationCode(), "TOSS_AUTHORIZATION_CODE_REQUIRED"),
                 request.referrer()
         );
         TossAuthClient.TossLoginMe loginMe = tossAuthClient.loginMe(requireText(tossToken.accessToken(), "TOSS_ACCESS_TOKEN_MISSING"));
         String userKey = requireText(loginMe.userKey(), "TOSS_USER_KEY_MISSING");
-        if (!identity.getProviderUserId().equals(userKey)) {
+        if (!preparation.providerUserId().equals(userKey)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "TOSS_USER_MISMATCH");
         }
 
         tossAuthClient.removeByUserKey(tossToken.accessToken(), userKey);
-        tossLoginConsentHistoryService.withdrawActiveAgreements(userId, "DIRECT_WITHDRAWAL");
-        userService.withdraw(user);
-        revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
+        try {
+            authWithdrawalTransactionService.complete(userId, "DIRECT_WITHDRAWAL");
+        } catch (RuntimeException exception) {
+            log.error("TOSS_WITHDRAWAL_LOCAL_COMMIT_FAILED userId={} tossUnlinkCompleted=true recovery=WEBHOOK_OR_RETRY",
+                    userId, exception);
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "WITHDRAWAL_LOCAL_COMMIT_FAILED",
+                    exception
+            );
+        }
+        revokeWithdrawalSessions(userId, accessJti, accessExpiresAt, "WITHDRAWAL", "POST_COMMIT");
         return new UserWithdrawalResponse(true);
     }
 
-    @Transactional
     public TossUnlinkWebhookResponse handleTossUnlinkWebhook(String authorization, TossUnlinkWebhookRequest request) {
         validateWebhookSecret(authorization);
         String eventType = requireText(request.referrer(), "TOSS_WEBHOOK_EVENT_REQUIRED");
@@ -232,24 +231,35 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TOSS_WEBHOOK_UNSUPPORTED_EVENT");
         }
 
-        Optional<AuthIdentity> identity = authIdentityRepository.findByProviderAndProviderUserId(
-                AuthIdentity.Provider.TOSS,
-                requireText(request.userKey(), "TOSS_USER_KEY_MISSING")
+        Optional<UUID> userId = authWithdrawalTransactionService.completeFromWebhook(
+                requireText(request.userKey(), "TOSS_USER_KEY_MISSING"),
+                eventType
         );
-        if (identity.isPresent()) {
-            AppUser user = identity.get().getUser();
-            tossLoginConsentHistoryService.withdrawActiveAgreements(user.getId(), eventType);
-            if (!user.isWithdrawn()) {
-                userService.withdraw(user);
-            }
-            revokeAllUserSessions(user.getId(), null, null, Instant.now(), "TOSS_UNLINK_WEBHOOK");
+        if (userId.isPresent()) {
+            revokeWithdrawalSessions(userId.get(), null, null, "TOSS_UNLINK_WEBHOOK", "WEBHOOK_POST_COMMIT");
             log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=true action=USER_WITHDRAWN userId={}",
-                    eventType, user.getId());
+                    eventType, userId.get());
         } else {
             log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=false action=IDENTITY_NOT_FOUND userId=-", eventType);
         }
 
         return new TossUnlinkWebhookResponse(true, eventType);
+    }
+
+    private void revokeWithdrawalSessions(
+            UUID userId,
+            String accessJti,
+            Instant accessExpiresAt,
+            String reason,
+            String recoveryPhase
+    ) {
+        try {
+            revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), reason);
+        } catch (RuntimeException exception) {
+            log.error("TOSS_WITHDRAWAL_SESSION_REVOKE_FAILED userId={} localState=WITHDRAWN recoveryPhase={} recovery=IDEMPOTENT_RETRY",
+                    userId, recoveryPhase, exception);
+            throw exception;
+        }
     }
 
     private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser, boolean onboardingRewardApplied) {
