@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
@@ -63,6 +64,7 @@ class KeycapBoxOpenServiceTest {
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final BoosterGrantService boosterGrantService = mock(BoosterGrantService.class);
+    private final PromotionGrantIssuer promotionGrantIssuer = mock(PromotionGrantIssuer.class);
     private static final Instant FIXED_NOW = Instant.parse("2026-07-16T00:10:00Z");
     private static final Duration OPEN_CYCLE_DURATION = Duration.ofHours(1);
     private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
@@ -80,6 +82,7 @@ class KeycapBoxOpenServiceTest {
             pointAccountService,
             pointLedgerService,
             boosterGrantService,
+            promotionGrantIssuer,
             new NoOpTransactionManager(),
             clock
     );
