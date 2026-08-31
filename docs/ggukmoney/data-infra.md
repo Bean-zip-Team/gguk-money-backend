@@ -205,6 +205,13 @@ MVP에서는 공통 멱등성 테이블, 공통 AOP, Redis 멱등 캐시, 공통
 | MEDIUM | 키캡 장착 유일성 | 문서 명세에는 `UNIQUE (user_id) WHERE equipped=true`가 있으나 현재 작업 환경에서는 실제 공유/개발 DB 제약 존재 여부를 확인하지 못했다. | merge 전 실제 DB partial unique index 확인 |
 | MEDIUM | app_config 공개 범위 | Repository에는 `config_key/effective_at` 기준 선택 메서드가 있고 앱 설정 조회 API는 `TapPolicyConfig`의 공개 typed DTO만 반환한다. 원본 JSON과 내부 검증값은 외부에 노출하지 않는다. | 신규 운영 정책 키 추가 시 공개 DTO 반영 여부를 별도 검토 |
 
+### 인덱스 drift 관리
+
+- Entity로 표현 가능한 일반 인덱스는 Hibernate 생성 PostgreSQL 스키마를 `SchemaIndexContractIntegrationTest`로 검증한다.
+- ACTIVE 닉네임, 사용자당 장착 키캡 1개, nullable 광고 보상 ID의 partial unique는 `src/main/resources/db/manual-index-contracts.sql`의 수동 DDL 계약으로 관리한다.
+- 이 수동 DDL은 runtime datasource 확인, 기존 인덱스 조회와 중복 데이터 검사를 마친 뒤에만 적용한다. 현재 확인한 `blogmate_dashboard`는 실제 런타임 DB인지 확정되지 않아 적용 대상이 아니다.
+- `cashout_request`의 문서/Entity 컬럼 drift는 실제 런타임 DB 확인 전 미해결 상태로 유지하며, BEA-250 polling 인덱스나 BEA-251 신규 인덱스와 섞지 않는다.
+
 ## 민감정보 로그 정책
 
 기록 금지:

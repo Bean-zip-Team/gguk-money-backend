@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -27,7 +28,8 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "user_keycap",
-        uniqueConstraints = @UniqueConstraint(name = "uq_user_keycap_user_keycap", columnNames = {"user_id", "keycap_id"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_user_keycap_user_keycap", columnNames = {"user_id", "keycap_id"}),
+        indexes = @Index(name = "ix_user_keycap_user_status", columnList = "user_id, status")
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserKeycap {

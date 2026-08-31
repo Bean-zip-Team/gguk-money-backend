@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -19,7 +20,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "keycap")
+@Table(
+        name = "keycap",
+        indexes = @Index(name = "ix_keycap_active_sort", columnList = "active, sort_order")
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Keycap {
 
