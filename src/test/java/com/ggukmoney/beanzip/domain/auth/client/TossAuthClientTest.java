@@ -4,8 +4,10 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.ggukmoney.beanzip.support.TossCryptoTestFixture;
+import com.ggukmoney.beanzip.support.DelayedHttpServer;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.Base64;
 import java.util.List;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,6 +37,37 @@ class TossAuthClientTest {
     private static final String LOGIN_ME_URL = BASE_URL + "/api-partner/v1/apps-in-toss/user/oauth2/login-me";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void generateTokenTimeoutUsesExistingServerFailureClassification() throws Exception {
+        String successfulTokenResponse = """
+                {"resultType":"SUCCESS","success":{"accessToken":"late-access-token","refreshToken":"late-refresh-token","tokenType":"Bearer","expiresIn":3600}}
+                """;
+        try (DelayedHttpServer server = DelayedHttpServer.start(Duration.ofSeconds(2), successfulTokenResponse)) {
+            SslBundles sslBundles = mock(SslBundles.class);
+            when(sslBundles.getBundleNames()).thenReturn(List.of());
+            TossCryptoTestFixture.Context context = TossCryptoTestFixture.context();
+            TossAuthClient client = new TossAuthClient(
+                    objectMapper,
+                    server.baseUrl(),
+                    sslBundles,
+                    new TossPersonalDataDecryptor(context.base64Key(), context.aad()),
+                    Duration.ofSeconds(1),
+                    Duration.ofMillis(150)
+            );
+
+            long startedAt = System.nanoTime();
+            assertThatThrownBy(() -> client.generateToken("code", "DEFAULT"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(exception -> {
+                        ResponseStatusException response = (ResponseStatusException) exception;
+                        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                        assertThat(response.getReason()).isEqualTo("TOSS_SERVER_ERROR");
+                    });
+            assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
+                    .isLessThan(Duration.ofSeconds(1));
+        }
+    }
 
     @Test
     void decryptsOnlyNameAndPreservesUserKey() {

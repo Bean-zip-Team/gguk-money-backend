@@ -1,22 +1,20 @@
 package com.ggukmoney.beanzip.domain.cashout.client;
 
+import com.ggukmoney.beanzip.global.config.TossClientHttpRequestFactory;
 import com.ggukmoney.beanzip.global.util.PayloadLoggingInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.net.http.HttpClient;
+import java.time.Duration;
 
 /**
  * 서버-투-서버 연동 스펙(https://developers-apps-in-toss.toss.im/bedrock/reference/framework/비게임/promotion.html).
@@ -42,27 +40,25 @@ public class TossPromotionClient {
 
     public TossPromotionClient(
             @Value("${app.cashout.toss.base-url:}") String baseUrl,
-            SslBundles sslBundles
+            SslBundles sslBundles,
+            @Value("${app.cashout.toss.connect-timeout:3s}") Duration connectTimeout,
+            @Value("${app.cashout.toss.read-timeout:10s}") Duration readTimeout
     ) {
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
         RestClient.Builder builder = StringUtils.hasText(this.baseUrl)
                 ? RestClient.builder().baseUrl(this.baseUrl)
                 : RestClient.builder();
         this.mtlsEnabled = sslBundles.getBundleNames().contains(MTLS_BUNDLE_NAME);
-        if (mtlsEnabled) {
-            builder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(MTLS_BUNDLE_NAME)));
-        }
+        builder.requestFactory(TossClientHttpRequestFactory.create(
+                sslBundles,
+                MTLS_BUNDLE_NAME,
+                connectTimeout,
+                readTimeout
+        ));
         builder.requestInterceptor(PayloadLoggingInterceptor.forLogger(log, "TossPromotion"));
         this.restClient = builder.build();
-        log.info("TossPromotionClient initialized: baseUrl={} mtlsBundle={} mtlsEnabled={} availableBundles={}",
-                this.baseUrl, MTLS_BUNDLE_NAME, mtlsEnabled, sslBundles.getBundleNames());
-    }
-
-    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .sslContext(sslBundle.createSslContext())
-                .build();
-        return new JdkClientHttpRequestFactory(httpClient);
+        log.info("TossPromotionClient initialized: baseUrl={} mtlsBundle={} mtlsEnabled={} availableBundles={} connectTimeout={} readTimeout={}",
+                this.baseUrl, MTLS_BUNDLE_NAME, mtlsEnabled, sslBundles.getBundleNames(), connectTimeout, readTimeout);
     }
 
     /**

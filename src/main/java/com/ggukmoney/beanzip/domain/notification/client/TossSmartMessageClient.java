@@ -1,12 +1,12 @@
 package com.ggukmoney.beanzip.domain.notification.client;
 
+import com.ggukmoney.beanzip.global.config.TossClientHttpRequestFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -15,11 +15,13 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
 
-import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 
 @Component
 public class TossSmartMessageClient {
+
+    private static final Logger log = LoggerFactory.getLogger(TossSmartMessageClient.class);
 
     private static final String SEND_MESSAGE_PATH = "/api-partner/v1/apps-in-toss/messenger/send-message";
     private static final String DEFAULT_BASE_URL = "https://apps-in-toss-api.toss.im";
@@ -32,9 +34,24 @@ public class TossSmartMessageClient {
             ObjectMapper objectMapper,
             @Value("${app.smart-message.toss.base-url:" + DEFAULT_BASE_URL + "}") String baseUrl,
             SslBundles sslBundles,
-            @Value("${app.smart-message.toss.mtls-bundle-name:toss-auth}") String mtlsBundleName
+            @Value("${app.smart-message.toss.mtls-bundle-name:toss-auth}") String mtlsBundleName,
+            @Value("${app.smart-message.toss.connect-timeout:3s}") Duration connectTimeout,
+            @Value("${app.smart-message.toss.read-timeout:10s}") Duration readTimeout
     ) {
-        this(objectMapper, baseUrl, sslBundles, mtlsBundleName, RestClient.builder());
+        this(
+                objectMapper,
+                baseUrl,
+                sslBundles,
+                mtlsBundleName,
+                RestClient.builder().requestFactory(TossClientHttpRequestFactory.create(
+                        sslBundles,
+                        mtlsBundleName,
+                        connectTimeout,
+                        readTimeout
+                ))
+        );
+        log.info("TossSmartMessageClient initialized: mtlsEnabled={} connectTimeout={} readTimeout={}",
+                hasBundle(sslBundles, mtlsBundleName), connectTimeout, readTimeout);
     }
 
     TossSmartMessageClient(
@@ -47,15 +64,7 @@ public class TossSmartMessageClient {
         this.objectMapper = objectMapper;
         String normalizedBaseUrl = StringUtils.hasText(baseUrl) ? baseUrl.trim() : DEFAULT_BASE_URL;
         RestClient.Builder configuredBuilder = builder.baseUrl(normalizedBaseUrl);
-        if (sslBundles != null && StringUtils.hasText(mtlsBundleName) && sslBundles.getBundleNames().contains(mtlsBundleName.trim())) {
-            configuredBuilder.requestFactory(mtlsRequestFactory(sslBundles.getBundle(mtlsBundleName.trim())));
-        }
         this.restClient = configuredBuilder.build();
-    }
-
-    private static ClientHttpRequestFactory mtlsRequestFactory(SslBundle sslBundle) {
-        HttpClient httpClient = HttpClient.newBuilder().sslContext(sslBundle.createSslContext()).build();
-        return new JdkClientHttpRequestFactory(httpClient);
     }
 
     public SendResult sendMessage(String tossUserKey, String templateSetCode) {
@@ -115,6 +124,12 @@ public class TossSmartMessageClient {
 
     private boolean isSuccessResponse(TossSmartMessageResponse response) {
         return response != null && "SUCCESS".equalsIgnoreCase(response.resultType());
+    }
+
+    private static boolean hasBundle(SslBundles sslBundles, String bundleName) {
+        return sslBundles != null
+                && StringUtils.hasText(bundleName)
+                && sslBundles.getBundleNames().contains(bundleName.trim());
     }
 
     private boolean isRetryableStatus(RestClientResponseException exception) {
