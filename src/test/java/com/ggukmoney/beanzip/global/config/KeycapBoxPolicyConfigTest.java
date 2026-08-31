@@ -2,22 +2,39 @@ package com.ggukmoney.beanzip.global.config;
 
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class KeycapBoxPolicyConfigTest {
 
     private final AppConfigRepository appConfigRepository = mock(AppConfigRepository.class);
-    private final KeycapBoxPolicyConfig config = new KeycapBoxPolicyConfig(appConfigRepository);
+    private final KeycapBoxPolicyConfig config = new KeycapBoxPolicyConfig(new AppConfigBatchLoader(appConfigRepository));
+
+    @BeforeEach
+    void adaptExistingSingleKeyFixturesToBatchQuery() {
+        when(appConfigRepository.findLatestEffectiveByConfigKeys(any(), any(Instant.class)))
+                .thenAnswer(invocation -> {
+                    Collection<String> keys = invocation.getArgument(0);
+                    Instant now = invocation.getArgument(1);
+                    return keys.stream()
+                            .map(key -> appConfigRepository
+                                    .findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now))
+                            .flatMap(Optional::stream)
+                            .toList();
+                });
+    }
 
     @Test
     void managesOnlySharedCyclePolicyKeys() {
@@ -42,6 +59,10 @@ class KeycapBoxPolicyConfigTest {
         assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
         assertThat(config.freeOpenLimit()).isEqualTo(2);
         assertThat(config.adOpenLimit()).isEqualTo(6);
+        verify(appConfigRepository).findLatestEffectiveByConfigKeys(
+                org.mockito.ArgumentMatchers.eq(KeycapBoxPolicyConfig.DEFAULT_VALUES.keySet()),
+                any(Instant.class)
+        );
     }
 
     @Test

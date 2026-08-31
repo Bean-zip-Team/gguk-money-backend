@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.global.config;
 
-import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -10,8 +9,8 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
@@ -27,21 +26,29 @@ public class CashoutPolicyConfig {
             Map.entry(KEY_POINT_TO_KRW_RATE, "0.02")
     );
 
-    private final AppConfigRepository appConfigRepository;
+    private final AppConfigBatchLoader batchLoader;
 
-    private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private volatile Map<String, String> cache = Map.copyOf(DEFAULT_VALUES);
 
     @PostConstruct
     @Scheduled(fixedRate = 60_000)
     public void refresh() {
         try {
-            Instant now = Instant.now();
+            Map<String, String> loaded = batchLoader.load(DEFAULT_VALUES.keySet(), Instant.now());
+            Map<String, String> current = cache;
+            Map<String, String> next = new HashMap<>(DEFAULT_VALUES.size());
             for (String key : DEFAULT_VALUES.keySet()) {
-                appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now)
-                        .ifPresent(config -> cache.put(key, config.getConfigValue()));
+                String fallback = current.getOrDefault(key, DEFAULT_VALUES.get(key));
+                String candidate = loaded.get(key);
+                boolean valid = candidate != null && isValidPolicyValue(key, candidate);
+                if (candidate != null && !valid) {
+                    log.warn("Invalid cashout policy config value; key={} fallback=last-known-good", key);
+                }
+                next.put(key, valid ? candidate : fallback);
             }
+            cache = Map.copyOf(next);
         } catch (RuntimeException exception) {
-            log.warn("Failed to refresh cashout policy config from AppConfig; falling back to defaults", exception);
+            log.warn("Failed to refresh cashout policy config from AppConfig; fallback=last-known-good", exception);
         }
     }
 
@@ -63,5 +70,19 @@ public class CashoutPolicyConfig {
 
     private String resolve(String key) {
         return cache.getOrDefault(key, DEFAULT_VALUES.get(key));
+    }
+
+    private boolean isValidPolicyValue(String key, String rawValue) {
+        try {
+            if (KEY_MINIMUM_POINT.equals(key)) {
+                return Integer.parseInt(rawValue.trim()) > 0;
+            }
+            if (KEY_POINT_TO_KRW_RATE.equals(key)) {
+                return new BigDecimal(rawValue.trim()).signum() > 0;
+            }
+            return false;
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 }
