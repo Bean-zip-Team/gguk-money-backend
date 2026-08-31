@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.global.config;
 
-import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -9,8 +8,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
@@ -66,21 +65,30 @@ public class TapPolicyConfig {
             Map.entry(KEY_BOOSTER_LIMIT_WINDOW_SECONDS, "86400")
     );
 
-    private final AppConfigRepository appConfigRepository;
+    private final AppConfigBatchLoader batchLoader;
 
-    private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private volatile Map<String, String> cache = Map.copyOf(DEFAULT_VALUES);
 
     @PostConstruct
     @Scheduled(fixedRate = 60_000)
     public void refresh() {
         try {
             Instant now = Instant.now();
+            Map<String, String> loaded = batchLoader.load(DEFAULT_VALUES.keySet(), now);
+            Map<String, String> current = cache;
+            Map<String, String> next = new HashMap<>(DEFAULT_VALUES.size());
             for (String key : DEFAULT_VALUES.keySet()) {
-                appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now)
-                        .ifPresent(config -> cache.put(key, config.getConfigValue()));
+                String fallback = current.getOrDefault(key, DEFAULT_VALUES.get(key));
+                String candidate = loaded.get(key);
+                boolean valid = candidate != null && isValidPolicyValue(key, candidate);
+                if (candidate != null && !valid) {
+                    log.warn("Invalid tap policy config value; key={} fallback=last-known-good", key);
+                }
+                next.put(key, valid ? candidate : fallback);
             }
+            cache = Map.copyOf(next);
         } catch (RuntimeException exception) {
-            log.warn("Failed to refresh tap policy config from AppConfig; falling back to defaults", exception);
+            log.warn("Failed to refresh tap policy config from AppConfig; fallback=last-known-good", exception);
         }
     }
 
@@ -189,5 +197,23 @@ public class TapPolicyConfig {
 
     private String resolve(String key) {
         return cache.getOrDefault(key, DEFAULT_VALUES.get(key));
+    }
+
+    private boolean isValidPolicyValue(String key, String rawValue) {
+        try {
+            String value = rawValue.trim();
+            if (KEY_BOT_ENABLED.equals(key) || KEY_RATE_LIMIT_ENABLED.equals(key)) {
+                return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
+            }
+            if (KEY_CURVE_GENERAL_VARIANCE.equals(key)
+                    || KEY_BOT_STDDEV_THRESHOLD_MS.equals(key)
+                    || KEY_RATE_LIMIT_REFILL_PER_SECOND.equals(key)) {
+                return Double.isFinite(Double.parseDouble(value));
+            }
+            Integer.parseInt(value);
+            return true;
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 }
