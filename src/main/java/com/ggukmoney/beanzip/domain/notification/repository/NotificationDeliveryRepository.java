@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 public interface NotificationDeliveryRepository extends JpaRepository<NotificationDelivery, Long> {
@@ -21,6 +23,21 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
             NotificationType type,
             NotificationDeliveryStatus status,
             Instant requestedAt
+    );
+
+    @Query("""
+            SELECT DISTINCT delivery.userId
+            FROM NotificationDelivery delivery
+            WHERE delivery.userId IN :userIds
+              AND delivery.type = :type
+              AND delivery.status = :status
+              AND delivery.requestedAt > :requestedAt
+            """)
+    List<UUID> findUserIdsWithRecentDelivery(
+            @Param("userIds") Collection<UUID> userIds,
+            @Param("type") NotificationType type,
+            @Param("status") NotificationDeliveryStatus status,
+            @Param("requestedAt") Instant requestedAt
     );
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)

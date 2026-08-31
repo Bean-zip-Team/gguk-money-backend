@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +60,7 @@ class NotificationDeliveryPersistenceServiceTest {
         for (String methodName : java.util.List.of(
                 "createPending",
                 "prepareRankChange",
+                "prepareScheduledRankChange",
                 "prepareKeycapBoxOpenAvailable",
                 "captureRankBaselineOnAgreement",
                 "markSent",
@@ -71,6 +73,34 @@ class NotificationDeliveryPersistenceServiceTest {
                     .orElseThrow();
             assertThat(method.getAnnotation(Transactional.class)).isNotNull();
         }
+    }
+
+    @Test
+    void scheduledRankChangeUsesPreloadedPolicyInputsWithoutPerUserReads() {
+        UUID userId = UUID.randomUUID();
+        RankingSeason season = weeklySeason(1L);
+        NotificationRankState state = NotificationRankState.record(
+                userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));
+        String dedupeKey = rankDedupeKey(season, userId, state);
+        NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
+        when(deliveryRepository.insertPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
+                org.mockito.ArgumentMatchers.eq(dedupeKey),
+                org.mockito.ArgumentMatchers.eq("RANK_SET"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(1);
+        when(deliveryRepository.findByDedupeKey(dedupeKey)).thenReturn(Optional.of(pending));
+
+        assertThat(service.prepareScheduledRankChange(userId, season, 8L, state, false)).contains(pending);
+
+        assertThat(state.getBaselineRank()).isEqualTo(8L);
+        verify(preferenceRepository, never()).findByUserIdAndType(userId, NotificationType.RANK_CHANGE);
+        verify(rankingSeasonService, never()).findActiveWeeklySeason();
+        verify(rankingEntryRepository, never()).findMyParticipant(season, userId);
+        verify(rankingEntryRepository, never()).countParticipantsAhead(season, 8L, userId.toString());
     }
 
     @Test

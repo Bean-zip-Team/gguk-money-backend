@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +16,18 @@ public interface UserTapDailyRepository extends JpaRepository<UserTapDaily, Long
     Optional<UserTapDaily> findByUserIdAndTapDate(UUID userId, LocalDate tapDate);
 
     boolean existsByUserIdAndTapDateAndValidTapCountGreaterThan(UUID userId, LocalDate tapDate, Integer validTapCount);
+
+    @Query("""
+            SELECT daily.user.id
+            FROM UserTapDaily daily
+            WHERE daily.user.id IN :userIds
+              AND daily.tapDate = :tapDate
+              AND daily.validTapCount > 0
+            """)
+    List<UUID> findUserIdsWithValidTaps(
+            @Param("userIds") Collection<UUID> userIds,
+            @Param("tapDate") LocalDate tapDate
+    );
 
     @Query("""
             SELECT COALESCE(SUM(daily.totalValidTapCount), 0)

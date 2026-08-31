@@ -157,6 +157,26 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
         return countParticipantsAhead(season.getId(), score, userId);
     }
 
+    @Query(value = """
+            WITH ranked AS (
+                SELECT e.user_id,
+                       ROW_NUMBER() OVER (ORDER BY e.score DESC, e.user_id DESC) AS calculated_rank
+                FROM ranking_entry e
+                JOIN app_user u ON u.id = e.user_id
+                WHERE e.season_id = :seasonId
+                  AND u.status = 'ACTIVE'
+                  AND e.score > 0
+            )
+            SELECT ranked.user_id AS userId,
+                   ranked.calculated_rank AS rank
+            FROM ranked
+            WHERE ranked.user_id IN (:userIds)
+            """, nativeQuery = true)
+    List<RankingBatchRankProjection> findBatchRanks(
+            @Param("seasonId") Long seasonId,
+            @Param("userIds") List<UUID> userIds
+    );
+
     @Query("""
             SELECT entry
             FROM RankingEntry entry
@@ -296,6 +316,12 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
         UUID getUserId();
 
         Long getFinalRank();
+    }
+
+    interface RankingBatchRankProjection {
+        UUID getUserId();
+
+        Long getRank();
     }
 
     interface RankingHistoryProjection {
