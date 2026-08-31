@@ -23,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class RankingBackfillServiceTest {
 
@@ -58,6 +59,34 @@ class RankingBackfillServiceTest {
         service.backfillActiveWeeklySeason(season);
 
         verify(projectionService).syncWeeklyScore(season, userId, 123L, clock.instant(), false);
+    }
+
+    @Test
+    void activeWeeklyUsesNativeUuidCursorAcrossPages() {
+        properties.setPageSize(2);
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID thirdUserId = UUID.randomUUID();
+        RankingSeason season = RankingSeason.activeWeekly(
+                LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"),
+                Instant.parse("2026-07-26T15:00:00Z")
+        );
+        UserTapDailyRepository.UserTapAggregateProjection firstRow = aggregateRow(firstUserId, 10L);
+        UserTapDailyRepository.UserTapAggregateProjection secondRow = aggregateRow(secondUserId, 20L);
+        UserTapDailyRepository.UserTapAggregateProjection thirdRow = aggregateRow(thirdUserId, 30L);
+        when(dailyRepository.findTotalValidTapAggregates(
+                LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), null, 2
+        )).thenReturn(List.of(firstRow, secondRow));
+        when(dailyRepository.findTotalValidTapAggregates(
+                LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), secondUserId, 2
+        )).thenReturn(List.of(thirdRow));
+
+        assertThat(service.backfillActiveWeeklySeason(season)).isEqualTo(3L);
+
+        verify(dailyRepository).findTotalValidTapAggregates(
+                LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), secondUserId, 2
+        );
     }
 
     @Test
