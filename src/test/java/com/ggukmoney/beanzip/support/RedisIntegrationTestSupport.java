@@ -43,7 +43,7 @@ public abstract class RedisIntegrationTestSupport {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
         RedisService redisService = new RedisService(redisTemplate);
-        authService = new AuthService(null, redisService, null, null, null, null, null);
+        authService = new AuthService(null, redisService, null, null, null);
         tapBatchService = new TapBatchService(
                 null, null, null, null, null, null, null, redisService, null, null, null, null,
                 Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC),
