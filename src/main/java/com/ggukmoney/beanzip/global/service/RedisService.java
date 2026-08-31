@@ -1,13 +1,18 @@
 package com.ggukmoney.beanzip.global.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,8 +75,25 @@ public class RedisService {
         redisTemplate.opsForZSet().add(key, member, score);
     }
 
+    public void addAllToSortedSet(String key, Map<String, Double> memberScores) {
+        if (memberScores.isEmpty()) {
+            return;
+        }
+        Set<ZSetOperations.TypedTuple<String>> tuples = memberScores.entrySet().stream()
+                .map(entry -> new DefaultTypedTuple<>(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        redisTemplate.opsForZSet().add(key, tuples);
+    }
+
     public void removeFromSortedSet(String key, String member) {
         redisTemplate.opsForZSet().remove(key, member);
+    }
+
+    public void removeAllFromSortedSet(String key, Collection<String> members) {
+        if (members.isEmpty()) {
+            return;
+        }
+        redisTemplate.opsForZSet().remove(key, members.toArray());
     }
 
     public Set<String> getSortedSetRange(String key, long start, long end) {
@@ -89,6 +111,31 @@ public class RedisService {
 
     public Long getSortedSetRank(String key, String member) {
         return redisTemplate.opsForZSet().reverseRank(key, member);
+    }
+
+    public Map<String, Long> getSortedSetReverseRanks(String key, Collection<String> members) {
+        if (members.isEmpty()) {
+            return Map.of();
+        }
+        List<String> orderedMembers = List.copyOf(members);
+        byte[] rawKey = redisTemplate.getStringSerializer().serialize(key);
+        List<Object> rawRanks = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (String member : orderedMembers) {
+                connection.zSetCommands().zRevRank(
+                        rawKey,
+                        redisTemplate.getStringSerializer().serialize(member)
+                );
+            }
+            return null;
+        });
+        Map<String, Long> ranks = new LinkedHashMap<>();
+        for (int index = 0; index < orderedMembers.size(); index++) {
+            Object rawRank = rawRanks.get(index);
+            if (rawRank instanceof Number number) {
+                ranks.put(orderedMembers.get(index), number.longValue());
+            }
+        }
+        return ranks;
     }
 
     public Set<String> getSortedSetReverseRange(String key, long start, long end) {
