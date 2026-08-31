@@ -71,7 +71,15 @@ class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport
                 "CREATE UNIQUE INDEX CONCURRENTLY ux_user_keycap_equipped",
                 "WHERE equipped = true",
                 "CREATE UNIQUE INDEX CONCURRENTLY uq_keycap_box_open_ad_reward_id",
-                "WHERE ad_reward_id IS NOT NULL"
+                "WHERE ad_reward_id IS NOT NULL",
+                "CREATE INDEX CONCURRENTLY ix_notification_preference_sendable_type_id",
+                "ON notification_preference (notification_type, id)",
+                "INCLUDE (user_id)",
+                "WHERE enabled = true",
+                "AND agreement_status = 'AGREED'",
+                "CREATE INDEX CONCURRENTLY ix_notification_delivery_sent_cooldown",
+                "ON notification_delivery (user_id, notification_type, requested_at DESC)",
+                "WHERE status = 'SENT'"
         );
     }
 
@@ -95,6 +103,84 @@ class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport
 
         assertThat(writes.stream().map(CompletableFuture::join).toList())
                 .containsExactlyInAnyOrder(true, false);
+    }
+
+    @Test
+    void notificationPartialIndexesHaveExpectedDefinitionsAndExecutablePlans() {
+        String preferenceExplain = """
+                EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+                SELECT user_id
+                FROM notification_preference
+                WHERE notification_type = 'DAILY_REMINDER'
+                  AND enabled = true
+                  AND agreement_status = 'AGREED'
+                  AND id > 0
+                ORDER BY id ASC
+                LIMIT 100
+                """;
+        String cooldownExplain = """
+                EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+                SELECT DISTINCT user_id
+                FROM notification_delivery
+                WHERE user_id IN ('00000000-0000-0000-0000-000000000001'::uuid)
+                  AND notification_type = 'RANK_CHANGE'
+                  AND status = 'SENT'
+                  AND requested_at > now() - interval '6 hours'
+                """;
+        List<String> preferencePlanBefore = jdbcTemplate.queryForList(preferenceExplain, String.class);
+        List<String> cooldownPlanBefore = jdbcTemplate.queryForList(cooldownExplain, String.class);
+
+        jdbcTemplate.execute("""
+                CREATE INDEX ix_notification_preference_sendable_type_id
+                ON notification_preference (notification_type, id)
+                INCLUDE (user_id)
+                WHERE enabled = true AND agreement_status = 'AGREED'
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX ix_notification_delivery_sent_cooldown
+                ON notification_delivery (user_id, notification_type, requested_at DESC)
+                WHERE status = 'SENT'
+                """);
+        jdbcTemplate.execute("ANALYZE notification_preference");
+        jdbcTemplate.execute("ANALYZE notification_delivery");
+
+        Map<String, String> indexes = jdbcTemplate.query(
+                """
+                        select indexname, indexdef
+                        from pg_indexes
+                        where schemaname = 'public'
+                          and indexname in (
+                            'ix_notification_preference_sendable_type_id',
+                            'ix_notification_delivery_sent_cooldown'
+                          )
+                        """,
+                resultSet -> {
+                    Map<String, String> result = new java.util.HashMap<>();
+                    while (resultSet.next()) {
+                        result.put(resultSet.getString("indexname"), resultSet.getString("indexdef"));
+                    }
+                    return result;
+                }
+        );
+        assertThat(indexes.get("ix_notification_preference_sendable_type_id"))
+                .contains("(notification_type, id) INCLUDE (user_id)")
+                .contains("WHERE ((enabled = true) AND ((agreement_status)::text = 'AGREED'::text))");
+        assertThat(indexes.get("ix_notification_delivery_sent_cooldown"))
+                .contains("(user_id, notification_type, requested_at DESC)")
+                .contains("WHERE ((status)::text = 'SENT'::text)");
+
+        List<String> preferencePlan = jdbcTemplate.queryForList(preferenceExplain, String.class);
+        List<String> cooldownPlan = jdbcTemplate.queryForList(cooldownExplain, String.class);
+
+        System.out.printf("BEA-251 preference plan before:%n%s%nBEA-251 preference plan after:%n%s%n",
+                String.join(System.lineSeparator(), preferencePlanBefore),
+                String.join(System.lineSeparator(), preferencePlan));
+        System.out.printf("BEA-251 cooldown plan before:%n%s%nBEA-251 cooldown plan after:%n%s%n",
+                String.join(System.lineSeparator(), cooldownPlanBefore),
+                String.join(System.lineSeparator(), cooldownPlan));
+
+        assertThat(preferencePlan).anyMatch(line -> line.contains("notification_preference"));
+        assertThat(cooldownPlan).anyMatch(line -> line.contains("notification_delivery"));
     }
 
     private UUID insertUser(String nickname) {
