@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -37,7 +38,7 @@ public class RankingBackfillService {
         LocalDate startDate = LocalDate.ofInstant(season.getStartsAt(), businessZoneId);
         LocalDate endDate = LocalDate.ofInstant(season.getEndsAt(), businessZoneId);
         long processed = 0;
-        String lastUserId = null;
+        UUID lastUserId = null;
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> rows =
                     userTapDailyRepository.findTotalValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
@@ -52,7 +53,7 @@ public class RankingBackfillService {
                         clock.instant(),
                         false
                 );
-                lastUserId = row.getUserId().toString();
+                lastUserId = row.getUserId();
                 processed++;
             }
             if (rows.size() < properties.pageSize()) {
@@ -68,7 +69,7 @@ public class RankingBackfillService {
             LocalDate endDate
     ) {
         long processed = 0;
-        String lastUserId = null;
+        UUID lastUserId = null;
         Instant occurredAt = clock.instant();
         rankingEntryRepository.resetScoresWithoutWeeklyAggregate(
                 targetSeason.getId(),
@@ -84,7 +85,7 @@ public class RankingBackfillService {
             }
             for (UserTapDailyRepository.UserTapAggregateProjection row : rows) {
                 upsertFinalizingScore(targetSeason, row.getUserId(), row.getScore(), occurredAt);
-                lastUserId = row.getUserId().toString();
+                lastUserId = row.getUserId();
                 processed++;
             }
             if (rows.size() < properties.pageSize()) {
@@ -93,7 +94,7 @@ public class RankingBackfillService {
         }
     }
 
-    private void upsertFinalizingScore(RankingSeason targetSeason, java.util.UUID userId, long score, Instant occurredAt) {
+    private void upsertFinalizingScore(RankingSeason targetSeason, UUID userId, long score, Instant occurredAt) {
         AppUser user = userService.getById(userId);
         RankingEntry entry = rankingEntryRepository.findBySeasonAndUserId(targetSeason, userId)
                 .orElseGet(() -> RankingEntry.createFor(targetSeason, user, score, null, occurredAt));
