@@ -88,29 +88,60 @@ public class NotificationDeliveryPersistenceService {
         }
 
         CurrentRank rank = currentRank.get();
-        Optional<NotificationRankState> existingState = rankStateRepository.findByUserIdAndSeasonId(userId, rank.season().getId());
-        if (existingState.isEmpty()) {
-            rankStateRepository.saveAndFlush(NotificationRankState.record(userId, rank.season().getId(), rank.rank(), clock.instant()));
+        NotificationRankState existingState = rankStateRepository
+                .findByUserIdAndSeasonId(userId, rank.season().getId())
+                .orElse(null);
+        return prepareRankChangeInternal(
+                userId,
+                rank.season(),
+                rank.rank(),
+                existingState,
+                existingState != null && isRankChangeCooldownActive(userId, clock.instant())
+        );
+    }
+
+    @Transactional
+    public Optional<NotificationDelivery> prepareScheduledRankChange(
+            UUID userId,
+            RankingSeason season,
+            long currentRank,
+            NotificationRankState existingState,
+            boolean cooldownActive
+    ) {
+        return prepareRankChangeInternal(userId, season, currentRank, existingState, cooldownActive);
+    }
+
+    private Optional<NotificationDelivery> prepareRankChangeInternal(
+            UUID userId,
+            RankingSeason season,
+            long currentRank,
+            NotificationRankState existingState,
+            boolean cooldownActive
+    ) {
+        if (existingState == null) {
+            rankStateRepository.saveAndFlush(
+                    NotificationRankState.record(userId, season.getId(), currentRank, clock.instant())
+            );
             return Optional.empty();
         }
 
-        NotificationRankState state = existingState.get();
+        NotificationRankState state = existingState;
         long previousRank = state.getBaselineRank();
         Instant now = clock.instant();
         Optional<NotificationDelivery> pending = Optional.empty();
-        if (shouldSend(previousRank, rank.rank()) && !isRankChangeCooldownActive(userId, now)) {
+        if (shouldSend(previousRank, currentRank) && !cooldownActive) {
             pending = createPendingInternal(
                     userId,
                     NotificationType.RANK_CHANGE,
                     "RANK_CHANGE:%d:%s:%d".formatted(
-                            rank.season().getId(), userId, state.getBaselineRecordedAt().toEpochMilli()),
+                            season.getId(), userId, state.getBaselineRecordedAt().toEpochMilli()),
                     templateProperties.campaignCode(NotificationType.RANK_CHANGE),
                     "{\"currentRank\":%d,\"rankChange\":%d,\"direction\":\"%s\"}".formatted(
-                            rank.rank(), Math.abs(previousRank - rank.rank()), previousRank > rank.rank() ? "UP" : "DOWN")
+                            currentRank, Math.abs(previousRank - currentRank), previousRank > currentRank ? "UP" : "DOWN")
             );
         }
 
-        state.updateBaseline(rank.season().getId(), rank.rank(), now);
+        state.updateBaseline(season.getId(), currentRank, now);
         rankStateRepository.saveAndFlush(state);
         return pending;
     }
