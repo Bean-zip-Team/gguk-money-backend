@@ -49,15 +49,15 @@ public interface UserTapDailyRepository extends JpaRepository<UserTapDaily, Long
             WHERE daily.tap_date >= :startDate
               AND daily.tap_date < :endDate
               AND daily.total_valid_tap_count > 0
-              AND (:lastUserId IS NULL OR CAST(daily.user_id AS text) > :lastUserId)
+              AND (:lastUserId IS NULL OR daily.user_id > :lastUserId)
             GROUP BY daily.user_id
-            ORDER BY CAST(daily.user_id AS text) ASC
+            ORDER BY daily.user_id ASC
             LIMIT :limit
             """, nativeQuery = true)
     List<UserTapAggregateProjection> findTotalValidTapAggregates(
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
-            @Param("lastUserId") String lastUserId,
+            @Param("lastUserId") UUID lastUserId,
             @Param("limit") int limit
     );
 

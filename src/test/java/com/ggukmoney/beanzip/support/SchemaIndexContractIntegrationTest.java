@@ -34,7 +34,8 @@ class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport
                             'ix_app_user_status',
                             'ix_keycap_active_sort',
                             'ix_user_keycap_user_status',
-                            'ix_keycap_box_open_user_time'
+                            'ix_keycap_box_open_user_time',
+                            'ix_user_tap_daily_date_user'
                           )
                         """,
                 resultSet -> {
@@ -50,12 +51,26 @@ class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport
                 "ix_app_user_status",
                 "ix_keycap_active_sort",
                 "ix_user_keycap_user_status",
-                "ix_keycap_box_open_user_time"
+                "ix_keycap_box_open_user_time",
+                "ix_user_tap_daily_date_user"
         );
         assertThat(indexes.get("ix_app_user_status")).contains("(status)");
         assertThat(indexes.get("ix_keycap_active_sort")).contains("(active, sort_order)");
         assertThat(indexes.get("ix_user_keycap_user_status")).contains("(user_id, status)");
         assertThat(indexes.get("ix_keycap_box_open_user_time")).contains("user_id, opened_at DESC");
+        assertThat(indexes.get("ix_user_tap_daily_date_user")).contains("(tap_date, user_id)");
+    }
+
+    @Test
+    void manualPerformanceIndexHasCanonicalDateUserDdlWithoutMutableCount() throws IOException {
+        ClassPathResource resource = new ClassPathResource("db/manual-performance-indexes.sql");
+
+        assertThat(resource.exists()).isTrue();
+        String ddl = resource.getContentAsString(StandardCharsets.UTF_8);
+        assertThat(ddl)
+                .contains("CREATE INDEX CONCURRENTLY ix_user_tap_daily_date_user")
+                .contains("ON user_tap_daily (tap_date, user_id)")
+                .doesNotContain("total_valid_tap_count", "INCLUDE", "WHERE");
     }
 
     @Test
