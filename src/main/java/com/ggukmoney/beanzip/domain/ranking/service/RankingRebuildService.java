@@ -65,10 +65,8 @@ public class RankingRebuildService {
                 if (entries.isEmpty()) {
                     break;
                 }
-                for (RankingEntry entry : entries) {
-                    redisRepository.addToTempGlobal(tempKey, entry.getUser().getId(), entry.getScore());
-                    loadedCount++;
-                }
+                redisRepository.addPageToRebuild(tempKey, entries);
+                loadedCount += entries.size();
                 if (entries.size() < properties.pageSize()) {
                     break;
                 }

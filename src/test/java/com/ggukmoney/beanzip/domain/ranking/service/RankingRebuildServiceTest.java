@@ -61,7 +61,7 @@ class RankingRebuildServiceTest {
         boolean result = service.rebuild(season, "test");
 
         assertThat(result).isTrue();
-        verify(redisRepository, never()).addToTempGlobal(anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyLong());
+        verify(redisRepository, never()).addPageToRebuild(anyString(), any());
         verify(redisRepository).swapTempGlobalToLive(
                 eq(1L),
                 eq("temp"),
@@ -111,6 +111,7 @@ class RankingRebuildServiceTest {
         boolean result = service.rebuild(season, "test");
 
         assertThat(result).isTrue();
+        verify(redisRepository).addPageToRebuild("temp", List.of(changedDuringRebuild));
         verify(redisRepository).swapTempGlobalToLive(
                 eq(1L),
                 eq("temp"),

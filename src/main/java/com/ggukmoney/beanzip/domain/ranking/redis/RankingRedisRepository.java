@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.ranking.redis;
 
+import com.ggukmoney.beanzip.domain.ranking.entity.RankingEntry;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ClassPathResource;
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Repository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +65,31 @@ public class RankingRedisRepository {
         }
     }
 
+    public void applyPage(Long seasonId, List<RankingEntry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        Map<String, Map<String, Double>> additions = new LinkedHashMap<>();
+        Map<String, Collection<String>> removals = new LinkedHashMap<>();
+        String globalKey = keys.global(seasonId);
+        for (RankingEntry entry : entries) {
+            String member = entry.getUser().getId().toString();
+            if (entry.isParticipantEligible()) {
+                addScore(additions, globalKey, member, entry.getScore());
+                if (entry.getRegionCode() != null) {
+                    addScore(additions, keys.region(seasonId, entry.getRegionCode()), member, entry.getScore());
+                }
+            } else {
+                addRemoval(removals, globalKey, member);
+                if (entry.getRegionCode() != null) {
+                    addRemoval(removals, keys.region(seasonId, entry.getRegionCode()), member);
+                }
+            }
+        }
+        additions.forEach(redisService::addAllToSortedSet);
+        removals.forEach(redisService::removeAllFromSortedSet);
+    }
+
     public List<RankingRedisMember> findTopMembers(Long seasonId, int limit) {
         List<RedisService.SortedSetMember> sortedMembers =
                 redisService.getSortedSetReverseRangeWithScores(keys.global(seasonId), 0, limit - 1L);
@@ -83,6 +111,25 @@ public class RankingRedisRepository {
     public Long findRank(Long seasonId, UUID userId) {
         Long zeroBased = redisService.getSortedSetRank(keys.global(seasonId), userId.toString());
         return zeroBased == null ? null : zeroBased + 1;
+    }
+
+    public Map<UUID, Long> findRanks(Long seasonId, Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashSet<UUID> orderedUserIds = new LinkedHashSet<>(userIds);
+        Map<String, Long> zeroBasedRanks = redisService.getSortedSetReverseRanks(
+                keys.global(seasonId),
+                orderedUserIds.stream().map(UUID::toString).toList()
+        );
+        Map<UUID, Long> ranks = new LinkedHashMap<>();
+        for (UUID userId : orderedUserIds) {
+            Long zeroBasedRank = zeroBasedRanks.get(userId.toString());
+            if (zeroBasedRank != null) {
+                ranks.put(userId, zeroBasedRank + 1);
+            }
+        }
+        return ranks;
     }
 
     public long findScore(Long seasonId, UUID userId) {
@@ -175,6 +222,17 @@ public class RankingRedisRepository {
         redisService.addToSortedSet(tempKey, userId.toString(), score);
     }
 
+    public void addPageToRebuild(String tempKey, List<RankingEntry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        Map<String, Double> scores = new LinkedHashMap<>();
+        for (RankingEntry entry : entries) {
+            scores.put(entry.getUser().getId().toString(), (double) entry.getScore());
+        }
+        redisService.addAllToSortedSet(tempKey, scores);
+    }
+
     public boolean swapTempGlobalToLive(
             Long seasonId,
             String tempKey,
@@ -209,5 +267,18 @@ public class RankingRedisRepository {
 
     private void releaseLock(String key, String token) {
         redisService.executeScript(RELEASE_LOCK_SCRIPT, List.of(key), token);
+    }
+
+    private void addScore(
+            Map<String, Map<String, Double>> additions,
+            String key,
+            String member,
+            long score
+    ) {
+        additions.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).put(member, (double) score);
+    }
+
+    private void addRemoval(Map<String, Collection<String>> removals, String key, String member) {
+        removals.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(member);
     }
 }
