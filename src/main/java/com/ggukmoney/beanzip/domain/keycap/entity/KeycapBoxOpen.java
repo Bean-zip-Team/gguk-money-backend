@@ -28,8 +28,7 @@ import java.util.UUID;
         name = "keycap_box_open",
         indexes = {
                 @Index(name = "uq_keycap_box_open_user_idempotency", columnList = "user_id, idempotency_key", unique = true),
-                @Index(name = "uq_keycap_box_open_ad_reward_id", columnList = "ad_reward_id", unique = true),
-                @Index(name = "ix_keycap_box_open_user_opened_at", columnList = "user_id, opened_at")
+                @Index(name = "ix_keycap_box_open_user_time", columnList = "user_id, opened_at DESC")
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

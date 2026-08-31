@@ -488,6 +488,13 @@ Unique와 Check:
 
 ## Migration과 Entity 정합성 검토
 
+### 인덱스 표현 계약
+
+- JPA로 표현 가능한 `ix_app_user_status`, `ix_keycap_active_sort`, `ix_user_keycap_user_status`, `ix_keycap_box_open_user_time`은 Entity `@Index`와 Hibernate 생성 스키마에서 이름·컬럼 순서를 동일하게 유지한다.
+- PostgreSQL partial index인 `ux_app_user_active_nickname_normalized`, `ux_user_keycap_equipped`, `uq_keycap_box_open_ad_reward_id`는 Entity annotation으로 대체하지 않는다. 수동 적용 원문은 `src/main/resources/db/manual-index-contracts.sql`에서 관리한다.
+- 수동 DDL 파일은 애플리케이션 시작 시 자동 실행되지 않는다. 실제 런타임 DB, 기존 인덱스와 중복 데이터를 확인한 뒤 각 `CREATE INDEX CONCURRENTLY` 문을 트랜잭션 밖에서 개별 실행한다.
+- `cashout_request` 문서의 `requested_at` 등과 현재 Entity의 `created_at` 중심 구조는 실제 런타임 DB가 확인될 때까지 어느 한쪽으로 덮어쓰지 않고 drift 항목으로 유지한다.
+
 - 현재 저장소 소스에는 `V1010__create_a_domain_schema.sql`, `V1020__drop_auth_session_log.sql` 파일이 없다.
 - Entity는 14개 테이블명, PK 타입, 주요 FK 타입, `public_id` 보유 여부를 코드 기준으로 정의한다.
 - 현재 Entity 기준으로 `point_ledger.user_id`와 `point_account_id`가 같은 사용자임을 보장하는 DB 제약은 없다.
