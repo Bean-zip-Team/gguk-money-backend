@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class RankingReconciliationServiceTest {
@@ -74,6 +75,7 @@ class RankingReconciliationServiceTest {
 
         service.reconcileActiveWeekly();
 
+        verify(redisRepository).applyPage(1L, List.of(first, second));
         verify(redisRepository).recordReconciliationSuccess(
                 1L,
                 1,
@@ -110,6 +112,7 @@ class RankingReconciliationServiceTest {
 
         service.reconcileActiveWeekly();
 
+        verify(redisRepository, times(2)).applyPage(eq(1L), any());
         verify(redisRepository).recordReconciliationSuccess(
                 1L,
                 1,
@@ -154,7 +157,7 @@ class RankingReconciliationServiceTest {
         when(entryRepository.findChangedEntries(any(), any(), any(), any())).thenReturn(List.of(entry));
         doThrow(new IllegalStateException("redis down"))
                 .when(redisRepository)
-                .updateScore(eq(1L), any(), eq(100L), any(), any());
+                .applyPage(eq(1L), any());
 
         service.reconcileActiveWeekly();
 
