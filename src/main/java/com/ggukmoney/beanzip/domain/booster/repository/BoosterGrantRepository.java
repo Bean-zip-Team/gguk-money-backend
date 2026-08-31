@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,4 +31,23 @@ public interface BoosterGrantRepository extends JpaRepository<BoosterGrant, Long
             @Param("grantDate") LocalDate grantDate,
             @Param("dailyLimit") int dailyLimit
     );
+
+    @Query("""
+            SELECT grant.user.id AS userId,
+                   COUNT(grant) AS grantCount
+            FROM BoosterGrant grant
+            WHERE grant.user.id IN :userIds
+              AND grant.grantDate = :grantDate
+            GROUP BY grant.user.id
+            """)
+    List<UserGrantCountProjection> countByUserIdsAndGrantDate(
+            @Param("userIds") Collection<UUID> userIds,
+            @Param("grantDate") LocalDate grantDate
+    );
+
+    interface UserGrantCountProjection {
+        UUID getUserId();
+
+        Long getGrantCount();
+    }
 }

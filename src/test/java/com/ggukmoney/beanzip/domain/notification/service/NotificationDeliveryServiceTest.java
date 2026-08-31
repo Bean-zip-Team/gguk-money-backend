@@ -26,7 +26,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
@@ -35,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,17 +60,18 @@ class NotificationDeliveryServiceTest {
             "clickmoney-box"
     );
     private final TossSmartMessageClient smartMessageClient = mock(TossSmartMessageClient.class);
+    private final NotificationBatchReadService batchReadService = mock(NotificationBatchReadService.class);
     private final NotificationDeliveryService service = new NotificationDeliveryService(
             persistenceService,
             preferenceRepository,
             authIdentityRepository,
             boosterGrantRepository,
-            userTapDailyRepository,
             tapPolicyConfig,
             keycapBoxAccountRepository,
             keycapBoxPolicyConfig,
             templateProperties,
-            smartMessageClient
+            smartMessageClient,
+            batchReadService
     );
 
     @Test
@@ -118,12 +122,12 @@ class NotificationDeliveryServiceTest {
                     preferenceRepository,
                     authIdentityRepository,
                     boosterGrantRepository,
-                    userTapDailyRepository,
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
                     new NotificationTemplateProperties(null, "clickmoney-asfasf", "TPL_BOOSTER", null, null, null),
-                    smartMessageClient
+                    smartMessageClient,
+                    batchReadService
             );
             stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
 
@@ -187,8 +191,10 @@ class NotificationDeliveryServiceTest {
             NotificationDelivery pending = pending(userId, NotificationType.BOOSTER_RECHARGED, "booster");
             when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
             when(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(today.minusDays(1), 3)).thenReturn(List.of(userId));
-            when(boosterGrantRepository.countByUserIdAndGrantDate(userId, today)).thenReturn(0L);
-            stubAgreed(userId, NotificationType.BOOSTER_RECHARGED);
+            when(batchReadService.findCandidates(NotificationType.BOOSTER_RECHARGED, 0L))
+                    .thenReturn(List.of(sendableCandidate(1L, userId)));
+            when(batchReadService.loadPage(any(), org.mockito.ArgumentMatchers.eq(today)))
+                    .thenReturn(pageData(Map.of(userId, "toss-user-1"), Set.of(), Map.of()));
             when(persistenceService.createPending(
                     userId,
                     NotificationType.BOOSTER_RECHARGED,
@@ -210,14 +216,29 @@ class NotificationDeliveryServiceTest {
             when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
             when(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(today.minusDays(1), 3))
                     .thenReturn(List.of(failingUserId, nextUserId));
-            when(boosterGrantRepository.countByUserIdAndGrantDate(failingUserId, today)).thenThrow(new IllegalStateException("boom"));
-            when(boosterGrantRepository.countByUserIdAndGrantDate(nextUserId, today)).thenReturn(0L);
-            stubAgreed(nextUserId, NotificationType.BOOSTER_RECHARGED);
-            when(persistenceService.createPending(any(), any(), anyString(), anyString(), anyString())).thenReturn(Optional.of(pending));
+            when(batchReadService.findCandidates(NotificationType.BOOSTER_RECHARGED, 0L))
+                    .thenReturn(List.of(sendableCandidate(1L, failingUserId), sendableCandidate(2L, nextUserId)));
+            when(batchReadService.loadPage(any(), org.mockito.ArgumentMatchers.eq(today)))
+                    .thenReturn(pageData(
+                            Map.of(failingUserId, "toss-failing", nextUserId, "toss-user-1"),
+                            Set.of(),
+                            Map.of()
+                    ));
+            when(persistenceService.createPending(
+                    failingUserId, NotificationType.BOOSTER_RECHARGED, "BOOSTER_RECHARGED:" + failingUserId + ":20260725",
+                    "TPL_BOOSTER", "{}"
+            )).thenThrow(new IllegalStateException("boom"));
+            when(persistenceService.createPending(
+                    nextUserId, NotificationType.BOOSTER_RECHARGED, "BOOSTER_RECHARGED:" + nextUserId + ":20260725",
+                    "TPL_BOOSTER", "{}"
+            )).thenReturn(Optional.of(pending));
             stubSuccessfulToss(nextUserId, pending);
 
             assertThat(service.sendBoosterRechargedForDate(today)).containsExactly(pending);
-            verify(boosterGrantRepository).countByUserIdAndGrantDate(nextUserId, today);
+            verify(persistenceService).createPending(
+                    nextUserId, NotificationType.BOOSTER_RECHARGED, "BOOSTER_RECHARGED:" + nextUserId + ":20260725",
+                    "TPL_BOOSTER", "{}"
+            );
         }
     }
 
@@ -228,9 +249,12 @@ class NotificationDeliveryServiceTest {
         NotificationDelivery pending = pending(userId, NotificationType.BOOSTER_RECHARGED, "morning-boost");
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
         when(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(today.minusDays(1), 3)).thenReturn(List.of(userId));
-        when(boosterGrantRepository.countByUserIdAndGrantDate(userId, today)).thenReturn(0L);
-        when(preferenceRepository.findSendableUserIdsByType(NotificationType.DAILY_REMINDER)).thenReturn(List.of(userId));
-        stubAgreed(userId, NotificationType.BOOSTER_RECHARGED);
+        when(batchReadService.findCandidates(NotificationType.BOOSTER_RECHARGED, 0L))
+                .thenReturn(List.of(sendableCandidate(1L, userId)));
+        when(batchReadService.findCandidates(NotificationType.DAILY_REMINDER, 0L))
+                .thenReturn(List.of(sendableCandidate(2L, userId)));
+        when(batchReadService.loadPage(any(), org.mockito.ArgumentMatchers.eq(today)))
+                .thenReturn(pageData(Map.of(userId, "toss-user-1"), Set.of(), Map.of()));
         when(persistenceService.createPending(userId, NotificationType.BOOSTER_RECHARGED,
                 "BOOSTER_RECHARGED:" + userId + ":20260725", "TPL_BOOSTER", "{}"))
                 .thenReturn(Optional.of(pending));
@@ -246,18 +270,46 @@ class NotificationDeliveryServiceTest {
         UUID userId = UUID.randomUUID();
         LocalDate today = LocalDate.parse("2026-07-25");
         NotificationDelivery pending = pending(userId, NotificationType.BOOSTER_UNUSED, "unused");
-        when(preferenceRepository.findSendableUserIdsByType(NotificationType.RANK_CHANGE)).thenReturn(List.of());
-        when(preferenceRepository.findSendableUserIdsByType(NotificationType.BOOSTER_UNUSED)).thenReturn(List.of(userId));
+        when(batchReadService.findCandidates(NotificationType.RANK_CHANGE, 0L)).thenReturn(List.of());
+        when(batchReadService.findCandidates(NotificationType.BOOSTER_UNUSED, 0L))
+                .thenReturn(List.of(sendableCandidate(1L, userId)));
         when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
-        when(userTapDailyRepository.existsByUserIdAndTapDateAndValidTapCountGreaterThan(userId, today, 0)).thenReturn(false);
-        when(boosterGrantRepository.countByUserIdAndGrantDate(userId, today)).thenReturn(1L);
-        stubAgreed(userId, NotificationType.BOOSTER_UNUSED);
+        when(batchReadService.loadPage(any(), org.mockito.ArgumentMatchers.eq(today)))
+                .thenReturn(pageData(Map.of(userId, "toss-user-1"), Set.of(), Map.of(userId, 1L)));
         when(persistenceService.createPending(userId, NotificationType.BOOSTER_UNUSED,
                 "BOOSTER_UNUSED:" + userId + ":20260725", "TPL_UNUSED", "{}"))
                 .thenReturn(Optional.of(pending));
         stubSuccessfulToss(userId, pending);
 
         assertThat(service.sendEveningNotifications(today)).containsExactly(pending);
+    }
+
+    @Test
+    void morningDailyCandidatesUseThreeKeysetPagesWithoutPerUserReads() {
+        LocalDate today = LocalDate.parse("2026-07-25");
+        List<NotificationPreferenceRepository.SendableCandidate> firstPage = candidates(1, 100);
+        List<NotificationPreferenceRepository.SendableCandidate> secondPage = candidates(101, 200);
+        List<NotificationPreferenceRepository.SendableCandidate> thirdPage = candidates(201, 201);
+        when(tapPolicyConfig.boosterDailyLimit()).thenReturn(3);
+        when(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(today.minusDays(1), 3))
+                .thenReturn(List.of());
+        when(batchReadService.findCandidates(NotificationType.BOOSTER_RECHARGED, 0L)).thenReturn(List.of());
+        when(batchReadService.findCandidates(NotificationType.DAILY_REMINDER, 0L)).thenReturn(firstPage);
+        when(batchReadService.findCandidates(NotificationType.DAILY_REMINDER, 100L)).thenReturn(secondPage);
+        when(batchReadService.findCandidates(NotificationType.DAILY_REMINDER, 200L)).thenReturn(thirdPage);
+        when(batchReadService.loadPage(any(), org.mockito.ArgumentMatchers.eq(today)))
+                .thenReturn(new NotificationBatchReadService.NotificationPageData(Map.of(), Set.of(), Map.of()));
+
+        assertThat(service.sendMorningNotifications(today)).isEmpty();
+
+        verify(batchReadService, times(3)).loadPage(any(), org.mockito.ArgumentMatchers.eq(today));
+        verify(batchReadService).findCandidates(NotificationType.DAILY_REMINDER, 100L);
+        verify(batchReadService).findCandidates(NotificationType.DAILY_REMINDER, 200L);
+        verify(preferenceRepository, never()).findByUserIdAndType(any(), any());
+        verify(authIdentityRepository, never()).findByUserIdAndProvider(any(), any());
+        verify(userTapDailyRepository, never())
+                .existsByUserIdAndTapDateAndValidTapCountGreaterThan(any(), any(), any());
+        verify(boosterGrantRepository, never()).countByUserIdAndGrantDate(any(), any());
     }
 
     @Nested
@@ -270,12 +322,12 @@ class NotificationDeliveryServiceTest {
                     preferenceRepository,
                     authIdentityRepository,
                     boosterGrantRepository,
-                    userTapDailyRepository,
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
                     new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null),
-                    smartMessageClient
+                    smartMessageClient,
+                    batchReadService
             );
 
             assertThat(unconfiguredService.sendKeycapBoxOpenAvailableNotifications(
@@ -345,6 +397,42 @@ class NotificationDeliveryServiceTest {
         NotificationPreference preference = NotificationPreference.defaultOf(userId, type);
         preference.applyAgreement("newAgreement");
         when(preferenceRepository.findByUserIdAndType(userId, type)).thenReturn(Optional.of(preference));
+    }
+
+    private List<NotificationPreferenceRepository.SendableCandidate> candidates(int firstId, int lastId) {
+        return IntStream.rangeClosed(firstId, lastId)
+                .mapToObj(id -> {
+                    NotificationPreferenceRepository.SendableCandidate candidate =
+                            mock(NotificationPreferenceRepository.SendableCandidate.class);
+                    when(candidate.getPreferenceId()).thenReturn((long) id);
+                    when(candidate.getUserId()).thenReturn(new UUID(0L, id));
+                    return candidate;
+                })
+                .toList();
+    }
+
+    private NotificationPreferenceRepository.SendableCandidate sendableCandidate(long preferenceId, UUID userId) {
+        return new NotificationPreferenceRepository.SendableCandidate() {
+            @Override
+            public Long getPreferenceId() {
+                return preferenceId;
+            }
+
+            @Override
+            public UUID getUserId() {
+                return userId;
+            }
+        };
+    }
+
+    private NotificationBatchReadService.NotificationPageData pageData(
+            Map<UUID, String> providerUserIds,
+            Set<UUID> validTapUserIds,
+            Map<UUID, Long> boosterCounts
+    ) {
+        return new NotificationBatchReadService.NotificationPageData(
+                providerUserIds, validTapUserIds, boosterCounts
+        );
     }
 
     private void stubSuccessfulToss(UUID userId, NotificationDelivery pending) {
