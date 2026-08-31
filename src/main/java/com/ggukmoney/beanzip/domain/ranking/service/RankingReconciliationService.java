@@ -82,18 +82,8 @@ public class RankingReconciliationService {
                 if (changedEntries.isEmpty()) {
                     break;
                 }
+                redisRepository.applyPage(season.getId(), changedEntries);
                 for (RankingEntry entry : changedEntries) {
-                    if (entry.isParticipantEligible()) {
-                        redisRepository.updateScore(
-                                season.getId(),
-                                entry.getUser().getId(),
-                                entry.getScore(),
-                                entry.getRegionCode(),
-                                null
-                        );
-                    } else {
-                        redisRepository.removeParticipant(season.getId(), entry.getUser().getId(), entry.getRegionCode());
-                    }
                     queryCursorUpdatedAt = entry.getUpdatedAt();
                     queryCursorEntryId = entry.getId();
                     if (isAfter(entry.getUpdatedAt(), entry.getId(), nextUpdatedAt, nextEntryId)) {
