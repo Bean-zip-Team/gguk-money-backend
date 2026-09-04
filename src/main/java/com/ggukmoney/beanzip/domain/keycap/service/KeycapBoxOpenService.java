@@ -1,6 +1,8 @@
 package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionTriggerContext;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
 import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
@@ -59,6 +61,8 @@ public class KeycapBoxOpenService {
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
     private final BoosterGrantService boosterGrantService;
+
+    private final PromotionGrantIssuer promotionGrantIssuer;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
 
@@ -128,7 +132,10 @@ public class KeycapBoxOpenService {
         }
 
         if (completedNow) {
-            awardAllCompleteBonusIfEligible(userId, user);
+            long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
+            awardAllCompleteBonusIfEligible(userId, user, completedCount);
+            promotionGrantIssuer.issueIfEligible(
+                    PromotionTriggerContext.keycapCompleted(user, completedCount, acceptedAt));
         }
 
         KeycapBoxOpen boxOpen = KeycapBoxOpen.createFor(
@@ -163,8 +170,7 @@ public class KeycapBoxOpenService {
                 .intValueExact();
     }
 
-    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user) {
-        long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
+    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user, long completedCount) {
         long activeCatalogCount = keycapRepository.countByActiveTrue();
         if (activeCatalogCount == 0 || completedCount < activeCatalogCount) {
             return;

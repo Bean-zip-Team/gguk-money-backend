@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.Instant;
 import java.util.UUID;
 
 public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
@@ -18,6 +19,12 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
     Optional<UserKeycap> findByUserIdAndEquippedTrue(UUID userId);
 
     long countByUserIdAndStatus(UUID userId, UserKeycap.Status status);
+
+    /**
+     * 커트오프 이후에 완성된 키캡 수. 프로모션 소급 방지에 쓴다.
+     * 이 시각 이전에 완성한 키캡은 세지 않으므로 출시 시점 보유분은 자격에 포함되지 않는다.
+     */
+    long countByUserIdAndStatusAndCompletedAtAfter(UUID userId, UserKeycap.Status status, Instant completedAt);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

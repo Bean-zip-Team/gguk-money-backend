@@ -2,7 +2,7 @@ package com.ggukmoney.beanzip.domain.cashout.service;
 
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
-import com.ggukmoney.beanzip.domain.cashout.client.TossPromotionClient;
+import com.ggukmoney.beanzip.global.client.toss.TossPromotionClient;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListItemResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutListPageResponse;
 import com.ggukmoney.beanzip.domain.cashout.dto.response.CashoutQuoteResponse;
