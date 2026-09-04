@@ -11,8 +11,46 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  # 문서는 이 저장소에 두지 않는다 (docs/ggukmoney 제거, e826e55).
+  # README 와 PR 템플릿만 예외이고, 그 외 .md 가 PR 에 들어오면 실패시킨다.
+  markdown-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      # 삭제는 막지 않는다 — 남은 문서를 걷어내는 PR 까지 걸리면 곤란하다.
+      - name: Reject markdown files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          changed=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | select(.status != "removed") | .filename')
+
+          offenders=$(printf '%s\n' "$changed" \
+            | grep -iE '\.md$' \
+            | grep -vxF -e 'README.md' -e '.github/pull_request_template.md' \
+            || true)
+
+          if [ -n "$offenders" ]; then
+            echo "::error::문서(.md) 파일은 이 저장소에 커밋하지 않습니다. 허용: README.md, .github/pull_request_template.md"
+            printf '%s\n' "$offenders" | while read -r f; do
+              echo "::error file=$f::$f 는 허용되지 않는 문서 파일입니다."
+            done
+            exit 1
+          fi
+
+          echo "허용되지 않는 .md 변경 없음."
+
   build:
     runs-on: ubuntu-latest
 
