@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -26,7 +27,8 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "user_tap_daily",
-        uniqueConstraints = @UniqueConstraint(name = "uq_user_tap_daily_user_date", columnNames = {"user_id", "tap_date"})
+        uniqueConstraints = @UniqueConstraint(name = "uq_user_tap_daily_user_date", columnNames = {"user_id", "tap_date"}),
+        indexes = @Index(name = "ix_user_tap_daily_date_user", columnList = "tap_date, user_id")
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserTapDaily {
@@ -48,11 +50,11 @@ public class UserTapDaily {
     @Column(name = "valid_tap_count", nullable = false)
     private Integer validTapCount = 0;
 
+    @Column(name = "total_valid_tap_count", nullable = false)
+    private Integer totalValidTapCount = 0;
+
     @Column(name = "point_earned_amount", nullable = false)
     private Integer pointEarnedAmount = 0;
-
-    @Column(name = "next_point_target", nullable = false)
-    private Integer nextPointTarget;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -64,11 +66,10 @@ public class UserTapDaily {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static UserTapDaily createFor(AppUser user, LocalDate tapDate, int initialTarget) {
+    public static UserTapDaily createFor(AppUser user, LocalDate tapDate) {
         UserTapDaily daily = new UserTapDaily();
         daily.user = user;
         daily.tapDate = tapDate;
-        daily.nextPointTarget = initialTarget;
         return daily;
     }
 
@@ -76,13 +77,12 @@ public class UserTapDaily {
         this.validTapCount += count;
     }
 
-    public boolean hasReachedTarget() {
-        return validTapCount >= nextPointTarget;
+    public void addTotalValidTaps(int count) {
+        this.totalValidTapCount += count;
     }
 
-    public void awardPoint(int nextTarget) {
+    public void incrementPointEarned() {
         this.pointEarnedAmount += 1;
-        this.nextPointTarget = nextTarget;
     }
 
     @PrePersist

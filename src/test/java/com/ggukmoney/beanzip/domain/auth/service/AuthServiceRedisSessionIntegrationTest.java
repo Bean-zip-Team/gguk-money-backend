@@ -70,10 +70,10 @@ class AuthServiceRedisSessionIntegrationTest extends RedisIntegrationTestSupport
         assertThat(revokedCount).isEqualTo(1);
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(liveSessionId)))).isFalse();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId))
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:revoke:user:" + userId))
                 .contains("\"revokedAtMillis\":" + now.toEpochMilli())
                 .contains("\"reason\":\"LOGOUT_ALL\"");
-        assertThat(redisTemplate.opsForValue().get("auth:deny:access:access-jti")).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:deny:access:access-jti")).isEqualTo("1");
     }
 
     @Test
@@ -84,7 +84,7 @@ class AuthServiceRedisSessionIntegrationTest extends RedisIntegrationTestSupport
         long revokedCount = authService.revokeAllUserSessions(userId, null, null, now, "LOGOUT_ALL");
 
         assertThat(revokedCount).isZero();
-        assertThat(redisTemplate.opsForValue().get("auth:revoke:user:" + userId))
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:revoke:user:" + userId))
                 .contains("\"revokedAtMillis\":" + now.toEpochMilli())
                 .contains("\"reason\":\"LOGOUT_ALL\"");
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.userSessionsKey(userId)))).isFalse();

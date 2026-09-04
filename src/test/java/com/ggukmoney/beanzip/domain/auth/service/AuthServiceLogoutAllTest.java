@@ -24,7 +24,7 @@ public class AuthServiceLogoutAllTest {
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         when(redisService.executeScript(
                 any(RedisScript.class),
-                eq(List.of(AuthService.userSessionsKey(userId), "auth:revoke:user:" + userId)),
+                eq(List.of(AuthService.userSessionsKey(userId), "ggukmoney:auth:revoke:user:" + userId)),
                 anyString(),
                 anyString(),
                 anyString(),
@@ -32,7 +32,7 @@ public class AuthServiceLogoutAllTest {
                 eq(String.valueOf(Instant.parse("2026-07-02T00:15:00Z").toEpochMilli()))
         )).thenReturn(3L);
 
-        AuthService authService = new AuthService(null, redisService, null, null, null, null, null);
+        AuthService authService = new AuthService(null, redisService, null, null, null);
 
         LogoutAllResponse response = authService.logoutAll(
                 userId,

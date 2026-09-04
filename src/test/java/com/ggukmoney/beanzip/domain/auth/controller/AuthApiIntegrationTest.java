@@ -21,7 +21,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
     void refreshRotatesTokenAgainstRealRedis() throws Exception {
         TestTokens tokens = saveTokenBackedSession(UUID.randomUUID(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
+        mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
                 .andExpect(status().isOk())
@@ -39,7 +39,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
     void logoutDeletesCurrentSessionAgainstRealRedis() throws Exception {
         TestTokens tokens = saveTokenBackedSession(UUID.randomUUID(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/logout")
+        mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
@@ -57,7 +57,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
         saveTokenBackedSession(userId, UUID.randomUUID().toString());
         TestTokens current = saveTokenBackedSession(userId, UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/logout-all")
+        mockMvc.perform(post("/api/auth/logout-all")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + current.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -88,7 +88,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens current = saveTokenBackedSession(userId, UUID.randomUUID().toString());
         TestTokens other = saveTokenBackedSession(userId, UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/logout")
+        mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + current.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + other.refreshToken() + "\"}"))
@@ -100,7 +100,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isTrue();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(other.session().sessionId())))).isTrue();
-        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey("auth:deny:access:" + current.accessJti()))).isFalse();
+        assertThat(Boolean.TRUE.equals(redisTemplate.hasKey("ggukmoney:auth:deny:access:" + current.accessJti()))).isFalse();
     }
 
     @Test
@@ -110,7 +110,7 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
         TestTokens otherSameUser = saveTokenBackedSession(userId, UUID.randomUUID().toString());
         TestTokens otherUser = saveTokenBackedSession(UUID.randomUUID(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/logout")
+        mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + current.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -121,14 +121,14 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(current.session().sessionId())))).isFalse();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherSameUser.session().sessionId())))).isTrue();
         assertThat(Boolean.TRUE.equals(redisTemplate.hasKey(AuthService.refreshKey(otherUser.session().sessionId())))).isTrue();
-        assertThat(redisTemplate.opsForValue().get("auth:deny:access:" + current.accessJti())).isEqualTo("1");
+        assertThat(redisTemplate.opsForValue().get("ggukmoney:auth:deny:access:" + current.accessJti())).isEqualTo("1");
     }
 
     @Test
     void refreshStateChangeUsesUuidUserId() throws Exception {
         TestTokens tokens = saveTokenBackedSession(UUID.randomUUID(), UUID.randomUUID().toString());
 
-        mockMvc.perform(post("/api/v1/auth/refresh")
+        mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
                 .andExpect(status().isOk())

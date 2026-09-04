@@ -2,6 +2,17 @@
 
 꾹머니 서버 저장소다.
 
+## 배포
+
+`develop` 기준으로 GitHub Actions의 **Deploy develop** 워크플로를 수동 실행한다.
+nginx upstream 뒤에서 8080/8081을 교대로 띄우는 blue-green 방식이라 **중단이 없다.**
+
+```bash
+./switch.sh --status      # 현재 활성 포트
+./rollback.sh --list      # 보관 중인 릴리스
+./rollback.sh             # 직전 릴리스로 무중단 복귀
+```
+
 ## 현재 구현 기준
 
 현재 Source of Truth는 소스 코드와 테스트이며, 문서 기준은 **사용자 UUID PK를 사용하는 13개 테이블 Persistence MVP**다.

@@ -1,0 +1,215 @@
+package com.ggukmoney.beanzip.domain.ranking.service;
+
+import com.ggukmoney.beanzip.domain.ranking.entity.RankingEntry;
+import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
+import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreChangedEvent;
+import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.repository.UserTapDailyRepository;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.lang.reflect.Method;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class RankingProjectionServiceTest {
+
+    private final RankingSeasonService seasonService = mock(RankingSeasonService.class);
+    private final RankingEntryRepository entryRepository = mock(RankingEntryRepository.class);
+    private final UserService userService = mock(UserService.class);
+    private final UserTapDailyRepository userTapDailyRepository = mock(UserTapDailyRepository.class);
+    private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final Clock clock = Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC);
+    private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
+    private final RankingProjectionService service =
+            new RankingProjectionService(
+                    seasonService, entryRepository, userService, userTapDailyRepository, userTapProgressService,
+                    eventPublisher, clock, businessZoneId
+            );
+
+    @Test
+    void syncLatestWeeklyScoreUsesOccurredAtSeasonAndDailyAggregateScore() {
+        UUID userId = UUID.randomUUID();
+        Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
+        RankingSeason season = weeklySeason();
+        when(seasonService.findWeeklySeasonContaining(occurredAt)).thenReturn(Optional.of(season));
+        when(userTapDailyRepository.sumTotalValidTapCount(
+                userId,
+                LocalDate.of(2026, 7, 20),
+                LocalDate.of(2026, 7, 27)
+        )).thenReturn(123L);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.empty());
+        when(entryRepository.save(any(RankingEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Optional<RankingEntry> result = service.syncLatestWeeklyScore(userId, occurredAt);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getScore()).isEqualTo(123L);
+        verify(eventPublisher).publishEvent(any(RankingScoreChangedEvent.class));
+    }
+
+    @Test
+    void syncLatestWeeklyScoreDoesNotCreatePastSeasonWhenOccurredAtSeasonIsMissing() {
+        UUID userId = UUID.randomUUID();
+        Instant occurredAt = Instant.parse("2026-07-13T15:00:00Z");
+        when(seasonService.findWeeklySeasonContaining(occurredAt)).thenReturn(Optional.empty());
+
+        Optional<RankingEntry> result = service.syncLatestWeeklyScore(userId, occurredAt);
+
+        assertThat(result).isEmpty();
+        verify(userService, org.mockito.Mockito.never()).getById(any());
+    }
+
+    @Test
+    void syncWeeklyScoreRejectsFinalizingSeasonOnRealtimePath() {
+        UUID userId = UUID.randomUUID();
+        RankingSeason season = weeklySeason();
+        season.startFinalizing();
+
+        Optional<RankingEntry> result = service.syncWeeklyScore(
+                season,
+                userId,
+                123L,
+                Instant.parse("2026-07-20T15:00:00Z"),
+                true
+        );
+
+        assertThat(result).isEmpty();
+        verify(entryRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void syncLatestAllTimeScoreReadsCurrentTapProgressAndPublishesAfterCommitEvent() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
+        UserTapProgress progress = mock(UserTapProgress.class);
+        when(progress.getCumulativeValidTapCount()).thenReturn(123L);
+        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+        when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.empty());
+        when(entryRepository.save(any(RankingEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RankingEntry entry = service.syncLatestAllTimeScore(userId);
+
+        assertThat(entry.getScore()).isEqualTo(123L);
+        verify(eventPublisher).publishEvent(any(RankingScoreChangedEvent.class));
+    }
+
+    @Test
+    void reusesExistingEntryAndSetsScoreInsteadOfIncrementing() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
+        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingEntry entry = RankingEntry.createFor(season, user, 100L, null, Instant.parse("2026-07-19T00:00:01Z"));
+        when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
+        when(entryRepository.save(entry)).thenReturn(entry);
+
+        RankingEntry result = service.syncAllTimeScore(userId, 120L);
+
+        assertThat(result.getScore()).isEqualTo(120L);
+    }
+
+    @Test
+    void doesNotDecreaseExistingScoreWhenStaleScoreIsRequested() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
+        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingEntry entry = RankingEntry.createFor(season, user, 110L, null, Instant.parse("2026-07-19T00:00:01Z"));
+        when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
+        when(entryRepository.save(entry)).thenReturn(entry);
+
+        RankingEntry result = service.syncAllTimeScore(userId, 100L);
+
+        assertThat(result.getScore()).isEqualTo(110L);
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue())
+                .isInstanceOfSatisfying(RankingScoreChangedEvent.class, event -> assertThat(event.score()).isEqualTo(110L));
+    }
+
+    @Test
+    void duplicateLatestScoreSyncIsIdempotent() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
+        UserTapProgress progress = mock(UserTapProgress.class);
+        when(progress.getCumulativeValidTapCount()).thenReturn(110L);
+        RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
+        RankingEntry entry = RankingEntry.createFor(season, user, 110L, null, Instant.parse("2026-07-19T00:00:01Z"));
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+        when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
+        when(entryRepository.save(entry)).thenReturn(entry);
+
+        assertThatCode(() -> service.syncLatestAllTimeScore(userId)).doesNotThrowAnyException();
+        assertThatCode(() -> service.syncLatestAllTimeScore(userId)).doesNotThrowAnyException();
+
+        assertThat(entry.getScore()).isEqualTo(110L);
+    }
+
+    @Test
+    void syncLatestAllTimeScoreUsesRequiresNewTransaction() throws NoSuchMethodException {
+        Method method = RankingProjectionService.class.getMethod("syncLatestAllTimeScore", UUID.class);
+
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+    }
+
+    @Test
+    void syncLatestWeeklyScoreUsesRequiresNewTransaction() throws NoSuchMethodException {
+        Method method = RankingProjectionService.class.getMethod("syncLatestWeeklyScore", UUID.class, Instant.class);
+
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+    }
+
+    private RankingSeason weeklySeason() {
+        return RankingSeason.activeWeekly(
+                LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"),
+                Instant.parse("2026-07-26T15:00:00Z")
+        );
+    }
+}

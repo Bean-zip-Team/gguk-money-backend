@@ -29,9 +29,19 @@ public class PointAccountService {
         return getForUser(userId).getBalance();
     }
 
+    public PointAccount save(PointAccount account) {
+        return pointAccountRepository.save(account);
+    }
+
     public PointAccount credit(UUID userId, long amount) {
         PointAccount account = getForUser(userId);
         account.credit(amount);
+        return pointAccountRepository.save(account);
+    }
+
+    public PointAccount debit(UUID userId, long amount) {
+        PointAccount account = getForUser(userId);
+        account.debit(amount);
         return pointAccountRepository.save(account);
     }
 }

@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -57,11 +58,31 @@ public class BoosterGrant {
     @Column(name = "status", nullable = false, length = 30)
     private Status status = Status.ACTIVE;
 
+    @Column(name = "starts_at", nullable = false)
+    private Instant startsAt;
+
+    @Column(name = "expires_at", nullable = false)
+    private Instant expiresAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static BoosterGrant activate(AppUser user, LocalDate grantDate, int dailySequence, Duration duration) {
+        BoosterGrant grant = new BoosterGrant();
+        grant.user = user;
+        grant.grantDate = grantDate;
+        grant.dailySequence = dailySequence;
+        grant.startsAt = Instant.now();
+        grant.expiresAt = grant.startsAt.plus(duration);
+        return grant;
+    }
+
+    public boolean isActiveAt(Instant now) {
+        return status == Status.ACTIVE && now.isBefore(expiresAt);
+    }
 
     @PrePersist
     void prePersist() {

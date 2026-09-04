@@ -71,6 +71,11 @@ public class PointAccount {
         this.lifetimeEarned += amount;
     }
 
+    public void debit(long amount) {
+        this.balance -= amount;
+        this.lifetimeSpent += amount;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

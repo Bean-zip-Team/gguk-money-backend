@@ -8,16 +8,10 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
-import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
-import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
-import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
 import com.ggukmoney.beanzip.domain.user.dto.response.UserWithdrawalResponse;
-import com.ggukmoney.beanzip.domain.user.entity.AppUser;
-import com.ggukmoney.beanzip.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +20,6 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -49,6 +42,7 @@ public class AuthService {
     private static final String TOKEN_TYPE = "Bearer";
     private static final String ACCESS_TYPE = "ACCESS";
     private static final String REFRESH_TYPE = "REFRESH";
+    private static final String PREFIX = "ggukmoney:auth:";
 
     private static final Duration ACCESS_REVOKE_TTL = Duration.ofMinutes(20);
     private static final long REFRESH_CONFLICT_GRACE_MILLIS = 2_000L;
@@ -61,10 +55,8 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisService redisService;
     private final TossAuthClient tossAuthClient;
-    private final AuthIdentityRepository authIdentityRepository;
-    private final UserService userService;
-    private final PointAccountService pointAccountService;
-    private final KeycapBoxAccountService keycapBoxAccountService;
+    private final AuthLoginTransactionService authLoginTransactionService;
+    private final AuthWithdrawalTransactionService authWithdrawalTransactionService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -91,7 +83,6 @@ public class AuthService {
         REUSED
     }
 
-    @Transactional
     public AuthTokenResponse loginWithToss(TossLoginRequest request) {
         TossAuthClient.TossToken tossToken = tossAuthClient.generateToken(
                 requireText(request.authorizationCode(), "TOSS_AUTHORIZATION_CODE_REQUIRED"),
@@ -100,27 +91,15 @@ public class AuthService {
         TossAuthClient.TossLoginMe loginMe = tossAuthClient.loginMe(requireText(tossToken.accessToken(), "TOSS_ACCESS_TOKEN_MISSING"));
         String userKey = requireText(loginMe.userKey(), "TOSS_USER_KEY_MISSING");
 
-        AuthIdentity identity = authIdentityRepository
-                .findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, userKey)
-                .orElse(null);
+        AuthLoginTransactionService.LoginTransactionResult result = authLoginTransactionService.loginWithTossUser(
+                userKey,
+                loginMe.nickname(),
+                loginMe.profileImageUrl(),
+                request.onboardingAttemptId(),
+                loginMe.agreedTerms()
+        );
 
-        boolean newUser = false;
-        AppUser user;
-        if (identity == null) {
-            user = userService.createActive(loginMe.nickname(), loginMe.profileImageUrl());
-            authIdentityRepository.save(AuthIdentity.toss(user, userKey));
-            pointAccountService.createFor(user);
-            keycapBoxAccountService.createFor(user);
-            newUser = true;
-        } else {
-            user = identity.getUser();
-            if (user.isWithdrawn()) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_WITHDRAWN");
-            }
-            user = userService.recordLogin(user, loginMe.nickname(), loginMe.profileImageUrl());
-        }
-
-        return issueSessionTokens(user.getId(), newUser);
+        return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());
     }
 
     public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -206,38 +185,45 @@ public class AuthService {
         return new LogoutAllResponse(true, revokedSessionCount);
     }
 
-    @Transactional
     public UserWithdrawalResponse withdrawCurrentUser(
             UUID userId,
             String accessJti,
             Instant accessExpiresAt,
             UserWithdrawalRequest request
     ) {
-        AppUser user = userService.getById(userId);
-        if (user.isWithdrawn()) {
-            revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
+        AuthWithdrawalTransactionService.WithdrawalPreparation preparation =
+                authWithdrawalTransactionService.prepare(userId);
+        if (preparation.alreadyWithdrawn()) {
+            revokeWithdrawalSessions(userId, accessJti, accessExpiresAt, "WITHDRAWAL", "IDEMPOTENT_RETRY");
             return new UserWithdrawalResponse(true);
         }
 
-        AuthIdentity identity = authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "TOSS_IDENTITY_NOT_FOUND"));
         TossAuthClient.TossToken tossToken = tossAuthClient.generateToken(
                 requireText(request.authorizationCode(), "TOSS_AUTHORIZATION_CODE_REQUIRED"),
                 request.referrer()
         );
         TossAuthClient.TossLoginMe loginMe = tossAuthClient.loginMe(requireText(tossToken.accessToken(), "TOSS_ACCESS_TOKEN_MISSING"));
         String userKey = requireText(loginMe.userKey(), "TOSS_USER_KEY_MISSING");
-        if (!identity.getProviderUserId().equals(userKey)) {
+        if (!preparation.providerUserId().equals(userKey)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "TOSS_USER_MISMATCH");
         }
 
         tossAuthClient.removeByUserKey(tossToken.accessToken(), userKey);
-        userService.withdraw(user);
-        revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), "WITHDRAWAL");
+        try {
+            authWithdrawalTransactionService.complete(userId, "DIRECT_WITHDRAWAL");
+        } catch (RuntimeException exception) {
+            log.error("TOSS_WITHDRAWAL_LOCAL_COMMIT_FAILED userId={} tossUnlinkCompleted=true recovery=WEBHOOK_OR_RETRY",
+                    userId, exception);
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "WITHDRAWAL_LOCAL_COMMIT_FAILED",
+                    exception
+            );
+        }
+        revokeWithdrawalSessions(userId, accessJti, accessExpiresAt, "WITHDRAWAL", "POST_COMMIT");
         return new UserWithdrawalResponse(true);
     }
 
-    @Transactional
     public TossUnlinkWebhookResponse handleTossUnlinkWebhook(String authorization, TossUnlinkWebhookRequest request) {
         validateWebhookSecret(authorization);
         String eventType = requireText(request.referrer(), "TOSS_WEBHOOK_EVENT_REQUIRED");
@@ -245,19 +231,38 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TOSS_WEBHOOK_UNSUPPORTED_EVENT");
         }
 
-        authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, requireText(request.userKey(), "TOSS_USER_KEY_MISSING"))
-                .ifPresent(identity -> {
-                    AppUser user = identity.getUser();
-                    if (!user.isWithdrawn()) {
-                        userService.withdraw(user);
-                    }
-                    revokeAllUserSessions(user.getId(), null, null, Instant.now(), "TOSS_UNLINK_WEBHOOK");
-                });
+        Optional<UUID> userId = authWithdrawalTransactionService.completeFromWebhook(
+                requireText(request.userKey(), "TOSS_USER_KEY_MISSING"),
+                eventType
+        );
+        if (userId.isPresent()) {
+            revokeWithdrawalSessions(userId.get(), null, null, "TOSS_UNLINK_WEBHOOK", "WEBHOOK_POST_COMMIT");
+            log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=true action=USER_WITHDRAWN userId={}",
+                    eventType, userId.get());
+        } else {
+            log.info("TOSS_UNLINK_WEBHOOK_PROCESSED eventType={} identityFound=false action=IDENTITY_NOT_FOUND userId=-", eventType);
+        }
 
         return new TossUnlinkWebhookResponse(true, eventType);
     }
 
-    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser) {
+    private void revokeWithdrawalSessions(
+            UUID userId,
+            String accessJti,
+            Instant accessExpiresAt,
+            String reason,
+            String recoveryPhase
+    ) {
+        try {
+            revokeAllUserSessions(userId, accessJti, accessExpiresAt, Instant.now(), reason);
+        } catch (RuntimeException exception) {
+            log.error("TOSS_WITHDRAWAL_SESSION_REVOKE_FAILED userId={} localState=WITHDRAWN recoveryPhase={} recovery=IDEMPOTENT_RETRY",
+                    userId, recoveryPhase, exception);
+            throw exception;
+        }
+    }
+
+    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser, boolean onboardingRewardApplied) {
         UUID sessionId = UUID.randomUUID();
         String refreshJti = UUID.randomUUID().toString();
         String accessJti = UUID.randomUUID().toString();
@@ -279,7 +284,16 @@ public class AuthService {
                 "ACTIVE"
         );
         save(session);
-        return new AuthTokenResponse(userId, accessToken, refreshToken, TOKEN_TYPE, accessClaims.expiresAt(), refreshClaims.expiresAt(), newUser);
+        return new AuthTokenResponse(
+                userId,
+                accessToken,
+                refreshToken,
+                TOKEN_TYPE,
+                accessClaims.expiresAt(),
+                refreshClaims.expiresAt(),
+                newUser,
+                onboardingRewardApplied
+        );
     }
 
     private void validateWebhookSecret(String authorizationHeader) {
@@ -437,12 +451,12 @@ public class AuthService {
     }
 
     public void addAccessDeny(String jti, Instant expiresAt) {
-        String key = "auth:deny:access:" + jti;
+        String key = PREFIX + "deny:access:" + jti;
         redisService.set(key, "1", Duration.between(Instant.now(), expiresAt));
     }
 
     public boolean isAccessDenied(String jti) {
-        return redisService.exists("auth:deny:access:" + jti);
+        return redisService.exists(PREFIX + "deny:access:" + jti);
     }
 
     public long revokeAllUserSessions(
@@ -479,15 +493,15 @@ public class AuthService {
     }
 
     public static String refreshKey(UUID sessionId) {
-        return "auth:refresh:" + sessionId;
+        return PREFIX + "refresh:" + sessionId;
     }
 
     public static String userSessionsKey(UUID userId) {
-        return "auth:user-sessions:" + userId;
+        return PREFIX + "user-sessions:" + userId;
     }
 
     private static String revokeUserKey(UUID userId) {
-        return "auth:revoke:user:" + userId;
+        return PREFIX + "revoke:user:" + userId;
     }
 
     private static String revokeMarker(long revokedAtMillis, String reason) {

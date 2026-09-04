@@ -55,11 +55,36 @@ public class CashoutRequest {
     @Column(name = "idempotency_key")
     private UUID idempotencyKey;
 
+    @Column(name = "toss_promotion_key")
+    private String tossPromotionKey;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static CashoutRequest createFor(AppUser user, long pointAmount, long tossPointAmount, UUID idempotencyKey) {
+        CashoutRequest request = new CashoutRequest();
+        request.user = user;
+        request.pointAmount = pointAmount;
+        request.tossPointAmount = tossPointAmount;
+        request.idempotencyKey = idempotencyKey;
+        return request;
+    }
+
+    public void markProcessing(String tossPromotionKey) {
+        this.status = Status.PROCESSING;
+        this.tossPromotionKey = tossPromotionKey;
+    }
+
+    public void markSucceeded() {
+        this.status = Status.SUCCEEDED;
+    }
+
+    public void markFailed() {
+        this.status = Status.FAILED;
+    }
 
     @PrePersist
     void prePersist() {

@@ -1,0 +1,228 @@
+package com.ggukmoney.beanzip.domain.auth.service;
+
+import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
+import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingRewardClaimService;
+import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapDailyService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
+import com.ggukmoney.beanzip.domain.tap.service.UserTapSessionService;
+import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class AuthLoginTransactionServiceTest {
+
+    private final AuthIdentityRepository authIdentityRepository = mock(AuthIdentityRepository.class);
+    private final UserService userService = mock(UserService.class);
+    private final PointAccountService pointAccountService = mock(PointAccountService.class);
+    private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
+    private final UserTapProgressService userTapProgressService = mock(UserTapProgressService.class);
+    private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
+    private final UserTapDailyService userTapDailyService = mock(UserTapDailyService.class);
+    private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
+    private final OnboardingRewardClaimService onboardingRewardClaimService = mock(OnboardingRewardClaimService.class);
+    private final TossLoginConsentHistoryService tossLoginConsentHistoryService = mock(TossLoginConsentHistoryService.class);
+    private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
+    private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+    private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
+    private final AuthLoginTransactionService service = new AuthLoginTransactionService(
+            authIdentityRepository,
+            userService,
+            pointAccountService,
+            keycapBoxAccountService,
+            userTapProgressService,
+            userTapSessionService,
+            userTapDailyService,
+            tapPolicyConfig,
+            onboardingRewardClaimService,
+            tossLoginConsentHistoryService,
+            clock,
+            businessZoneId
+    );
+
+    @Test
+    void newUserWithOnboardingAttemptClaimsRewardInLoginTransaction() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.empty());
+        when(userService.createActive("Bean", "https://img")).thenReturn(user);
+        when(onboardingRewardClaimService.claimForNewUser(user, attemptId)).thenReturn(true);
+        LocalDate today = LocalDate.ofInstant(now, businessZoneId);
+        UserTapDaily daily = UserTapDaily.createFor(user, today);
+        when(userTapDailyService.getOrCreate(user, today)).thenReturn(daily);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId,
+                List.of("service_terms_v1", "privacy_v2")
+        );
+
+        assertThat(result.userId()).isEqualTo(userId);
+        assertThat(result.newUser()).isTrue();
+        assertThat(result.onboardingRewardApplied()).isTrue();
+        verify(authIdentityRepository).save(any(AuthIdentity.class));
+        verify(pointAccountService).createFor(user);
+        verify(keycapBoxAccountService).createFor(user);
+        verify(userTapProgressService).createFor(user, tapPolicyConfig);
+        verify(userTapSessionService).createFor(user, now, tapPolicyConfig);
+        verify(onboardingRewardClaimService).claimForNewUser(user, attemptId);
+        verify(tossLoginConsentHistoryService).recordAgreements(userId, List.of("service_terms_v1", "privacy_v2"), "LOGIN");
+        assertThat(daily.getValidTapCount()).isEqualTo(45);
+        assertThat(daily.getTotalValidTapCount()).isEqualTo(45);
+        verify(userTapDailyService).save(daily);
+    }
+
+    @Test
+    void newUserWithoutOnboardingAttemptDoesNotSeedTodayTapCount() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.empty());
+        when(userService.createActive("Bean", "https://img")).thenReturn(user);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                null
+        );
+
+        assertThat(result.onboardingRewardApplied()).isFalse();
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(userTapDailyService, never()).getOrCreate(any(), any());
+        verify(userTapDailyService, never()).save(any());
+    }
+
+    @Test
+    void existingUserWithInvalidOnboardingAttemptStillLogsInWithoutClaimingReward() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Old", null), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user")));
+        when(userService.recordLogin(user, "Bean", "https://img")).thenReturn(user);
+        when(onboardingRewardClaimService.isClaimedByUser(userId, attemptId)).thenReturn(false);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId
+        );
+
+        assertThat(result.userId()).isEqualTo(userId);
+        assertThat(result.newUser()).isFalse();
+        assertThat(result.onboardingRewardApplied()).isFalse();
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(onboardingRewardClaimService).isClaimedByUser(userId, attemptId);
+        verify(pointAccountService, never()).createFor(any());
+    }
+
+    @Test
+    void existingUserWithOwnClaimedAttemptReturnsAppliedWithoutClaimingAgain() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Old", null), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user")));
+        when(userService.recordLogin(user, "Bean", "https://img")).thenReturn(user);
+        when(onboardingRewardClaimService.isClaimedByUser(userId, attemptId)).thenReturn(true);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId
+        );
+
+        assertThat(result.newUser()).isFalse();
+        assertThat(result.onboardingRewardApplied()).isTrue();
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(onboardingRewardClaimService).isClaimedByUser(userId, attemptId);
+    }
+
+    @Test
+    void existingUserWithAttemptClaimedByAnotherUserStillLogsInWithoutAppliedReward() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Old", null), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user")));
+        when(userService.recordLogin(user, "Bean", "https://img")).thenReturn(user);
+        when(onboardingRewardClaimService.isClaimedByUser(userId, attemptId)).thenReturn(false);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId
+        );
+
+        assertThat(result.newUser()).isFalse();
+        assertThat(result.onboardingRewardApplied()).isFalse();
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(onboardingRewardClaimService).isClaimedByUser(userId, attemptId);
+    }
+
+    @Test
+    void reactivatesWithdrawnIdentityWithoutCreatingAccountOrApplyingOnboardingReward() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Old", null), userId);
+        user.withdraw();
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.of(AuthIdentity.toss(user, "toss-user")));
+        when(userService.reactivate(user, "Bean", "https://img")).thenReturn(user);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                attemptId
+        );
+
+        assertThat(result.userId()).isEqualTo(userId);
+        assertThat(result.newUser()).isFalse();
+        assertThat(result.onboardingRewardApplied()).isFalse();
+        verify(userService).reactivate(user, "Bean", "https://img");
+        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).recordLogin(any(), any(), any());
+        verify(authIdentityRepository, never()).save(any(AuthIdentity.class));
+        verify(pointAccountService, never()).createFor(any());
+        verify(keycapBoxAccountService, never()).createFor(any());
+        verify(userTapProgressService, never()).createFor(any(), any());
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(onboardingRewardClaimService, never()).isClaimedByUser(any(), any());
+    }
+
+    private static AppUser withId(AppUser user, UUID userId) {
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
+    }
+}

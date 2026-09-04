@@ -1,11 +1,18 @@
 package com.ggukmoney.beanzip.global.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +31,10 @@ public class RedisService {
 
     public void set(String key, String value, Duration ttl) {
         redisTemplate.opsForValue().set(key, value, ttl);
+    }
+
+    public boolean setIfAbsent(String key, String value, Duration ttl) {
+        return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(key, value, ttl));
     }
 
     public Optional<String> get(String key) {
@@ -64,8 +75,25 @@ public class RedisService {
         redisTemplate.opsForZSet().add(key, member, score);
     }
 
+    public void addAllToSortedSet(String key, Map<String, Double> memberScores) {
+        if (memberScores.isEmpty()) {
+            return;
+        }
+        Set<ZSetOperations.TypedTuple<String>> tuples = memberScores.entrySet().stream()
+                .map(entry -> new DefaultTypedTuple<>(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        redisTemplate.opsForZSet().add(key, tuples);
+    }
+
     public void removeFromSortedSet(String key, String member) {
         redisTemplate.opsForZSet().remove(key, member);
+    }
+
+    public void removeAllFromSortedSet(String key, Collection<String> members) {
+        if (members.isEmpty()) {
+            return;
+        }
+        redisTemplate.opsForZSet().remove(key, members.toArray());
     }
 
     public Set<String> getSortedSetRange(String key, long start, long end) {
@@ -85,9 +113,48 @@ public class RedisService {
         return redisTemplate.opsForZSet().reverseRank(key, member);
     }
 
+    public Map<String, Long> getSortedSetReverseRanks(String key, Collection<String> members) {
+        if (members.isEmpty()) {
+            return Map.of();
+        }
+        List<String> orderedMembers = List.copyOf(members);
+        byte[] rawKey = redisTemplate.getStringSerializer().serialize(key);
+        List<Object> rawRanks = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (String member : orderedMembers) {
+                connection.zSetCommands().zRevRank(
+                        rawKey,
+                        redisTemplate.getStringSerializer().serialize(member)
+                );
+            }
+            return null;
+        });
+        Map<String, Long> ranks = new LinkedHashMap<>();
+        for (int index = 0; index < orderedMembers.size(); index++) {
+            Object rawRank = rawRanks.get(index);
+            if (rawRank instanceof Number number) {
+                ranks.put(orderedMembers.get(index), number.longValue());
+            }
+        }
+        return ranks;
+    }
+
     public Set<String> getSortedSetReverseRange(String key, long start, long end) {
         Set<String> range = redisTemplate.opsForZSet().reverseRange(key, start, end);
         return range == null ? Set.of() : range;
+    }
+
+    public List<SortedSetMember> getSortedSetReverseRangeWithScores(String key, long start, long end) {
+        Set<ZSetOperations.TypedTuple<String>> range = redisTemplate.opsForZSet().reverseRangeWithScores(key, start, end);
+        if (range == null || range.isEmpty()) {
+            return List.of();
+        }
+        List<SortedSetMember> members = new ArrayList<>();
+        for (ZSetOperations.TypedTuple<String> tuple : range) {
+            if (tuple.getValue() != null && tuple.getScore() != null) {
+                members.add(new SortedSetMember(tuple.getValue(), tuple.getScore()));
+            }
+        }
+        return members;
     }
 
     public Long getSortedSetSize(String key) {
@@ -107,6 +174,10 @@ public class RedisService {
         redisTemplate.opsForHash().putAll(key, fields);
     }
 
+    public void putHash(String key, String field, String value) {
+        redisTemplate.opsForHash().put(key, field, value);
+    }
+
     public Map<String, String> getAllHash(String key) {
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
         return entries.entrySet().stream()
@@ -115,5 +186,8 @@ public class RedisService {
 
     public <T> T executeScript(RedisScript<T> script, List<String> keys, Object... args) {
         return redisTemplate.execute(script, keys, args);
+    }
+
+    public record SortedSetMember(String member, double score) {
     }
 }

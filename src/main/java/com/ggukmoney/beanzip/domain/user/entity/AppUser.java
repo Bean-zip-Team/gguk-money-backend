@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -19,7 +20,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "app_user")
+@Table(
+        name = "app_user",
+        indexes = @Index(name = "ix_app_user_status", columnList = "status")
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AppUser {
 
@@ -32,10 +36,10 @@ public class AppUser {
     @Column(name = "status", nullable = false, length = 20)
     private Status status = Status.ACTIVE;
 
-    @Column(name = "nickname", length = 50)
+    @Column(name = "nickname", columnDefinition = "text")
     private String nickname;
 
-    @Column(name = "nickname_normalized", length = 50)
+    @Column(name = "nickname_normalized", columnDefinition = "text")
     private String nicknameNormalized;
 
     @Column(name = "profile_image_url", columnDefinition = "text")
@@ -80,9 +84,38 @@ public class AppUser {
         this.lastLoginAt = Instant.now();
     }
 
-    public void claimOnboardingReward() {
+    public void reactivate(String nickname, String profileImageUrl) {
+        this.status = Status.ACTIVE;
+        this.withdrawnAt = null;
+        this.nickname = normalizeNullable(nickname);
+        this.nicknameNormalized = normalizeNickname(nickname);
+        this.profileImageUrl = normalizeNullable(profileImageUrl);
+        this.lastLoginAt = Instant.now();
+    }
+
+    public void updateProfile(String nickname, String profileImageUrl) {
+        if (isWithdrawn()) {
+            return;
+        }
+        if (nickname != null) {
+            this.nickname = normalizeNullable(nickname);
+            this.nicknameNormalized = normalizeNickname(nickname);
+        }
+        if (profileImageUrl != null) {
+            this.profileImageUrl = normalizeNullable(profileImageUrl);
+        }
+    }
+
+    public static String normalizeNicknameForLookup(String nickname) {
+        return normalizeNickname(nickname);
+    }
+
+    public void claimOnboardingReward(Instant completedAt) {
+        if (onboardingRewardClaimed) {
+            return;
+        }
         this.onboardingRewardClaimed = true;
-        this.onboardingCompletedAt = Instant.now();
+        this.onboardingCompletedAt = completedAt;
     }
 
     public void withdraw() {
@@ -91,6 +124,13 @@ public class AppUser {
         this.nickname = "withdrawn-" + id;
         this.nicknameNormalized = null;
         this.profileImageUrl = null;
+    }
+
+    public void suspend() {
+        if (status == Status.WITHDRAWN) {
+            return;
+        }
+        this.status = Status.SUSPENDED;
     }
 
     @PrePersist
