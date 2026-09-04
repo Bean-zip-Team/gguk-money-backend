@@ -24,3 +24,14 @@ WHERE enabled = true
 CREATE INDEX CONCURRENTLY ix_notification_delivery_sent_cooldown
 ON notification_delivery (user_id, notification_type, requested_at DESC)
 WHERE status = 'SENT';
+
+CREATE UNIQUE INDEX CONCURRENTLY uq_promotion_grant_toss_key
+ON promotion_grant (toss_promotion_key)
+WHERE toss_promotion_key IS NOT NULL;
+
+-- Matches PromotionGrantRepository.findDueForUpdate. Without it the retry
+-- scheduler silently degrades to a sequential scan.
+CREATE INDEX CONCURRENTLY ix_promotion_grant_due
+ON promotion_grant (next_attempt_at, created_at)
+WHERE status IN ('PENDING', 'PROCESSING')
+  AND hold_reason IS NULL;
