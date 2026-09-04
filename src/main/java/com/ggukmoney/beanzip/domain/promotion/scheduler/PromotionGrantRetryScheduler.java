@@ -1,16 +1,14 @@
 package com.ggukmoney.beanzip.domain.promotion.scheduler;
 
-import com.ggukmoney.beanzip.domain.promotion.entity.PromotionGrant;
 import com.ggukmoney.beanzip.domain.promotion.repository.PromotionGrantRepository;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionExecutionService;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantStateService;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -38,6 +36,7 @@ public class PromotionGrantRetryScheduler {
 
     private final PromotionGrantRepository promotionGrantRepository;
     private final PromotionExecutionService promotionExecutionService;
+    private final PromotionGrantStateService stateService;
     private final PromotionPolicyConfig policyConfig;
     private final Clock clock;
 
@@ -46,46 +45,39 @@ public class PromotionGrantRetryScheduler {
         boolean executionEnabled = policyConfig.executionEnabled();
         Instant now = Instant.now(clock);
 
-        List<Long> claimed = executionEnabled ? claimDue(now) : List.of();
-
+        int claimed = 0;
         int succeeded = 0;
         int failed = 0;
         boolean walletEmpty = false;
-        for (Long grantId : claimed) {
-            if (walletEmpty) {
-                // 지갑이 비었으면 남은 execute 는 의미가 없다. 다만 tick 전체를 죽이지는 않는다.
-                break;
+        try {
+            List<Long> claimedIds = executionEnabled
+                    ? stateService.claimDue(now, BATCH_SIZE, now.plus(CLAIM_LEASE))
+                    : List.<Long>of();
+            claimed = claimedIds.size();
+
+            for (Long grantId : claimedIds) {
+                if (walletEmpty) {
+                    // 지갑이 비었으면 남은 execute 는 의미가 없다. 다만 tick 전체를 죽이지는 않는다.
+                    break;
+                }
+                try {
+                    walletEmpty = promotionExecutionService.execute(grantId);
+                    succeeded++;
+                } catch (RuntimeException exception) {
+                    failed++;
+                    log.error("Promotion grant processing failed; grantId={}", grantId, exception);
+                }
             }
-            try {
-                walletEmpty = promotionExecutionService.execute(grantId);
-                succeeded++;
-            } catch (RuntimeException exception) {
-                failed++;
-                log.error("Promotion grant processing failed; grantId={}", grantId, exception);
-            }
+        } finally {
+            logSummary(executionEnabled, claimed, succeeded, failed, walletEmpty, now);
         }
-
-        logSummary(executionEnabled, claimed.size(), succeeded, failed, walletEmpty, now);
-    }
-
-    /**
-     * 처리 대상을 잠그고 임대 기간만큼 뒤로 밀어 다른 인스턴스가 같은 행을 집지 않게 한다.
-     * 최후 방어선은 저장된 toss key 재사용이다.
-     */
-    @Transactional
-    List<Long> claimDue(Instant now) {
-        List<PromotionGrant> due = promotionGrantRepository.findDueForUpdate(now, PageRequest.of(0, BATCH_SIZE));
-        Instant lease = now.plus(CLAIM_LEASE);
-        return due.stream()
-                .peek(grant -> grant.deferWithoutAttempt(lease, grant.getTossErrorCode(), now))
-                .map(PromotionGrant::getId)
-                .toList();
     }
 
     /**
      * tick 요약. 킬스위치 검사보다 <b>앞에서</b> 찍는다.
      *
-     * <p>뒤에 두면 파이프라인이 멈춘 상태와 정상 상태가 똑같이 "로그 없음"으로 보인다.
+     * <p>{@code finally} 에서 부른다. 킬스위치가 꺼져 있어도, 도중에 예외가 나도 반드시 찍힌다.
+     * 정상 경로에서만 찍으면 파이프라인이 멈춘 상태와 정상 상태가 똑같이 "로그 없음"으로 보인다.
      * 로그 부재를 알람 조건으로 걸면 배포 중 재기동마다 오탐이 나서 결국 알람을 끄게 된다.
      */
     private void logSummary(boolean executionEnabled, int claimed, int succeeded, int failed,
