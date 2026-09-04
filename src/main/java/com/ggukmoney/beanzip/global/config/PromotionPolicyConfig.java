@@ -53,27 +53,37 @@ public class PromotionPolicyConfig {
             KEY_EXCLUDED_USER_IDS, "[]"
     );
 
+    /**
+     * 캐시 대상 키. 제외 목록은 빠져 있다 — 테스터를 넣고 최대 60초간 지급되는 창을 없애려고
+     * {@link #excludedUserIds()} 가 매번 직접 읽는다.
+     */
+    private static final Set<String> CACHED_KEYS = DEFAULT_VALUES.keySet().stream()
+            .filter(key -> !KEY_EXCLUDED_USER_IDS.equals(key))
+            .collect(Collectors.toUnmodifiableSet());
+
+    private final AppConfigBatchLoader batchLoader;
     private final AppConfigRepository appConfigRepository;
     private final ObjectMapper objectMapper;
 
     private final Map<String, String> cache = new ConcurrentHashMap<>();
 
+    /**
+     * 키마다 쿼리를 날리지 않고 {@link AppConfigBatchLoader} 로 한 번에 읽는다 (BEA-256).
+     * 한 라운드가 통째로 실패하면 다음 라운드가 60초 뒤 재시도하고, 그동안은 last-known-good 이다.
+     */
     @PostConstruct
     @Scheduled(fixedRate = 60_000)
     public void refresh() {
-        Instant now = Instant.now();
-        for (String key : DEFAULT_VALUES.keySet()) {
-            if (KEY_EXCLUDED_USER_IDS.equals(key)) {
-                // 제외 목록은 캐시하지 않는다. 테스터를 넣고 최대 60초간 지급되는 창을 없앤다.
-                continue;
-            }
-            try {
-                appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now)
-                        .map(config -> stripJsonString(config.getConfigValue()))
-                        .ifPresent(value -> cache.put(key, value));
-            } catch (RuntimeException exception) {
-                log.warn("Failed to refresh promotion policy config; key={} fallback=last-known-good", key, exception);
-            }
+        try {
+            Map<String, String> loaded = batchLoader.load(CACHED_KEYS, Instant.now());
+            loaded.forEach((key, rawValue) -> {
+                String value = stripJsonString(rawValue);
+                if (value != null) {
+                    cache.put(key, value);
+                }
+            });
+        } catch (RuntimeException exception) {
+            log.warn("Failed to refresh promotion policy config; fallback=last-known-good", exception);
         }
     }
 
