@@ -17,6 +17,14 @@ public interface PromotionTrigger {
     String promotionCode();
 
     /**
+     * 이 트리거가 지급하는 금액(토스 포인트).
+     *
+     * <p>프로모션마다 다르므로 트리거가 알려준다. 발급기가 단일 설정을 읽으면 미션이 둘이 되는
+     * 순간 엉뚱한 금액이 나간다 — 5P 자리에 500P 가 들어가도 에러는 나지 않는다.
+     */
+    long amount();
+
+    /**
      * 자격을 얻었으면 감사용 스냅샷을 담아 돌려준다. 아니면 {@link Optional#empty()}.
      *
      * <p>판정에 필요한 설정을 읽지 못한 경우에도 empty 다(fail-closed).
