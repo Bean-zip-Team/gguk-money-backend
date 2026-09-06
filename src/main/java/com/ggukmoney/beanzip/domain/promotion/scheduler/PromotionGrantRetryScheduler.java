@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.promotion.scheduler;
 import com.ggukmoney.beanzip.domain.promotion.repository.PromotionGrantRepository;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionExecutionService;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantStateService;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionTrigger;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -37,6 +38,7 @@ public class PromotionGrantRetryScheduler {
     private final PromotionGrantRepository promotionGrantRepository;
     private final PromotionExecutionService promotionExecutionService;
     private final PromotionGrantStateService stateService;
+    private final List<PromotionTrigger> promotionTriggers;
     private final PromotionPolicyConfig policyConfig;
     private final Clock clock;
 
@@ -82,17 +84,21 @@ public class PromotionGrantRetryScheduler {
      */
     private void logSummary(boolean executionEnabled, int claimed, int succeeded, int failed,
                             boolean walletEmpty, Instant now) {
-        String promotionCode = PromotionPolicyConfig.KEYCAP_FIVE_PROMOTION_CODE;
         try {
-            long needsReview = promotionGrantRepository.countByPromotionCodeAndNeedsReviewTrue(promotionCode);
-            long held = promotionGrantRepository.countByPromotionCodeAndHoldReasonIsNotNull(promotionCode);
-            long oldestSeconds = promotionGrantRepository.findOldestUnsettledCreatedAt(promotionCode)
-                    .map(createdAt -> Duration.between(createdAt, now).toSeconds())
-                    .orElse(0L);
-            log.info("promotion tick: enabled={} exec={} claimed={} succeeded={} failed={} "
-                            + "walletEmpty={} held={} needsReview={} oldestUnsettled={}s",
-                    policyConfig.issuingEnabled(), executionEnabled, claimed, succeeded, failed,
-                    walletEmpty, held, needsReview, oldestSeconds);
+            log.info("promotion tick: exec={} claimed={} succeeded={} failed={} walletEmpty={}",
+                    executionEnabled, claimed, succeeded, failed, walletEmpty);
+
+            // 미션별로 찍는다. 하나로 뭉치면 어느 미션이 막혀 있는지 구분되지 않는다.
+            for (PromotionTrigger trigger : promotionTriggers) {
+                String promotionCode = trigger.promotionCode();
+                long needsReview = promotionGrantRepository.countByPromotionCodeAndNeedsReviewTrue(promotionCode);
+                long held = promotionGrantRepository.countByPromotionCodeAndHoldReasonIsNotNull(promotionCode);
+                long oldestSeconds = promotionGrantRepository.findOldestUnsettledCreatedAt(promotionCode)
+                        .map(createdAt -> Duration.between(createdAt, now).toSeconds())
+                        .orElse(0L);
+                log.info("promotion tick: promotionCode={} enabled={} held={} needsReview={} oldestUnsettled={}s",
+                        promotionCode, trigger.issuingEnabled(), held, needsReview, oldestSeconds);
+            }
         } catch (RuntimeException exception) {
             log.warn("Failed to build promotion tick summary", exception);
         }

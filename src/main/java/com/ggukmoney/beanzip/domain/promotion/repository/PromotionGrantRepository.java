@@ -66,6 +66,41 @@ public interface PromotionGrantRepository extends JpaRepository<PromotionGrant, 
             """)
     Optional<Instant> findOldestUnsettledCreatedAt(@Param("promotionCode") String promotionCode);
 
+    /** 실제로 나간 금액. 비즈 월렛 소진액과 대조한다. */
+    @Query("""
+            select coalesce(sum(grant.amount), 0)
+            from PromotionGrant grant
+            where grant.promotionCode = :promotionCode
+              and grant.status = com.ggukmoney.beanzip.domain.promotion.entity.PromotionGrant.Status.SUCCEEDED
+            """)
+    long sumGrantedAmount(@Param("promotionCode") String promotionCode);
+
+    /**
+     * 에러코드 분포. 4112(머니 부족) 를 여기서 인지한다.
+     *
+     * <p>현재 상태 기준이라 코드마다 마지막 값만 잡힌다. 4112 는 해소될 때까지 유지되므로
+     * 예산 감지에는 충분하지만, "몇 번 났었나" 같은 회고는 안 된다.
+     */
+    @Query("""
+            select grant.tossErrorCode as code, count(grant) as count
+            from PromotionGrant grant
+            where grant.promotionCode = :promotionCode
+              and grant.tossErrorCode is not null
+            group by grant.tossErrorCode
+            """)
+    List<ErrorCodeCount> countByErrorCode(@Param("promotionCode") String promotionCode);
+
+    List<PromotionGrant> findByPromotionCodeOrderByCreatedAtDesc(String promotionCode, Pageable pageable);
+
+    /** CS 대응용 지목 조회. 1인 1회라 프로모션 수만큼만 나온다. */
+    List<PromotionGrant> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    interface ErrorCodeCount {
+        String getCode();
+
+        long getCount();
+    }
+
     interface StatusCount {
         PromotionGrant.Status getStatus();
 
