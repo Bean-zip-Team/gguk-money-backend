@@ -43,6 +43,11 @@ public class KeycapFiveCompletionTrigger implements PromotionTrigger {
     }
 
     @Override
+    public boolean issuingEnabled() {
+        return policyConfig.issuingEnabled();
+    }
+
+    @Override
     public Optional<Integer> evaluate(PromotionTriggerContext context) {
         Optional<Instant> launchAt = policyConfig.launchAt();
         if (launchAt.isEmpty()) {

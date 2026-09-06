@@ -25,6 +25,11 @@ public interface PromotionTrigger {
     long amount();
 
     /**
+     * 이 미션의 발급 스위치. 미션마다 따로 켜고 끈다 — 하나를 켜면 다른 하나까지 켜지면 안 된다.
+     */
+    boolean issuingEnabled();
+
+    /**
      * 자격을 얻었으면 감사용 스냅샷을 담아 돌려준다. 아니면 {@link Optional#empty()}.
      *
      * <p>판정에 필요한 설정을 읽지 못한 경우에도 empty 다(fail-closed).

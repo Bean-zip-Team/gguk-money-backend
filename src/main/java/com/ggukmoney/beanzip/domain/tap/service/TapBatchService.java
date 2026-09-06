@@ -7,11 +7,15 @@ import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
 import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreSyncRequestedEvent;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionTriggerContext;
+import com.ggukmoney.beanzip.domain.promotion.service.TapThousandCompletionTrigger;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
@@ -60,6 +64,9 @@ public class TapBatchService {
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
+    private final PromotionPolicyConfig promotionPolicyConfig;
+    private final PromotionGrantIssuer promotionGrantIssuer;
+    private final TapThousandCompletionTrigger tapThousandCompletionTrigger;
     private final UserService userService;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
@@ -107,7 +114,11 @@ public class TapBatchService {
 
             if (creditedTaps > 0) {
                 daily.addValidTaps(creditedTaps);
+
+                long cumulativeBefore = progress.getCumulativeValidTapCount();
                 progress.addValidTaps(creditedTaps);
+                long cumulativeAfter = progress.getCumulativeValidTapCount();
+                issueTapThousandIfCrossed(user, progress, cumulativeBefore, cumulativeAfter, acceptedAt);
 
                 long creditAmount = 1L;
 
@@ -162,6 +173,38 @@ public class TapBatchService {
      * 배치 확정 직후 화면을 그리는 데 필요한 값을 모두 담는다. 상자 개봉 가능 여부는
      * 이번 배치의 지급까지 반영된 잔고 기준이어야 하므로 지급이 끝난 뒤 계산한다.
      */
+    /**
+     * 1,000번 누르기 미션 (BEA-278). 임계를 넘는 그 배치에서만 1회 발급한다.
+     *
+     * <p><b>추가 쿼리가 없다.</b> progress 는 이미 로드돼 있고 정책값은 60초 캐시에서 온다.
+     * 판정은 산술 비교뿐이라 탭 배치의 쿼리 수가 늘지 않는다 (BEA-255).
+     *
+     * <p>기준값은 스위치가 켜진 뒤 첫 배치에서 박는다. 커트오프만 보고 미리 박아두면 스위치가
+     * 꺼져 있던 동안 임계를 넘긴 유저가 생기고, 그 사람은 통과 순간이 지나가 영영 못 받는다.
+     * 켜진 뒤부터 세면 그 창이 사라진다 — 소급 없음은 그대로 지켜진다.
+     */
+    private void issueTapThousandIfCrossed(
+            AppUser user, UserTapProgress progress, long before, long after, Instant acceptedAt) {
+        if (!tapThousandCompletionTrigger.issuingEnabled()) {
+            return;
+        }
+        Optional<Instant> launchAt = promotionPolicyConfig.tapThousandLaunchAt();
+        if (launchAt.isEmpty() || acceptedAt.isBefore(launchAt.get())) {
+            // 커트오프를 못 읽으면 소급 방지를 보장할 수 없다. 지급하지 않는다.
+            return;
+        }
+
+        long baseline = progress.ensurePromotionTapBaseline(before);
+        int threshold = promotionPolicyConfig.tapThousandThreshold();
+        if (before - baseline >= threshold || after - baseline < threshold) {
+            return;
+        }
+
+        promotionGrantIssuer.issueIfEligible(
+                tapThousandCompletionTrigger,
+                PromotionTriggerContext.tapThresholdCrossed(user, after - baseline, acceptedAt));
+    }
+
     private TapBatchSubmitResponse buildResponse(
             int acceptedCount,
             int pointsAwarded,

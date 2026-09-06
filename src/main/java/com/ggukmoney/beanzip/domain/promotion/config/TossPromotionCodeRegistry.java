@@ -26,10 +26,12 @@ public class TossPromotionCodeRegistry {
     private final Map<String, String> tossCodeByPromotionCode;
 
     public TossPromotionCodeRegistry(
-            @Value("${app.promotion.toss.keycap-five-code:}") String keycapFiveCode
+            @Value("${app.promotion.toss.keycap-five-code:}") String keycapFiveCode,
+            @Value("${app.promotion.toss.tap-thousand-code:}") String tapThousandCode
     ) {
         Map<String, String> codes = new LinkedHashMap<>();
         putIfPresent(codes, PromotionPolicyConfig.KEYCAP_FIVE_PROMOTION_CODE, keycapFiveCode);
+        putIfPresent(codes, PromotionPolicyConfig.TAP_THOUSAND_PROMOTION_CODE, tapThousandCode);
         this.tossCodeByPromotionCode = Map.copyOf(codes);
     }
 
