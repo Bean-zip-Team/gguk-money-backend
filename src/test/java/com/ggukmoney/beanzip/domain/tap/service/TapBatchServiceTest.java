@@ -15,7 +15,10 @@ import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
+import com.ggukmoney.beanzip.domain.promotion.service.TapThousandCompletionTrigger;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +68,9 @@ class TapBatchServiceTest {
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
+    private final PromotionPolicyConfig promotionPolicyConfig = mock(PromotionPolicyConfig.class);
+    private final PromotionGrantIssuer promotionGrantIssuer = mock(PromotionGrantIssuer.class);
+    private final TapThousandCompletionTrigger tapThousandCompletionTrigger = mock(TapThousandCompletionTrigger.class);
     private final UserService userService = mock(UserService.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final Instant acceptedAt = Instant.parse("2026-07-20T15:00:00Z");
@@ -75,7 +81,8 @@ class TapBatchServiceTest {
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, userTapSessionService,
             pointAccountService, pointLedgerService,
-            keycapBoxAccountService, redisService, tapPolicyConfig, keycapBoxPolicyConfig, userService,
+            keycapBoxAccountService, redisService, tapPolicyConfig, keycapBoxPolicyConfig,
+            promotionPolicyConfig, promotionGrantIssuer, tapThousandCompletionTrigger, userService,
             eventPublisher, clock, businessZoneId
     );
 
@@ -161,6 +168,90 @@ class TapBatchServiceTest {
 
         assertThat(response.acceptedCount()).isEqualTo(500);
         assertThat(daily.getValidTapCount()).isEqualTo(500);
+    }
+
+    @Test
+    void doesNotIssueTapPromotionWhileTheMissionSwitchIsOff() {
+        UserTapProgress progress = prepareTapPromotionFixture(999L);
+        when(tapThousandCompletionTrigger.issuingEnabled()).thenReturn(false);
+
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 1L, 100));
+
+        verify(promotionGrantIssuer, never()).issueIfEligible(any(), any());
+        // 스위치가 꺼져 있으면 기준값도 잡지 않는다. 미리 잡으면 켜기 전에 임계를 넘긴 유저가
+        // 통과 순간을 놓쳐 영영 못 받는다.
+        assertThat(progress.hasPromotionTapBaseline()).isFalse();
+    }
+
+    @Test
+    void doesNotIssueTapPromotionWhenCutoffIsMissing() {
+        prepareTapPromotionFixture(999L);
+        when(tapThousandCompletionTrigger.issuingEnabled()).thenReturn(true);
+        when(promotionPolicyConfig.tapThousandLaunchAt()).thenReturn(Optional.empty());
+
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 1L, 100));
+
+        verify(promotionGrantIssuer, never()).issueIfEligible(any(), any());
+    }
+
+    @Test
+    void issuesTapPromotionOnlyOnTheBatchThatCrossesTheThreshold() {
+        UserTapProgress progress = prepareTapPromotionFixture(0L);
+        enableTapPromotion();
+
+        // 기준값이 이 배치에서 0 으로 잡히고, 1,000 에 닿지 않으므로 아직 발급하지 않는다.
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 1L, 100));
+        assertThat(progress.hasPromotionTapBaseline()).isTrue();
+        verify(promotionGrantIssuer, never()).issueIfEligible(any(), any());
+
+        progress.addValidTaps(899L);
+
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 2L))
+                .thenReturn(Optional.empty());
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 2L, 100));
+        verify(promotionGrantIssuer, times(1)).issueIfEligible(eq(tapThousandCompletionTrigger), any());
+
+        // 넘긴 뒤에는 다시 발급되지 않는다. 조회 없이 조건식만으로 걸러진다.
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 3L))
+                .thenReturn(Optional.empty());
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 3L, 100));
+        verify(promotionGrantIssuer, times(1)).issueIfEligible(eq(tapThousandCompletionTrigger), any());
+    }
+
+    @Test
+    void countsOnlyTapsAfterTheBaselineSoExistingUsersAreNotBackfilled() {
+        UserTapProgress progress = prepareTapPromotionFixture(50_000L);
+        enableTapPromotion();
+
+        // 이미 5만 탭을 넘긴 기존 유저. 기준값이 잡히므로 순증은 0 에서 시작한다.
+        tapBatchService.submitBatch(userId, new TapBatchSubmitRequest(sessionId, 1L, 100));
+
+        verify(promotionGrantIssuer, never()).issueIfEligible(any(), any());
+        assertThat(progress.getPromotionTapBaseline()).isEqualTo(50_000L);
+    }
+
+    private void enableTapPromotion() {
+        when(tapThousandCompletionTrigger.issuingEnabled()).thenReturn(true);
+        when(promotionPolicyConfig.tapThousandLaunchAt())
+                .thenReturn(Optional.of(acceptedAt.minusSeconds(60)));
+        when(promotionPolicyConfig.tapThousandThreshold()).thenReturn(1000);
+    }
+
+    private UserTapProgress prepareTapPromotionFixture(long alreadyTapped) {
+        AppUser user = stubUser();
+        when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L))
+                .thenReturn(Optional.empty());
+        when(userTapDailyService.getOrCreate(eq(user), eq(tapDate)))
+                .thenReturn(UserTapDaily.createFor(user, tapDate));
+
+        UserTapProgress progress = UserTapProgress.createFor(user, FAR_AWAY_TARGET);
+        progress.addValidTaps(alreadyTapped);
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        TapBatch savedBatch = mock(TapBatch.class);
+        when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
+        when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
+        return progress;
     }
 
     @Test

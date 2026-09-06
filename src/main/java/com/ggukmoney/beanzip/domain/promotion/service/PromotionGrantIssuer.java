@@ -46,7 +46,7 @@ public class PromotionGrantIssuer {
     public void issueIfEligible(PromotionTrigger promotionTrigger, PromotionTriggerContext context) {
         UUID userId = context.user().getId();
         try {
-            if (!policyConfig.issuingEnabled()) {
+            if (!promotionTrigger.issuingEnabled()) {
                 return;
             }
 
