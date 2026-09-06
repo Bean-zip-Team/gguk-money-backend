@@ -59,13 +59,6 @@ public class NotificationDeliveryService {
         return dispatch(persistenceService.prepareRankChange(userId));
     }
 
-    public List<NotificationDelivery> sendBoosterRechargedForDate(LocalDate today) {
-        int dailyLimit = tapPolicyConfig.boosterDailyLimit();
-        Set<UUID> exhaustedUsers = new HashSet<>(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(
-                today.minusDays(1), dailyLimit));
-        return sendBoosterRechargedPages(today, exhaustedUsers);
-    }
-
     public List<NotificationDelivery> sendMorningNotifications(LocalDate today) {
         List<NotificationDelivery> deliveries = new ArrayList<>();
         Set<UUID> rechargedCandidates = new HashSet<>(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(
@@ -121,10 +114,15 @@ public class NotificationDeliveryService {
             }
             cursor = candidates.getLast().getPreferenceId();
             List<UUID> userIds = candidateUserIds(candidates);
+            Set<UUID> rechargedSentUsers = batchReadService.findSentUserIdsSinceStartOfDay(
+                    userIds,
+                    NotificationType.BOOSTER_RECHARGED,
+                    today
+            );
             NotificationBatchReadService.NotificationPageData page = batchReadService.loadPage(userIds, today);
             for (NotificationPreferenceRepository.SendableCandidate candidate : candidates) {
                 UUID userId = candidate.getUserId();
-                if (rankSelected.contains(userId)) {
+                if (rankSelected.contains(userId) || rechargedSentUsers.contains(userId)) {
                     continue;
                 }
                 try {
