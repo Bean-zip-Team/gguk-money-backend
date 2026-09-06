@@ -2,6 +2,8 @@ package com.ggukmoney.beanzip.domain.notification.service;
 
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationDeliveryRepository;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationRankStateRepository;
@@ -60,6 +62,44 @@ class NotificationBatchReadServiceTest {
             rankingProperties,
             Clock.fixed(NOW, ZoneOffset.UTC)
     );
+
+    @Test
+    void sentUsersSinceKstStartOfDayUseSingleBatchDeliveryQuery() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        LocalDate today = LocalDate.parse("2026-07-25");
+        Instant kstStartOfDay = Instant.parse("2026-07-24T15:00:00Z");
+        when(deliveryRepository.findUserIdsWithRecentDelivery(
+                List.of(firstUserId, secondUserId),
+                NotificationType.BOOSTER_RECHARGED,
+                NotificationDeliveryStatus.SENT,
+                kstStartOfDay
+        )).thenReturn(List.of(secondUserId));
+
+        assertThat(service.findSentUserIdsSinceStartOfDay(
+                List.of(firstUserId, secondUserId, firstUserId),
+                NotificationType.BOOSTER_RECHARGED,
+                today
+        )).containsExactly(secondUserId);
+
+        verify(deliveryRepository).findUserIdsWithRecentDelivery(
+                List.of(firstUserId, secondUserId),
+                NotificationType.BOOSTER_RECHARGED,
+                NotificationDeliveryStatus.SENT,
+                kstStartOfDay
+        );
+    }
+
+    @Test
+    void emptySentUserBatchDoesNotQueryDeliveryRepository() {
+        assertThat(service.findSentUserIdsSinceStartOfDay(
+                List.of(),
+                NotificationType.BOOSTER_RECHARGED,
+                LocalDate.parse("2026-07-25")
+        )).isEmpty();
+
+        verify(deliveryRepository, never()).findUserIdsWithRecentDelivery(any(), any(), any(), any());
+    }
 
     @Test
     void readyFreshRedisUsesSingleBatchRankRead() {
