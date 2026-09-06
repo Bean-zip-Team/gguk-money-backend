@@ -2,12 +2,12 @@ package com.ggukmoney.beanzip.domain.promotion.service;
 
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.domain.promotion.config.TossPromotionCodeRegistry;
 import com.ggukmoney.beanzip.domain.promotion.entity.PromotionGrant;
 import com.ggukmoney.beanzip.global.client.toss.TossPromotionClient;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -43,13 +43,11 @@ public class PromotionExecutionService {
     private static final String HOLD_KEY_COMMIT_FAILED = "KEY_COMMIT_FAILED";
 
     private final TossPromotionClient tossPromotionClient;
+    private final TossPromotionCodeRegistry tossPromotionCodeRegistry;
     private final PromotionGrantStateService stateService;
     private final PromotionErrorPolicy errorPolicy;
     private final AuthIdentityRepository authIdentityRepository;
     private final Clock clock;
-
-    @Value("${app.promotion.toss.keycap-five-code:}")
-    private String keycapFivePromotionCode;
 
     /** @return 지갑이 비어 이번 tick 의 남은 execute 를 중단해야 하면 true */
     public boolean execute(Long grantId) {
@@ -69,10 +67,11 @@ public class PromotionExecutionService {
         Long grantId = grant.getId();
         UUID userId = grant.getUser().getId();
 
-        String promotionCode = keycapFivePromotionCode;
+        String promotionCode = tossPromotionCodeRegistry.tossCodeOf(grant.getPromotionCode()).orElse(null);
         if (promotionCode == null || promotionCode.isBlank()) {
             // 설정 오류다. 지급 실패로 태우지 않는다. attempt 도 소모하지 않되 백오프는 건다.
-            log.error("app.promotion.toss.keycap-five-code is not configured; grantId={}", grantId);
+            log.error("Toss promotion code is not configured; promotionCode={} grantId={}",
+                    grant.getPromotionCode(), grantId);
             stateService.deferWithoutAttempt(grantId, now.plus(CONFIG_ERROR_BACKOFF), "NOT_CONFIGURED", now);
             return false;
         }

@@ -34,12 +34,16 @@ public class PromotionGrantIssuer {
     private static final Logger log = LoggerFactory.getLogger(PromotionGrantIssuer.class);
 
     private final PromotionGrantRepository promotionGrantRepository;
-    private final PromotionTrigger promotionTrigger;
     private final PromotionAudiencePolicy audiencePolicy;
     private final PromotionPolicyConfig policyConfig;
     private final ApplicationEventPublisher eventPublisher;
 
-    public void issueIfEligible(PromotionTriggerContext context) {
+    /**
+     * 트리거를 주입이 아니라 파라미터로 받는다. 필드로 두면 구현체가 둘이 되는 순간
+     * {@code NoUniqueBeanDefinitionException} 으로 컨텍스트가 뜨지 않고, 호출부가 어느 미션을
+     * 발급하는지도 드러나지 않는다.
+     */
+    public void issueIfEligible(PromotionTrigger promotionTrigger, PromotionTriggerContext context) {
         UUID userId = context.user().getId();
         try {
             if (!policyConfig.issuingEnabled()) {
@@ -62,7 +66,7 @@ public class PromotionGrantIssuer {
             PromotionGrant grant = promotionGrantRepository.save(PromotionGrant.createPending(
                     context.user(),
                     promotionCode,
-                    policyConfig.amount(),
+                    promotionTrigger.amount(),
                     snapshot.get(),
                     context.occurredAt()
             ));

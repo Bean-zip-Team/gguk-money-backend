@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
+import com.ggukmoney.beanzip.domain.promotion.service.KeycapFiveCompletionTrigger;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionTriggerContext;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
@@ -63,6 +64,7 @@ public class KeycapBoxOpenService {
     private final BoosterGrantService boosterGrantService;
 
     private final PromotionGrantIssuer promotionGrantIssuer;
+    private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
 
@@ -135,6 +137,7 @@ public class KeycapBoxOpenService {
             long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
             awardAllCompleteBonusIfEligible(userId, user, completedCount);
             promotionGrantIssuer.issueIfEligible(
+                    keycapFiveCompletionTrigger,
                     PromotionTriggerContext.keycapCompleted(user, completedCount, acceptedAt));
         }
 
