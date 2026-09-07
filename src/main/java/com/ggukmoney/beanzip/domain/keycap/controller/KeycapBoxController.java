@@ -2,8 +2,10 @@ package com.ggukmoney.beanzip.domain.keycap.controller;
 
 import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxBulkOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxBulkOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxQueryService;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
@@ -40,6 +42,7 @@ public class KeycapBoxController {
 
     private final KeycapBoxQueryService keycapBoxQueryService;
     private final KeycapBoxOpenService keycapBoxOpenService;
+    private final KeycapBoxBulkOpenService keycapBoxBulkOpenService;
 
     @Operation(summary = "키캡 상자 상태 조회")
     @ApiResponses({
@@ -113,6 +116,29 @@ public class KeycapBoxController {
                 AuthRequestAttributes.getRequiredUserId(httpServletRequest),
                 idempotencyKey,
                 request
+        )));
+    }
+
+    @Operation(summary = "키캡 상자 일괄 개봉",
+            description = "알림 동의 보상으로 쌓인 상자를 한 번에 엽니다. 개봉 주기·무료/광고 횟수 제한을 적용하지 않으며, "
+                    + "유저당 1회만 가능합니다. 상한은 `keycapBox.bulkOpen.limit` 설정값이고 보유량이 그보다 적으면 보유량만큼 열립니다. "
+                    + "보유 상자가 없으면 openedCount 0 으로 응답하며 수령 기록을 남기지 않습니다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "개봉 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "알림 동의 기록 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    @PostMapping("/bulk-open")
+    public ResponseEntity<ApiResponse<KeycapBoxBulkOpenResponse>> bulkOpen(
+            @Parameter(in = ParameterIn.HEADER, description = "개봉 요청 멱등키. 재시도에 같은 값을 사용합니다.", required = true, example = "bulk-20260908-0001")
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Parameter(hidden = true) HttpServletRequest httpServletRequest
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(keycapBoxBulkOpenService.bulkOpen(
+                AuthRequestAttributes.getRequiredUserId(httpServletRequest),
+                idempotencyKey
         )));
     }
 

@@ -9,6 +9,7 @@ import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryItemResp
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxBulkOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxQueryService;
 import com.ggukmoney.beanzip.global.common.GlobalExceptionHandler;
@@ -50,8 +51,9 @@ class KeycapBoxControllerTest {
     private final AuthService authService = mock(AuthService.class);
     private final KeycapBoxQueryService keycapBoxQueryService = mock(KeycapBoxQueryService.class);
     private final KeycapBoxOpenService keycapBoxOpenService = mock(KeycapBoxOpenService.class);
+    private final KeycapBoxBulkOpenService keycapBoxBulkOpenService = mock(KeycapBoxBulkOpenService.class);
     private final KeycapBoxController keycapBoxController =
-            new KeycapBoxController(keycapBoxQueryService, keycapBoxOpenService);
+            new KeycapBoxController(keycapBoxQueryService, keycapBoxOpenService, keycapBoxBulkOpenService);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapBoxController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
