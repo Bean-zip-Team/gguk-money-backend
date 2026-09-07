@@ -123,6 +123,13 @@ public class KeycapBoxOpen {
 
     public enum OpenMethod {
         FREE,
-        ADVERTISEMENT
+        ADVERTISEMENT,
+        /**
+         * 알림 동의 보상으로 쌓인 상자를 한 번에 연 건 (BEA-280).
+         *
+         * <p>별도 수령 기록 테이블을 두지 않는다. 이 값의 행이 있으면 이미 받은 것이므로
+         * 1회성 판정과 멱등 재생을 같은 근거로 처리한다.
+         */
+        BULK_REWARD
     }
 }
