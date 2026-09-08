@@ -48,6 +48,23 @@ public class KeycapFiveCompletionTrigger implements PromotionTrigger {
     }
 
     @Override
+    public String missionName() {
+        return "키캡 5개 모으기";
+    }
+
+    @Override
+    public MissionProgress progressOf(java.util.UUID userId) {
+        int threshold = policyConfig.threshold();
+        return policyConfig.launchAt()
+                .map(launchAt -> MissionProgress.of(
+                        userKeycapRepository.countByUserIdAndStatusAndCompletedAtAfter(
+                                userId, UserKeycap.Status.COMPLETED, launchAt),
+                        threshold))
+                // 커트오프가 없으면 지급 자체가 막혀 있다. 진행도를 0 으로 보이는 편이 정직하다.
+                .orElseGet(() -> MissionProgress.of(0L, threshold));
+    }
+
+    @Override
     public Optional<Integer> evaluate(PromotionTriggerContext context) {
         Optional<Instant> launchAt = policyConfig.launchAt();
         if (launchAt.isEmpty()) {
