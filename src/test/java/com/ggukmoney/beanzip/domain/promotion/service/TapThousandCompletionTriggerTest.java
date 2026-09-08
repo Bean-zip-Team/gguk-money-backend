@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.promotion.service;
 
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.repository.UserTapProgressRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import org.junit.jupiter.api.Test;
@@ -16,9 +18,12 @@ import static org.mockito.Mockito.when;
 class TapThousandCompletionTriggerTest {
 
     private final PromotionPolicyConfig policyConfig = mock(PromotionPolicyConfig.class);
-    private final TapThousandCompletionTrigger trigger = new TapThousandCompletionTrigger(policyConfig);
+    private final UserTapProgressRepository userTapProgressRepository = mock(UserTapProgressRepository.class);
+    private final TapThousandCompletionTrigger trigger =
+            new TapThousandCompletionTrigger(policyConfig, userTapProgressRepository);
     private final AppUser user = mock(AppUser.class);
     private final Instant now = Instant.parse("2026-09-06T00:00:00Z");
+    private final java.util.UUID userId = java.util.UUID.randomUUID();
 
     @Test
     void usesItsOwnPromotionCodeAndAmount() {
@@ -53,6 +58,33 @@ class TapThousandCompletionTriggerTest {
 
         assertThat(trigger.evaluate(PromotionTriggerContext.tapThresholdCrossed(user, 999L, now)))
                 .isEmpty();
+    }
+
+    @Test
+    void reportsProgressAsTapsSinceTheBaseline() {
+        when(policyConfig.tapThousandThreshold()).thenReturn(1000);
+        UserTapProgress progress = mock(UserTapProgress.class);
+        when(progress.hasPromotionTapBaseline()).thenReturn(true);
+        when(progress.getCumulativeValidTapCount()).thenReturn(4150L);
+        when(progress.getPromotionTapBaseline()).thenReturn(3200L);
+        when(userTapProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
+
+        MissionProgress result = trigger.progressOf(userId);
+
+        // 앱은 기준값을 모르므로 이 계산을 할 수 없다. 서버가 내려준다.
+        assertThat(result.current()).isEqualTo(950L);
+        assertThat(result.target()).isEqualTo(1000L);
+        assertThat(result.reached()).isFalse();
+    }
+
+    @Test
+    void reportsZeroProgressWhenBaselineIsNotAnchoredYet() {
+        when(policyConfig.tapThousandThreshold()).thenReturn(1000);
+        UserTapProgress progress = mock(UserTapProgress.class);
+        when(progress.hasPromotionTapBaseline()).thenReturn(false);
+        when(userTapProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
+
+        assertThat(trigger.progressOf(userId).current()).isZero();
     }
 
     @Test

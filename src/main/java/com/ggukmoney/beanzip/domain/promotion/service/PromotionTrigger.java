@@ -30,6 +30,22 @@ public interface PromotionTrigger {
     boolean issuingEnabled();
 
     /**
+     * 유저에게 보여줄 미션 이름 (BEA-292).
+     *
+     * <p>앱인토스 콘솔의 {@code missionName} 과 같은 문구를 쓴다. 혜택탭에서 본 이름과 앱 안에서
+     * 보는 이름이 다르면 같은 미션인지 알 수 없다.
+     */
+    String missionName();
+
+    /**
+     * 이 유저의 진행도 (BEA-292). 커트오프가 적용된 값이다.
+     *
+     * <p>{@link #evaluate} 와 달리 조회를 해도 된다. 목록 조회는 탭 배치처럼 상시로 들어오는
+     * 경로가 아니다.
+     */
+    MissionProgress progressOf(java.util.UUID userId);
+
+    /**
      * 자격을 얻었으면 감사용 스냅샷을 담아 돌려준다. 아니면 {@link Optional#empty()}.
      *
      * <p>판정에 필요한 설정을 읽지 못한 경우에도 empty 다(fail-closed).

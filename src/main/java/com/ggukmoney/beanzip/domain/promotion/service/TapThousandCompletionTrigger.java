@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.promotion.service;
 
+import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
+import com.ggukmoney.beanzip.domain.tap.repository.UserTapProgressRepository;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,7 @@ import java.util.Optional;
 public class TapThousandCompletionTrigger implements PromotionTrigger {
 
     private final PromotionPolicyConfig policyConfig;
+    private final UserTapProgressRepository userTapProgressRepository;
 
     @Override
     public String promotionCode() {
@@ -36,6 +39,28 @@ public class TapThousandCompletionTrigger implements PromotionTrigger {
     @Override
     public boolean issuingEnabled() {
         return policyConfig.tapThousandIssuingEnabled();
+    }
+
+    @Override
+    public String missionName() {
+        return "1,000번 누르기";
+    }
+
+    /**
+     * 진행도는 {@code 누적 탭 - 기준값} 이다. 기준값이 서버에만 있어 앱이 계산할 수 없다.
+     *
+     * <p>{@link #evaluate} 는 여전히 조회를 하지 않는다 — 그쪽은 탭 배치마다 불린다.
+     */
+    @Override
+    public MissionProgress progressOf(java.util.UUID userId) {
+        int threshold = policyConfig.tapThousandThreshold();
+        return userTapProgressRepository.findByUserId(userId)
+                .filter(UserTapProgress::hasPromotionTapBaseline)
+                .map(progress -> MissionProgress.of(
+                        progress.getCumulativeValidTapCount() - progress.getPromotionTapBaseline(),
+                        threshold))
+                // 기준값이 아직 없으면 커트오프에 고정되지 않았다는 뜻이다. 0 에서 시작한다.
+                .orElseGet(() -> MissionProgress.of(0L, threshold));
     }
 
     @Override
