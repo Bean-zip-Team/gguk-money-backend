@@ -42,6 +42,8 @@ out/
 .codex/
 .agents/
 AGENTS.md
+.omc/
+archify/
 
 ### macOS ###
 .DS_Store
