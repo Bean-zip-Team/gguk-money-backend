@@ -51,9 +51,15 @@ public class KeycapService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_NOT_COMPLETED");
         }
 
+        // 해제를 먼저 확정한 뒤에 장착한다. ux_user_keycap_equipped 가 유저당 equipped = true 를
+        // 하나로 제한하는데, 두 변경을 모두 더티 체킹에 맡기면 UPDATE 발행 순서가 영속성 컨텍스트
+        // 적재 순서를 따른다. 장착이 먼저 나가는 순간 두 행이 true 가 되어 인덱스를 위반한다.
         userKeycapRepository.findEquippedByUserIdForUpdate(userId)
                 .filter(current -> current != target)
-                .ifPresent(UserKeycap::unequip);
+                .ifPresent(current -> {
+                    current.unequip();
+                    userKeycapRepository.flush();
+                });
 
         target.equip();
         return keycapMapper.mapToKeycapEquipResponse(target);
