@@ -29,6 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -70,7 +72,8 @@ class KeycapBoxBulkOpenServiceTest {
         lenient().when(keycapBoxOpenService.requireRewardCandidates(userId)).thenReturn(List.of());
 
         KeycapBoxOpen defaultOpened = openedBox(1, false);
-        lenient().when(keycapBoxOpenService.drawAndRecord(any(), any(), anyString(), anyString(), anyString(), any(), any()))
+        lenient().when(keycapBoxOpenService.drawAndRecord(
+                        any(), any(), anyString(), anyString(), nullable(String.class), any(), any()))
                 .thenReturn(defaultOpened);
     }
 
@@ -106,7 +109,8 @@ class KeycapBoxBulkOpenServiceTest {
         assertThat(response.remainingBoxBalance()).isEqualTo(80);
         assertThat(account.getBoxBalance()).isEqualTo(80);
         verify(keycapBoxOpenService, times(30))
-                .drawAndRecord(any(), eq(KeycapBoxOpen.OpenMethod.BULK_REWARD), anyString(), anyString(), anyString(), any(), any());
+                .drawAndRecord(any(), eq(KeycapBoxOpen.OpenMethod.BULK_REWARD),
+                        anyString(), anyString(), nullable(String.class), any(), any());
     }
 
     @Test
@@ -128,7 +132,8 @@ class KeycapBoxBulkOpenServiceTest {
         assertThat(response.openedCount()).isZero();
         assertThat(response.completedKeycaps()).isEmpty();
         // 준 게 없는데 수령 처리하면 나중에 상자가 쌓여도 영영 못 받는다.
-        verify(keycapBoxOpenService, never()).drawAndRecord(any(), any(), anyString(), anyString(), anyString(), any(), any());
+        verify(keycapBoxOpenService, never()).drawAndRecord(
+                any(), any(), anyString(), anyString(), nullable(String.class), any(), any());
     }
 
     @Test
@@ -156,7 +161,8 @@ class KeycapBoxBulkOpenServiceTest {
         assertThat(response.openedCount()).isEqualTo(2);
         assertThat(response.totalShardCount()).isEqualTo(3);
         assertThat(response.completedKeycaps()).hasSize(1);
-        verify(keycapBoxOpenService, never()).drawAndRecord(any(), any(), anyString(), anyString(), anyString(), any(), any());
+        verify(keycapBoxOpenService, never()).drawAndRecord(
+                any(), any(), anyString(), anyString(), nullable(String.class), any(), any());
     }
 
     @Test
@@ -177,7 +183,8 @@ class KeycapBoxBulkOpenServiceTest {
         KeycapBoxOpen first = openedBox(2, false);
         KeycapBoxOpen second = openedBox(1, true);
         KeycapBoxOpen third = openedBox(2, false);
-        when(keycapBoxOpenService.drawAndRecord(any(), any(), anyString(), anyString(), anyString(), any(), any()))
+        when(keycapBoxOpenService.drawAndRecord(
+                any(), any(), anyString(), anyString(), nullable(String.class), any(), any()))
                 .thenReturn(first, second, third);
 
         KeycapBoxBulkOpenResponse response = service.bulkOpen(userId, idempotencyKey);
@@ -202,9 +209,20 @@ class KeycapBoxBulkOpenServiceTest {
 
         org.mockito.ArgumentCaptor<String> keys = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(keycapBoxOpenService, times(3))
-                .drawAndRecord(any(), any(), keys.capture(), anyString(), anyString(), any(), any());
+                .drawAndRecord(any(), any(), keys.capture(), anyString(), nullable(String.class), any(), any());
         // uq_keycap_box_open_user_idempotency 가 (user_id, idempotency_key) 유니크다.
         assertThat(keys.getAllValues()).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void bulkRewardDoesNotClaimAnAdvertisementRewardId() {
+        accountWith(1);
+
+        service.bulkOpen(userId, idempotencyKey);
+
+        verify(keycapBoxOpenService).drawAndRecord(
+                any(), eq(KeycapBoxOpen.OpenMethod.BULK_REWARD),
+                anyString(), anyString(), isNull(), any(), any());
     }
 
     @Test

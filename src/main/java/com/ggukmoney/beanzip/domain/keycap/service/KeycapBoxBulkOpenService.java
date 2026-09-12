@@ -31,7 +31,8 @@ import java.util.UUID;
  *
  * <p>개봉 주기·무료/광고 횟수 제한을 우회한다. 그게 보상의 내용이다. 대신 <b>1인 1회</b>이며,
  * 수령 여부는 {@code BULK_REWARD} 개봉 이력의 존재로 판정한다 — 별도 수령 기록 테이블을 두지
- * 않는다. Flyway 가 없어 새 스키마는 매번 수동 DDL 이 되고, 그게 사고 지점이었다.
+ * 않는다. 배포 전 운영 DB의 {@code open_method} CHECK 제약에는 {@code BULK_REWARD}를 추가해야 한다.
+ * 수동 DDL은 {@code db/manual-keycap-box-bulk-open.sql}에서 관리한다.
  *
  * <p>보상 산정은 단건 개봉과 같은 코드({@link KeycapBoxOpenService#drawAndRecord})를 쓴다.
  * 확률·조각 수·완성 판정을 따로 구현하면 단건과 조용히 어긋난다.
@@ -93,7 +94,7 @@ public class KeycapBoxBulkOpenService {
                     KeycapBoxOpen.OpenMethod.BULK_REWARD,
                     derivedIdempotencyKey(idempotencyKey, index),
                     requestHash(idempotencyKey),
-                    "",
+                    null,
                     acceptedAt,
                     keycapBoxOpenService.requireRewardCandidates(userId)
             ));
