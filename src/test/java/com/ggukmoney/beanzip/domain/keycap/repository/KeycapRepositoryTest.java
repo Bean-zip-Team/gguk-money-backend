@@ -119,8 +119,83 @@ class KeycapRepositoryTest {
                 .containsExactly("NOT_OWNED", "IN_PROGRESS", "OTHER_COMPLETED");
     }
 
+    /**
+     * BEA-285 완료 조건. 추첨기는 후보 목록만 보고 확률을 정하므로, 이벤트 키캡을 추가해도 후보 목록이
+     * 그대로면 상시 키캡의 확률도 그대로다. 이벤트 키캡은 같은 등급이면서 두 상시 키캡 사이 정렬 순서에
+     * 넣어, 필터가 빠지면 곧바로 결과에 끼어들게 했다.
+     */
+    @Test
+    void rewardCandidatesStayTheSameWhenEventKeycapIsAdded() {
+        AppUser user = appUserRepository.save(AppUser.createActive("event-user", null));
+        keycapRepository.save(keycap("BOX_A", "Box A", true, 1));
+        keycapRepository.save(keycap("BOX_B", "Box B", true, 3));
+        keycapRepository.flush();
+        List<String> before = codesOf(keycapRepository.findIncompleteActiveRewardCandidates(user.getId()));
+
+        keycapRepository.saveAndFlush(keycap("SONGPYEON", "Songpyeon", true, 2, Keycap.AcquisitionType.EVENT));
+        List<String> after = codesOf(keycapRepository.findIncompleteActiveRewardCandidates(user.getId()));
+
+        assertThat(before).containsExactly("BOX_A", "BOX_B");
+        assertThat(after).isEqualTo(before);
+    }
+
+    @Test
+    void excludesEventKeycapsFromOnboardingBonusCandidates() {
+        keycapRepository.save(keycap("BOX_COMMON", "Box Common", true, 1));
+        keycapRepository.save(keycap("EVENT_COMMON", "Event Common", true, 2, Keycap.AcquisitionType.EVENT));
+        keycapRepository.flush();
+
+        List<Keycap> result = keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(
+                Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX);
+
+        assertThat(result).extracting(Keycap::getCode).containsExactly("BOX_COMMON");
+    }
+
+    @Test
+    void countsOnlyActiveBoxKeycapsAsAllCompleteCatalog() {
+        keycapRepository.save(keycap("BOX_ACTIVE_1", "Box Active 1", true, 1));
+        keycapRepository.save(keycap("BOX_ACTIVE_2", "Box Active 2", true, 2));
+        keycapRepository.save(keycap("BOX_INACTIVE", "Box Inactive", false, 3));
+        keycapRepository.save(keycap("EVENT_ACTIVE", "Event Active", true, 4, Keycap.AcquisitionType.EVENT));
+        keycapRepository.flush();
+
+        assertThat(keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX)).isEqualTo(2);
+    }
+
+    @Test
+    void countsCompletedKeycapsByAcquisitionType() {
+        AppUser user = appUserRepository.save(AppUser.createActive("count-user", null));
+        Keycap completedBox = keycapRepository.save(keycap("BOX_DONE", "Box Done", true, 1));
+        Keycap inProgressBox = keycapRepository.save(keycap("BOX_WIP", "Box Wip", true, 2));
+        Keycap completedEvent = keycapRepository.save(keycap("EVENT_DONE", "Event Done", true, 3, Keycap.AcquisitionType.EVENT));
+        keycapRepository.flush();
+        userKeycapRepository.save(userKeycap(user, completedBox, 10, UserKeycap.Status.COMPLETED, false));
+        userKeycapRepository.save(userKeycap(user, inProgressBox, 3, UserKeycap.Status.IN_PROGRESS, false));
+        userKeycapRepository.save(userKeycap(user, completedEvent, 10, UserKeycap.Status.COMPLETED, false));
+        userKeycapRepository.flush();
+
+        assertThat(userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(
+                user.getId(), UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX)).isEqualTo(1);
+        assertThat(userKeycapRepository.countByUserIdAndStatus(user.getId(), UserKeycap.Status.COMPLETED)).isEqualTo(2);
+    }
+
+    private static List<String> codesOf(List<Keycap> keycaps) {
+        return keycaps.stream().map(Keycap::getCode).toList();
+    }
+
     private static Keycap keycap(String code, String name, boolean active, int sortOrder) {
+        return keycap(code, name, active, sortOrder, Keycap.AcquisitionType.BOX);
+    }
+
+    private static Keycap keycap(
+            String code,
+            String name,
+            boolean active,
+            int sortOrder,
+            Keycap.AcquisitionType acquisitionType
+    ) {
         Keycap keycap = newInstance(Keycap.class);
+        ReflectionTestUtils.setField(keycap, "acquisitionType", acquisitionType);
         ReflectionTestUtils.setField(keycap, "code", code);
         ReflectionTestUtils.setField(keycap, "name", name);
         ReflectionTestUtils.setField(keycap, "grade", Keycap.Grade.COMMON);

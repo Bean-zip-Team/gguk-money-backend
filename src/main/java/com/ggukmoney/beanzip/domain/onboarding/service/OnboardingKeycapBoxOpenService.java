@@ -69,8 +69,10 @@ public class OnboardingKeycapBoxOpenService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "ONBOARDING_REWARD_NOT_AVAILABLE"));
 
         Keycap.Grade bonusGrade = parseGrade(policy.bonusKeycapGrade());
+        // 이벤트 키캡은 온보딩 보너스로도 나가지 않는다(BEA-285).
         List<Keycap> bonusCandidates = keycapRepository
-                .findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(bonusGrade).stream()
+                .findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(bonusGrade, Keycap.AcquisitionType.BOX)
+                .stream()
                 .filter(candidate -> !candidate.getCode().equals(rewardKeycap.getCode()))
                 .toList();
         if (bonusCandidates.isEmpty()) {

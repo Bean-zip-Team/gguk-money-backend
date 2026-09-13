@@ -50,6 +50,16 @@ public class Keycap {
     @Column(name = "season", nullable = false)
     private Integer season = 1;
 
+    /**
+     * 키캡을 얻는 경로. 상자 추첨·온보딩 보너스 추첨·전체 완성 보너스는 {@link AcquisitionType#BOX} 만 대상으로 삼는다.
+     *
+     * <p>이벤트 키캡을 상시 키캡과 같은 테이블에 두면서 확률을 희석하지 않기 위한 구분이다(BEA-285).
+     * {@code season} 에 이 의미를 싣지 않는다 — 시즌은 도감 회차("시즌1 24종")를 뜻하는 별개의 축이다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "acquisition_type", nullable = false, length = 20)
+    private AcquisitionType acquisitionType = AcquisitionType.BOX;
+
     @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
@@ -112,5 +122,12 @@ public class Keycap {
         RARE,
         EPIC,
         LEGENDARY
+    }
+
+    public enum AcquisitionType {
+        /** 상자에서 추첨으로 얻는 상시 키캡. */
+        BOX,
+        /** 이벤트 경로로만 지급하는 키캡. 상자·온보딩 추첨 후보와 전체 완성 보너스 판정에서 빠진다. */
+        EVENT
     }
 }

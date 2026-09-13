@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.keycap.repository;
 
+import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,16 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
     Optional<UserKeycap> findByUserIdAndEquippedTrue(UUID userId);
 
     long countByUserIdAndStatus(UUID userId, UserKeycap.Status status);
+
+    /**
+     * 획득 경로별 완성 키캡 수. 전체 완성 보너스는 상자 풀({@code BOX})만 센다 — 이벤트 키캡까지 세면
+     * 상자 키캡을 한 종 덜 모아도 "전 종류 완성"으로 판정된다(BEA-285).
+     */
+    long countByUserIdAndStatusAndKeycapAcquisitionType(
+            UUID userId,
+            UserKeycap.Status status,
+            Keycap.AcquisitionType acquisitionType
+    );
 
     /**
      * 커트오프 이후에 완성된 키캡 수. 프로모션 소급 방지에 쓴다.

@@ -18,6 +18,8 @@ public record KeycapItemResponse(
         int requiredShardCount,
         @Schema(description = "시즌", example = "1")
         int season,
+        @Schema(description = "획득 경로. BOX: 상자에서 추첨, EVENT: 이벤트 한정 지급", example = "BOX")
+        String acquisitionType,
         @Schema(description = "이미지 URL", example = "https://example.com/keycap.png")
         String imageUrl,
         @Schema(description = "사운드 URL", example = "https://example.com/keycap.mp3")
