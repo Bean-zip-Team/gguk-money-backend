@@ -38,8 +38,19 @@ class KeycapMapperTest {
         assertThat(response.grade()).isEqualTo("COMMON");
         assertThat(response.requiredShardCount()).isEqualTo(10);
         assertThat(response.season()).isEqualTo(1);
+        assertThat(response.acquisitionType()).isEqualTo("BOX");
         assertThat(response.imageUrl()).isEqualTo("https://example.com/keycap.png");
         assertThat(response.soundUrl()).isEqualTo("https://example.com/keycap.mp3");
+    }
+
+    @Test
+    void mapsEventAcquisitionTypeForCatalogItem() {
+        Keycap keycap = keycap(UUID.randomUUID(), "SONGPYEON", "Songpyeon", Keycap.Grade.COMMON, 20, 1, true, 15);
+        ReflectionTestUtils.setField(keycap, "acquisitionType", Keycap.AcquisitionType.EVENT);
+
+        KeycapItemResponse response = keycapMapper.mapToKeycapItemResponse(keycap);
+
+        assertThat(response.acquisitionType()).isEqualTo("EVENT");
     }
 
     @Test

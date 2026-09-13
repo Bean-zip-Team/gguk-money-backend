@@ -73,7 +73,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 Duration.ofMinutes(15)
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
-        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+        when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
                 .thenReturn(List.of(mainKeycap, bonusKeycap));
         when(keycapRewardSelector.select(List.of(bonusKeycap))).thenReturn(bonusKeycap);
         when(attemptRepository.save(any(OnboardingRewardAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -111,7 +111,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 Duration.ofMinutes(15)
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
-        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+        when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
                 .thenReturn(List.of(mainKeycap, otherCommonKeycap));
         when(keycapRewardSelector.select(List.of(otherCommonKeycap))).thenReturn(otherCommonKeycap);
         when(attemptRepository.save(any(OnboardingRewardAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -135,7 +135,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 Duration.ofMinutes(15)
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
-        when(keycapRepository.findByGradeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON))
+        when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
                 .thenReturn(List.of(mainKeycap));
 
         assertThatThrownBy(() -> service.open(request))

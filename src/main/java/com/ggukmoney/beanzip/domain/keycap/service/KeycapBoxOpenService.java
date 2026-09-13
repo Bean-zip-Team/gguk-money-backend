@@ -162,7 +162,7 @@ public class KeycapBoxOpenService {
 
         if (completedNow) {
             long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
-            awardAllCompleteBonusIfEligible(userId, user, completedCount);
+            awardAllCompleteBonusIfEligible(userId, user);
             promotionGrantIssuer.issueIfEligible(
                     keycapFiveCompletionTrigger,
                     PromotionTriggerContext.keycapCompleted(user, completedCount, acceptedAt));
@@ -196,9 +196,18 @@ public class KeycapBoxOpenService {
                 .intValueExact();
     }
 
-    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user, long completedCount) {
-        long activeCatalogCount = keycapRepository.countByActiveTrue();
-        if (activeCatalogCount == 0 || completedCount < activeCatalogCount) {
+    /**
+     * 전체 완성 보너스는 상자 풀({@code BOX})만 보고 판정한다(BEA-285).
+     *
+     * <p>기준 개수와 완성 개수를 <b>둘 다</b> BOX 로 센다. 기준만 BOX 로 바꾸면 이벤트 키캡이 상자 키캡 한 종을
+     * 대신 채워, 상자 키캡을 다 모으지 않았는데도 보너스가 나간다. 키캡 5개 미션은 이벤트 키캡도 세므로
+     * 호출부의 완성 개수는 미션 판정에만 그대로 넘긴다.
+     */
+    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user) {
+        long boxCatalogCount = keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX);
+        long completedBoxCount = userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(
+                userId, UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX);
+        if (boxCatalogCount == 0 || completedBoxCount < boxCatalogCount) {
             return;
         }
 
