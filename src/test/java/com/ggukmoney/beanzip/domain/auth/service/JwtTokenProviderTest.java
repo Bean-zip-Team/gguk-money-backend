@@ -1,6 +1,8 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -58,9 +60,10 @@ public class JwtTokenProviderTest {
         assertThat(claims.expiresAt()).isEqualTo(Instant.parse("2026-08-01T00:00:00Z"));
     }
 
-    @Test
-    void issuesShortLivedTokensForDebugUser() {
-        UUID debugUserId = UUID.fromString("7dc0edad-f5ed-41a9-b828-4167c6646569");
+    @ParameterizedTest
+    @ValueSource(strings = {"7dc0edad-f5ed-41a9-b828-4167c6646569", "c115f184-fbaf-4ec0-9fe0-66734c985b57"})
+    void issuesShortLivedTokensForDebugUser(String rawDebugUserId) {
+        UUID debugUserId = UUID.fromString(rawDebugUserId);
         UUID sessionId = UUID.randomUUID();
 
         JwtTokenProvider.JwtTokenClaims accessClaims =

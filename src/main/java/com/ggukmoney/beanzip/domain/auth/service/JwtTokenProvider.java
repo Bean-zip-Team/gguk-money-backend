@@ -32,7 +32,8 @@ public class JwtTokenProvider {
     private static final long REFRESH_TOKEN_TTL_SECONDS = 30L * 24 * 60 * 60;
     // 로그인 풀림 재현(BEA-306)을 위한 임시 설정: 이 사용자만 토큰을 짧게 발급한다. 디버깅이 끝나면 제거한다.
     private static final Set<UUID> SHORT_TTL_DEBUG_USER_IDS = Set.of(
-            UUID.fromString("7dc0edad-f5ed-41a9-b828-4167c6646569")
+            UUID.fromString("7dc0edad-f5ed-41a9-b828-4167c6646569"),
+            UUID.fromString("c115f184-fbaf-4ec0-9fe0-66734c985b57")
     );
     private static final long DEBUG_ACCESS_TOKEN_TTL_SECONDS = 60;
     private static final long DEBUG_REFRESH_TOKEN_TTL_SECONDS = 10 * 60;
