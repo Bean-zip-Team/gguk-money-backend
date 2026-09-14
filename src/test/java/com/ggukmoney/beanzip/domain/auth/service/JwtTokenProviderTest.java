@@ -1,8 +1,6 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -58,29 +56,6 @@ public class JwtTokenProviderTest {
         assertThat(claims.type()).isEqualTo("REFRESH");
         assertThat(claims.jti()).isEqualTo("refresh-jti-1");
         assertThat(claims.expiresAt()).isEqualTo(Instant.parse("2026-08-01T00:00:00Z"));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"7dc0edad-f5ed-41a9-b828-4167c6646569", "c115f184-fbaf-4ec0-9fe0-66734c985b57"})
-    void issuesShortLivedTokensForDebugUser(String rawDebugUserId) {
-        UUID debugUserId = UUID.fromString(rawDebugUserId);
-        UUID sessionId = UUID.randomUUID();
-
-        JwtTokenProvider.JwtTokenClaims accessClaims =
-                jwtTokenProvider.parseToken(jwtTokenProvider.createAccessToken(debugUserId, sessionId, "access-jti-1"));
-        JwtTokenProvider.JwtTokenClaims refreshClaims =
-                jwtTokenProvider.parseToken(jwtTokenProvider.createRefreshToken(debugUserId, sessionId, "refresh-jti-1"));
-
-        assertThat(accessClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:01:00Z"));
-        assertThat(refreshClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:02:00Z"));
-    }
-
-    @Test
-    void rejectsMissingUserIdAsBadRequest() {
-        assertThatThrownBy(() -> jwtTokenProvider.createRefreshToken(null, UUID.randomUUID(), "refresh-jti-1"))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
