@@ -72,7 +72,7 @@ public class JwtTokenProviderTest {
                 jwtTokenProvider.parseToken(jwtTokenProvider.createRefreshToken(debugUserId, sessionId, "refresh-jti-1"));
 
         assertThat(accessClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:01:00Z"));
-        assertThat(refreshClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:10:00Z"));
+        assertThat(refreshClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:02:00Z"));
     }
 
     @Test

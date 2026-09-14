@@ -36,7 +36,7 @@ public class JwtTokenProvider {
             UUID.fromString("c115f184-fbaf-4ec0-9fe0-66734c985b57")
     );
     private static final long DEBUG_ACCESS_TOKEN_TTL_SECONDS = 60;
-    private static final long DEBUG_REFRESH_TOKEN_TTL_SECONDS = 10 * 60;
+    private static final long DEBUG_REFRESH_TOKEN_TTL_SECONDS = 2 * 60;
     private static final String FORMER_LOCAL_DEFAULT_SECRET = "local-dev-secret" + "-change-me";
 
     private final ObjectMapper objectMapper;
