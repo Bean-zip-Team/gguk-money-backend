@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -29,6 +30,12 @@ public class JwtTokenProvider {
     private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
     private static final long ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
     private static final long REFRESH_TOKEN_TTL_SECONDS = 30L * 24 * 60 * 60;
+    // 로그인 풀림 재현(BEA-306)을 위한 임시 설정: 이 사용자만 토큰을 짧게 발급한다. 디버깅이 끝나면 제거한다.
+    private static final Set<UUID> SHORT_TTL_DEBUG_USER_IDS = Set.of(
+            UUID.fromString("7dc0edad-f5ed-41a9-b828-4167c6646569")
+    );
+    private static final long DEBUG_ACCESS_TOKEN_TTL_SECONDS = 60;
+    private static final long DEBUG_REFRESH_TOKEN_TTL_SECONDS = 10 * 60;
     private static final String FORMER_LOCAL_DEFAULT_SECRET = "local-dev-secret" + "-change-me";
 
     private final ObjectMapper objectMapper;
@@ -54,12 +61,25 @@ public class JwtTokenProvider {
 
     public String createAccessToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plusSeconds(accessTokenTtlSeconds(userId)));
     }
 
     public String createRefreshToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plusSeconds(REFRESH_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plusSeconds(refreshTokenTtlSeconds(userId)));
+    }
+
+    private static long accessTokenTtlSeconds(UUID userId) {
+        return isShortTtlDebugUser(userId) ? DEBUG_ACCESS_TOKEN_TTL_SECONDS : ACCESS_TOKEN_TTL_SECONDS;
+    }
+
+    private static long refreshTokenTtlSeconds(UUID userId) {
+        return isShortTtlDebugUser(userId) ? DEBUG_REFRESH_TOKEN_TTL_SECONDS : REFRESH_TOKEN_TTL_SECONDS;
+    }
+
+    // Set.of 는 null 조회 시 NPE 를 던지므로, 사용자 id 누락은 createToken 의 400 검증에 맡긴다.
+    private static boolean isShortTtlDebugUser(UUID userId) {
+        return userId != null && SHORT_TTL_DEBUG_USER_IDS.contains(userId);
     }
 
     public JwtTokenClaims parseToken(String token) {

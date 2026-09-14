@@ -59,6 +59,28 @@ public class JwtTokenProviderTest {
     }
 
     @Test
+    void issuesShortLivedTokensForDebugUser() {
+        UUID debugUserId = UUID.fromString("7dc0edad-f5ed-41a9-b828-4167c6646569");
+        UUID sessionId = UUID.randomUUID();
+
+        JwtTokenProvider.JwtTokenClaims accessClaims =
+                jwtTokenProvider.parseToken(jwtTokenProvider.createAccessToken(debugUserId, sessionId, "access-jti-1"));
+        JwtTokenProvider.JwtTokenClaims refreshClaims =
+                jwtTokenProvider.parseToken(jwtTokenProvider.createRefreshToken(debugUserId, sessionId, "refresh-jti-1"));
+
+        assertThat(accessClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:01:00Z"));
+        assertThat(refreshClaims.expiresAt()).isEqualTo(Instant.parse("2026-07-02T00:10:00Z"));
+    }
+
+    @Test
+    void rejectsMissingUserIdAsBadRequest() {
+        assertThatThrownBy(() -> jwtTokenProvider.createRefreshToken(null, UUID.randomUUID(), "refresh-jti-1"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void rejectsNonUuidSubjectClaim() {
         UUID userId = UUID.randomUUID();
         String token = jwtTokenProvider.createAccessToken(userId, UUID.randomUUID(), "access-jti-1");
