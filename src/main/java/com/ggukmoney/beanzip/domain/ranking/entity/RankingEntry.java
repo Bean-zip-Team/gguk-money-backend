@@ -58,6 +58,10 @@ public class RankingEntry {
     @Column(name = "score", nullable = false)
     private Long score = 0L;
 
+    /** Ranking-only system score; never part of real tap counters or abuse inputs. */
+    @Column(name = "ranking_boost_score", nullable = false)
+    private Long rankingBoostScore = 0L;
+
     @Column(name = "score_updated_at", nullable = false)
     private Instant scoreUpdatedAt;
 
@@ -95,9 +99,25 @@ public class RankingEntry {
         if (score < 0) {
             throw new IllegalArgumentException("score must not be negative");
         }
-        this.score = score;
+        this.score = Math.addExact(score, rankingBoostScore);
         this.regionCode = normalizeRegionCode(regionCode);
         this.scoreUpdatedAt = occurredAt == null ? Instant.now() : occurredAt;
+    }
+
+    public long getRealScore() {
+        return score - rankingBoostScore;
+    }
+
+    public void boostTo(long targetScore, Instant occurredAt) {
+        if (!season.isWeekly() || season.getStatus() != RankingSeasonStatus.ACTIVE || !season.contains(occurredAt)) {
+            throw new IllegalStateException("boost requires an active weekly season");
+        }
+        if (targetScore <= score) {
+            throw new IllegalArgumentException("boost target must increase score");
+        }
+        this.rankingBoostScore = Math.addExact(rankingBoostScore, targetScore - score);
+        this.score = targetScore;
+        this.scoreUpdatedAt = occurredAt;
     }
 
     public void touchForEligibilityChange(Instant occurredAt) {

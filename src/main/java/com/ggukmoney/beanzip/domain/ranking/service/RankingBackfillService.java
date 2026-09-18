@@ -98,7 +98,7 @@ public class RankingBackfillService {
         AppUser user = userService.getById(userId);
         RankingEntry entry = rankingEntryRepository.findBySeasonAndUserId(targetSeason, userId)
                 .orElseGet(() -> RankingEntry.createFor(targetSeason, user, score, null, occurredAt));
-        if (!entry.getScore().equals(score) || entry.getRegionCode() != null) {
+        if (entry.getRealScore() != score || entry.getRegionCode() != null) {
             entry.updateScore(score, null, occurredAt);
         }
         rankingEntryRepository.save(entry);

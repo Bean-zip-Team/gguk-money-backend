@@ -40,6 +40,24 @@ class RankingBackfillServiceTest {
     );
 
     @Test
+    void finalizingRecountComparesRealNotEffectiveScore() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = AppUser.createActive("staff", null);
+        RankingSeason season = RankingSeason.activeWeekly(LocalDate.of(2026, 7, 20),
+                Instant.parse("2026-07-19T15:00:00Z"), Instant.parse("2026-07-26T15:00:00Z"));
+        RankingEntry entry = RankingEntry.createFor(season, user, 200L, null, clock.instant());
+        entry.boostTo(300L, clock.instant());
+        season.startFinalizing();
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(java.util.Optional.of(entry));
+        UserTapDailyRepository.UserTapAggregateProjection recount = aggregateRow(userId, 300L);
+        when(dailyRepository.findTotalValidTapAggregates(LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27),
+                null, properties.pageSize())).thenReturn(List.of(recount));
+        service.backfillFinalizingWeeklySeason(season, LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27));
+        assertThat(entry.getScore()).isEqualTo(400L);
+    }
+
+    @Test
     void backfillsWeeklySeasonFromDailyAggregateRows() {
         UUID userId = UUID.randomUUID();
         RankingSeason season = RankingSeason.activeWeekly(
