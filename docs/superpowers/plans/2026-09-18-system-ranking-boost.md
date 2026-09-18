@@ -49,4 +49,4 @@
 - Actual rollover/boost concurrency, selected real-score optimistic conflict/retry, Redis failure/reconciliation, kill/consent stopping unclaimed delivery and unknown-send no-blind-retry were exercised.
 - `git diff --check` exit 0; new files checked for trailing whitespace with no matches. Original develop remains clean at `79bd6bb`; isolated branch starts at fetched origin/develop `57c109a`.
 - All seven approved requirements are implemented/prepared. BEA-296 reward payout integration and confirmed close guard remain explicitly deferred behind the permanently closed production gate, as requested.
-- Worktree preserved at `.codex/worktrees/BEA-308`, branch `feat/BEA-308-system-ranking-boost`. Changes are uncommitted; no push, PR, Linear write, runtime DDL, deployment or activation.
+- Worktree preserved at `.codex/worktrees/BEA-308`, branch `feat/BEA-308-system-ranking-boost`. Changes are committed and pushed; no PR, Linear write, runtime DDL, deployment or activation.
