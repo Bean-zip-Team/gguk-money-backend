@@ -48,6 +48,21 @@ class RankingProjectionServiceTest {
             );
 
     @Test
+    void nextRealScoreEqualToOldEffectiveScoreStillPreservesBoost() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = AppUser.createActive("staff", null);
+        RankingSeason season = weeklySeason();
+        Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
+        RankingEntry entry = RankingEntry.createFor(season, user, 200L, null, occurredAt);
+        entry.boostTo(300L, occurredAt);
+        when(userService.getById(userId)).thenReturn(user);
+        when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(Optional.of(entry));
+        when(entryRepository.save(entry)).thenReturn(entry);
+        assertThat(service.syncWeeklyScore(season, userId, 300L, occurredAt, true).orElseThrow().getScore())
+                .isEqualTo(400L);
+    }
+
+    @Test
     void syncLatestWeeklyScoreUsesOccurredAtSeasonAndDailyAggregateScore() {
         UUID userId = UUID.randomUUID();
         Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");

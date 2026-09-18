@@ -80,7 +80,7 @@ public class RankingProjectionService {
                 .orElseGet(() -> RankingEntry.createFor(season, user, cumulativeValidTapCount, null, now));
         String previousRegionCode = entry.getRegionCode();
         long score = Math.max(entry.getScore(), cumulativeValidTapCount);
-        if (!entry.getScore().equals(score) || entry.getRegionCode() != null) {
+        if (entry.getRealScore() != score || entry.getRegionCode() != null) {
             entry.updateScore(score, null, now);
         }
         RankingEntry saved = entryRepository.save(entry);
@@ -110,7 +110,7 @@ public class RankingProjectionService {
             return Optional.empty();
         }
         String previousRegionCode = entry.getRegionCode();
-        if (!entry.getScore().equals(score) || entry.getRegionCode() != null) {
+        if (entry.getRealScore() != score || entry.getRegionCode() != null) {
             entry.updateScore(score, null, occurredAt);
         }
         RankingEntry saved = entryRepository.save(entry);

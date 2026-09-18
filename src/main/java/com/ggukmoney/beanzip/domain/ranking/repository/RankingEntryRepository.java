@@ -5,6 +5,8 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +18,28 @@ import java.util.UUID;
 public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long> {
 
     Optional<RankingEntry> findBySeasonAndUserId(RankingSeason season, UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select entry from RankingEntry entry where entry.season = :season and entry.user.id = :userId")
+    Optional<RankingEntry> findLeaderEntryForUpdate(@Param("season") RankingSeason season, @Param("userId") UUID userId);
+
+    @Query("select entry from RankingEntry entry join fetch entry.user where entry.season = :season and entry.user.id in :ids")
+    List<RankingEntry> findEntriesByUserIds(@Param("season") RankingSeason season, @Param("ids") java.util.Collection<UUID> ids);
+
+    @Query(value = """
+            SELECT e.user_id AS userId, u.nickname AS nickname, u.profile_image_url AS profileImageUrl, e.score AS score
+            FROM ranking_entry e JOIN app_user u ON u.id = e.user_id
+            WHERE e.season_id = :seasonId AND u.status = 'ACTIVE' AND e.score > 0 AND e.ranking_boost_score = 0
+              AND e.user_id NOT IN (:excluded)
+            ORDER BY e.score DESC, CAST(e.user_id AS text) DESC LIMIT 1
+            """, nativeQuery = true)
+    Optional<RankingParticipantProjection> findRealLeaderProjection(@Param("seasonId") Long seasonId, @Param("excluded") java.util.Collection<UUID> excluded);
+
+    default Optional<RankingParticipantRow> findRealLeader(Long seasonId, java.util.Collection<UUID> excluded) {
+        // Empty config still needs a valid NOT IN list. UUID zero is not a generated app user ID.
+        var ids = excluded.isEmpty() ? java.util.List.of(new UUID(0, 0)) : excluded;
+        return findRealLeaderProjection(seasonId, ids).map(RankingParticipantRow::from);
+    }
 
     @Query(value = """
             WITH ranked AS (
@@ -61,7 +85,8 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
             UPDATE ranking_entry e
-            SET score = 0,
+            SET score = e.ranking_boost_score,
+                version = e.version + 1,
                 score_updated_at = :occurredAt,
                 updated_at = :occurredAt
             WHERE e.season_id = :seasonId

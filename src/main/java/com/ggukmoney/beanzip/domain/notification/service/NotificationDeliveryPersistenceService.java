@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -98,6 +99,40 @@ public class NotificationDeliveryPersistenceService {
                 existingState,
                 existingState != null && isRankChangeCooldownActive(userId, clock.instant())
         );
+    }
+
+    /** Only the audited boost application calls this path; ordinary shouldSend is unchanged. */
+    @Transactional
+    public Optional<NotificationDelivery> prepareSystemRankingBoost(
+            UUID userId, Long seasonId, LocalDate boostDate, long rankBefore, long rankAfter
+    ) {
+        if (rankBefore != 1L || rankAfter != 2L || !isRankChangeSendable(userId)
+                || isRankChangeCooldownActive(userId, clock.instant())) {
+            return Optional.empty();
+        }
+        Optional<NotificationDelivery> pending = createPendingInternal(userId, NotificationType.RANK_CHANGE,
+                "RANK_CHANGE:SYSTEM_RANKING_BOOST:%d:%s:%s".formatted(seasonId, boostDate, userId),
+                templateProperties.campaignCode(NotificationType.RANK_CHANGE),
+                "{\"currentRank\":2,\"rankChange\":1,\"direction\":\"DOWN\"}");
+        if (pending.isPresent()) {
+            NotificationRankState state = rankStateRepository.findByUserIdAndSeasonId(userId, seasonId)
+                    .orElseGet(() -> NotificationRankState.record(userId, seasonId, rankAfter, clock.instant()));
+            state.updateBaseline(seasonId, rankAfter, clock.instant());
+            rankStateRepository.saveAndFlush(state);
+        }
+        return pending;
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<NotificationDelivery> findPendingRankChange(Long deliveryId) {
+        return deliveryRepository.findById(deliveryId)
+                .filter(delivery -> delivery.getType() == NotificationType.RANK_CHANGE
+                        && delivery.getStatus() == NotificationDeliveryStatus.PENDING);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canDispatchRankChange(UUID userId, Instant now) {
+        return isRankChangeSendable(userId) && !isRankChangeCooldownActive(userId, now);
     }
 
     @Transactional

@@ -14,6 +14,45 @@ class RankingEntryTest {
     private static final Instant NOW = Instant.parse("2026-07-19T00:00:00Z");
 
     @Test
+    void rankingOnlyBoostSurvivesRealTapUpdatesAndZeroRealTapRecount() {
+        RankingSeason season = RankingSeason.activeWeekly(java.time.LocalDate.of(2026, 7, 13),
+                NOW.minusSeconds(86400), NOW.plusSeconds(86400));
+        RankingEntry entry = RankingEntry.createFor(season, AppUser.createActive("staff", null), 100L, null, NOW);
+        ReflectionTestUtils.invokeMethod(entry, "boostTo", 1300L, NOW);
+        assertThat(entry.getScore()).isEqualTo(1300L);
+        entry.updateScore(150L, null, NOW);
+        assertThat(entry.getScore()).isEqualTo(1350L);
+        entry.updateScore(0L, null, NOW);
+        assertThat(entry.getScore()).isEqualTo(1200L);
+    }
+
+    @Test
+    void rejectsOverflowWhenRealScoreAndBoostAreCombined() {
+        RankingSeason season = RankingSeason.activeWeekly(java.time.LocalDate.of(2026, 7, 13),
+                NOW.minusSeconds(86400), NOW.plusSeconds(86400));
+        RankingEntry entry = RankingEntry.createFor(season, AppUser.createActive("staff", null), 0L, null, NOW);
+        ReflectionTestUtils.invokeMethod(entry, "boostTo", 100L, NOW);
+        assertThatThrownBy(() -> entry.updateScore(Long.MAX_VALUE, null, NOW))
+                .isInstanceOf(ArithmeticException.class);
+        assertThat(entry.getScore()).isEqualTo(100L);
+    }
+
+    @Test
+    void boostRejectsAllTimeFinalizingExpiredAndNonIncreasingTargets() {
+        AppUser user = AppUser.createActive("staff", null);
+        RankingEntry allTime = RankingEntry.createFor(RankingSeason.activeAllTime(NOW), user, 100L, null, NOW);
+        assertThatThrownBy(() -> allTime.boostTo(200L, NOW)).isInstanceOf(IllegalStateException.class);
+        RankingSeason weekly = RankingSeason.activeWeekly(java.time.LocalDate.of(2026, 7, 13), NOW.minusSeconds(86400), NOW.plusSeconds(86400));
+        RankingEntry entry = RankingEntry.createFor(weekly, user, 100L, null, NOW);
+        assertThatThrownBy(() -> entry.boostTo(100L, NOW)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> entry.boostTo(200L, weekly.getEndsAt())).isInstanceOf(IllegalStateException.class);
+        weekly.startFinalizing();
+        assertThatThrownBy(() -> entry.boostTo(200L, NOW)).isInstanceOf(IllegalStateException.class);
+        assertThat(entry.getScore()).isEqualTo(100L);
+        assertThat(entry.getRankingBoostScore()).isZero();
+    }
+
+    @Test
     void setsScoreToCurrentCumulativeTapCountInsteadOfIncrementing() {
         AppUser user = AppUser.createActive("ranking-user", null);
         RankingSeason season = RankingSeason.activeAllTime(NOW);

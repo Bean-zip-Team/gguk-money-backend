@@ -59,6 +59,10 @@ public class NotificationDeliveryService {
         return dispatch(persistenceService.prepareRankChange(userId));
     }
 
+    public Optional<NotificationDelivery> dispatchPreparedRankChange(Long deliveryId) {
+        return dispatch(persistenceService.findPendingRankChange(deliveryId));
+    }
+
     public List<NotificationDelivery> sendMorningNotifications(LocalDate today) {
         List<NotificationDelivery> deliveries = new ArrayList<>();
         Set<UUID> rechargedCandidates = new HashSet<>(boosterGrantRepository.findUserIdsWhoExhaustedDailyBoosters(
