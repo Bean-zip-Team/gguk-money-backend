@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
 import com.ggukmoney.beanzip.domain.mission.entity.MissionDefinition;
+import com.ggukmoney.beanzip.domain.mission.entity.MissionReward;
 import com.ggukmoney.beanzip.domain.promotion.dto.response.MissionListResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.repository.UserTapDailyRepository;
@@ -13,13 +14,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -39,8 +44,10 @@ class DailyMissionQueryServiceTest {
     // 2026-09-21 14:00 KST
     private final Clock clock = Clock.fixed(Instant.parse("2026-09-21T05:00:00Z"), ZoneOffset.UTC);
 
+    private final MissionRewardService missionRewardService = mock(MissionRewardService.class);
+
     private final DailyMissionQueryService service = new DailyMissionQueryService(
-            catalog, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST, clock);
+            catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST, clock);
 
     private final UUID userId = UUID.randomUUID();
 
@@ -59,6 +66,25 @@ class DailyMissionQueryServiceTest {
         lenient().when(notificationOptInSignal.agreed(userId)).thenReturn(false);
         lenient().when(userTapDailyRepository.findRecentTapDates(eq(userId), eq(TODAY), any(Pageable.class)))
                 .thenReturn(List.of());
+        lenient().when(missionRewardService.rewardsOf(eq(userId), anyList())).thenReturn(Map.of());
+        // 실제 서비스처럼 달성한 미션마다 수령 대기 보상을 만들어 돌려준다.
+        lenient().when(missionRewardService.createMissing(eq(userId), anyList(), anyMap(), any(Instant.class)))
+                .thenAnswer(invocation -> {
+                    List<MissionRewardService.AchievedMission> achieved = invocation.getArgument(1);
+                    Map<MissionRewardService.RewardKey, MissionReward> existing = invocation.getArgument(2);
+                    Map<MissionRewardService.RewardKey, MissionReward> created = new LinkedHashMap<>();
+                    achieved.stream()
+                            .filter(mission -> !existing.containsKey(rewardKey(mission)))
+                            .forEach(mission -> created.put(rewardKey(mission), MissionReward.claimable(
+                                    userId,
+                                    mission.missionCode(),
+                                    mission.periodKey(),
+                                    mission.rewardPointAmount(),
+                                    Instant.parse("2026-09-21T05:00:00Z"),
+                                    mission.expiresAt()
+                            )));
+                    return created;
+                });
     }
 
     @Test
@@ -127,10 +153,68 @@ class DailyMissionQueryServiceTest {
         DailyMissionQueryService.DailyMissionFeed feed = service.feedOf(userId);
 
         assertThat(feed.missions()).extracting(MissionListResponse.Mission::code).contains("NOTIFICATION_OPT_IN");
-        // 단발성 미션을 요약에 넣으면 한 번 받은 보상이 매일 받을 수 있는 것처럼 합계에 남는다.
+        // 진행도 게이지는 매일 반복되는 미션만 센다. 단발성 미션까지 넣으면 한 번 받고 사라질 미션이
+        // 오늘의 진행도를 계속 부풀린다.
         assertThat(feed.summary().totalCount()).isEqualTo(3);
         assertThat(feed.summary().completedCount()).isEqualTo(1);
+        // 반면 받을 보상 합계에는 들어간다. 일괄 수령이 단발성 보상까지 지급하기 때문이다.
+        assertThat(feed.summary().claimableRewardTotal()).isEqualTo(200L);
+    }
+
+    @Test
+    void marksAchievedMissionsClaimableWithTheRewardIdentifierToClaimWith() {
+        givenTodayTaps(700);
+
+        MissionListResponse.Mission tapMission = missionOf(service.feedOf(userId).missions(), "TAP_500");
+
+        assertThat(tapMission.claimStatus()).isEqualTo(MissionListResponse.ClaimStatus.CLAIMABLE);
+        assertThat(tapMission.rewardId()).isNotNull();
+    }
+
+    @Test
+    void hidesAOneTimeMissionOnceItsRewardWasClaimed() {
+        when(notificationOptInSignal.agreed(userId)).thenReturn(true);
+        when(missionRewardService.rewardsOf(eq(userId), anyList()))
+                .thenReturn(Map.of(
+                        new MissionRewardService.RewardKey("NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY),
+                        claimedReward("NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY, 100)));
+
+        // 한 번 수행한 유저에게는 다시 뜨지 않는다. 나중에 알림을 꺼도 마찬가지다.
+        assertThat(service.feedOf(userId).missions())
+                .extracting(MissionListResponse.Mission::code)
+                .doesNotContain("NOTIFICATION_OPT_IN");
+    }
+
+    @Test
+    void keepsARewardClaimableAfterTheConditionStopsHolding() {
+        // 알림을 허용해 보상이 생긴 뒤 다시 껐다. 이미 달성한 보상은 받을 수 있어야 한다.
+        when(notificationOptInSignal.agreed(userId)).thenReturn(false);
+        when(missionRewardService.rewardsOf(eq(userId), anyList()))
+                .thenReturn(Map.of(
+                        new MissionRewardService.RewardKey("NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY),
+                        MissionReward.claimable(userId, "NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY, 100,
+                                Instant.parse("2026-09-20T05:00:00Z"), null)));
+
+        assertThat(missionOf(service.feedOf(userId).missions(), "NOTIFICATION_OPT_IN"))
+                .extracting(MissionListResponse.Mission::status, MissionListResponse.Mission::claimStatus)
+                .containsExactly(MissionListResponse.Status.ACHIEVED, MissionListResponse.ClaimStatus.CLAIMABLE);
+    }
+
+    @Test
+    void keepsClaimedRewardsOutOfTheClaimableTotal() {
+        givenTodayTaps(700);
+        when(missionRewardService.rewardsOf(eq(userId), anyList()))
+                .thenReturn(Map.of(
+                        new MissionRewardService.RewardKey("TAP_500", TODAY.toString()),
+                        claimedReward("TAP_500", TODAY.toString(), 15)));
+
+        DailyMissionQueryService.DailyMissionFeed feed = service.feedOf(userId);
+
+        // 이미 받은 15P 는 "받을 보상"에서 빠지고, 출석 100P 만 남는다.
         assertThat(feed.summary().claimableRewardTotal()).isEqualTo(100L);
+        assertThat(missionOf(feed.missions(), "TAP_500"))
+                .extracting(MissionListResponse.Mission::status, MissionListResponse.Mission::claimStatus)
+                .containsExactly(MissionListResponse.Status.REWARDED, MissionListResponse.ClaimStatus.CLAIMED);
     }
 
     @Test
@@ -138,7 +222,8 @@ class DailyMissionQueryServiceTest {
         // 2026-09-21 16:00Z 는 UTC 로는 21일이지만 KST 로는 22일 새벽 1시다.
         Clock afterKstMidnight = Clock.fixed(Instant.parse("2026-09-21T16:00:00Z"), ZoneOffset.UTC);
         DailyMissionQueryService serviceAfterMidnight = new DailyMissionQueryService(
-                catalog, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST, afterKstMidnight);
+                catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST,
+                afterKstMidnight);
 
         serviceAfterMidnight.feedOf(userId);
 
@@ -191,6 +276,17 @@ class DailyMissionQueryServiceTest {
         assertThat(missionOf(service.feedOf(userId).missions(), "ATTENDANCE"))
                 .extracting(MissionListResponse.Mission::rewardType, MissionListResponse.Mission::periodType)
                 .containsExactly(MissionListResponse.RewardType.INTERNAL_POINT, MissionListResponse.PeriodType.DAILY);
+    }
+
+    private static MissionRewardService.RewardKey rewardKey(MissionRewardService.AchievedMission mission) {
+        return new MissionRewardService.RewardKey(mission.missionCode(), mission.periodKey());
+    }
+
+    private MissionReward claimedReward(String missionCode, String periodKey, long rewardPointAmount) {
+        MissionReward reward = MissionReward.claimable(
+                userId, missionCode, periodKey, rewardPointAmount, Instant.parse("2026-09-21T04:00:00Z"), null);
+        reward.claim(Instant.parse("2026-09-21T04:30:00Z"));
+        return reward;
     }
 
     private void givenTodayTaps(int totalValidTapCount) {

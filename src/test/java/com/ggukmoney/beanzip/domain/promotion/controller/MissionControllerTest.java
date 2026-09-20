@@ -74,7 +74,8 @@ class MissionControllerTest {
                 0L,
                 1L,
                 MissionListResponse.Status.IN_PROGRESS,
-                MissionListResponse.ClaimStatus.LOCKED
+                MissionListResponse.ClaimStatus.LOCKED,
+                null
         );
     }
 }

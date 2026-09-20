@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 유저용 미션 목록 (BEA-292, BEA-299).
@@ -56,8 +57,11 @@ public record MissionListResponse(
             Status status,
 
             @Schema(description = "수령 상태. 데일리 미션에만 채워지고 상시 미션은 null 이다 — 상시 미션은 "
-                    + "달성하면 서버가 알아서 지급한다. 수령 API 는 BEA-299 2단계에서 제공된다.")
-            ClaimStatus claimStatus
+                    + "달성하면 서버가 알아서 지급한다.")
+            ClaimStatus claimStatus,
+
+            @Schema(description = "수령 API 에 넘길 보상 식별자. 아직 달성하지 않았으면 null 이다.")
+            UUID rewardId
     ) {
     }
 
@@ -121,6 +125,9 @@ public record MissionListResponse(
         CLAIMABLE,
 
         @Schema(description = "이미 받았다")
-        CLAIMED
+        CLAIMED,
+
+        @Schema(description = "받지 못한 채 자정을 넘겨 소멸했다")
+        EXPIRED
     }
 }

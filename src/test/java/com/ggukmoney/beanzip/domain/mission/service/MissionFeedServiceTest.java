@@ -1,15 +1,19 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
+import com.ggukmoney.beanzip.domain.mission.dto.response.MissionRewardClaimResponse;
 import com.ggukmoney.beanzip.domain.promotion.dto.response.MissionListResponse;
 import com.ggukmoney.beanzip.domain.promotion.service.MissionQueryService;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -17,7 +21,10 @@ class MissionFeedServiceTest {
 
     private final MissionQueryService missionQueryService = mock(MissionQueryService.class);
     private final DailyMissionQueryService dailyMissionQueryService = mock(DailyMissionQueryService.class);
-    private final MissionFeedService service = new MissionFeedService(missionQueryService, dailyMissionQueryService);
+    private final MissionRewardService missionRewardService = mock(MissionRewardService.class);
+    private final Clock clock = Clock.fixed(Instant.parse("2026-09-21T05:00:00Z"), ZoneOffset.UTC);
+    private final MissionFeedService service =
+            new MissionFeedService(missionQueryService, dailyMissionQueryService, missionRewardService, clock);
 
     private final UUID userId = UUID.randomUUID();
 
@@ -57,6 +64,31 @@ class MissionFeedServiceTest {
         verifyNoInteractions(dailyMissionQueryService);
     }
 
+    @Test
+    void judgesTodaysMissionsWithTheSameInstantItClaimsWith() {
+        UUID rewardId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-09-21T05:00:00Z");
+        when(missionRewardService.claim(userId, rewardId, now))
+                .thenReturn(new MissionRewardService.ClaimResult(1, 15L, 1380L));
+
+        MissionRewardClaimResponse response = service.claim(userId, rewardId);
+
+        // 시각을 두 번 재면 자정 경계에서 방금 만든 보상을 곧바로 소멸로 판정한다.
+        verify(dailyMissionQueryService).materializeRewards(userId, now);
+        assertThat(response).isEqualTo(new MissionRewardClaimResponse(1, 15L, 1380L));
+    }
+
+    @Test
+    void reportsHowMuchTheBulkClaimActuallyPaid() {
+        Instant now = Instant.parse("2026-09-21T05:00:00Z");
+        when(missionRewardService.claimAll(userId, now))
+                .thenReturn(new MissionRewardService.ClaimResult(2, 115L, 1495L));
+
+        assertThat(service.claimAll(userId))
+                .isEqualTo(new MissionRewardClaimResponse(2, 115L, 1495L));
+        verify(dailyMissionQueryService).materializeRewards(userId, now);
+    }
+
     private static MissionListResponse.Mission mission(String code, MissionListResponse.RewardType rewardType) {
         return new MissionListResponse.Mission(
                 code,
@@ -68,7 +100,8 @@ class MissionFeedServiceTest {
                 0L,
                 1L,
                 MissionListResponse.Status.IN_PROGRESS,
-                MissionListResponse.ClaimStatus.LOCKED
+                MissionListResponse.ClaimStatus.LOCKED,
+                null
         );
     }
 }

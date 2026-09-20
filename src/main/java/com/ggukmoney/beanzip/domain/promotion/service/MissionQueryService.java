@@ -67,7 +67,8 @@ public class MissionQueryService {
                 progress.current(),
                 progress.target(),
                 statusOf(grant),
-                // 상시 미션은 달성하면 서버가 알아서 지급한다. 받기 버튼이 없으므로 수령 상태도 없다.
+                // 상시 미션은 달성하면 서버가 알아서 지급한다. 받기 버튼이 없으므로 수령 상태도 보상 식별자도 없다.
+                null,
                 null
         );
     }
