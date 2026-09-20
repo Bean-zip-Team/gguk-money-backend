@@ -156,13 +156,13 @@ class RankingQueryServiceTest {
         ));
         when(entryRepository.findParticipantsByUserIds(season, List.of(lexicographicallyLast, lexicographicallyMiddle, me)))
                 .thenReturn(List.of(
-                        row(me, "me", 999L),
-                        row(lexicographicallyMiddle, "middle", 999L),
-                        row(lexicographicallyLast, "last", 999L)
+                        row(me, "me", 100L),
+                        row(lexicographicallyMiddle, "middle", 100L),
+                        row(lexicographicallyLast, "last", 100L)
                 ));
         when(redisRepository.findRank(1L, me)).thenReturn(3L);
         when(redisRepository.findScore(1L, me)).thenReturn(100L);
-        when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 999L)));
+        when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 100L)));
 
         CurrentRankingResponse response = service.getCurrentRanking(me, null);
 

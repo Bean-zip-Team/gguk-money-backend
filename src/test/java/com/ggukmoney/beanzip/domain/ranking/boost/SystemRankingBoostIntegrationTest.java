@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.ranking.boost;
 
 import com.ggukmoney.beanzip.domain.ranking.entity.*;
 import com.ggukmoney.beanzip.domain.ranking.repository.*;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPolicy;
 import com.ggukmoney.beanzip.domain.ranking.service.*;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
@@ -67,7 +68,11 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
         when(clock.getZone()).thenReturn(ZoneOffset.UTC);
         when(clock.withZone(any())).thenAnswer(inv -> Clock.fixed(NOW, inv.getArgument(0)));
         jdbcTemplate.execute("TRUNCATE ranking_boost_run, ranking_entry, ranking_season, notification_rank_state, notification_delivery, notification_preference, user_tap_daily CASCADE");
-        jdbcTemplate.update("DELETE FROM app_config WHERE config_key = ?", SystemRankingBoostPolicy.KEY);
+        jdbcTemplate.update(
+                "DELETE FROM app_config WHERE config_key IN (?, ?)",
+                SystemRankingBoostPolicy.KEY,
+                WeeklyRankingRewardPolicy.KEY
+        );
         season = seasons.saveAndFlush(RankingSeason.activeWeekly(LocalDate.of(2026, 9, 14),
                 Instant.parse("2026-09-13T15:00:00Z"), Instant.parse("2026-09-20T15:00:00Z")));
         leader = users.saveAndFlush(AppUser.createActive("real", null));
@@ -77,6 +82,11 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
         daily.addValidTaps(1500); daily.addTotalValidTaps(1500);
         taps.saveAndFlush(daily);
         configAt = NOW.minusSeconds(60);
+        configs.saveAndFlush(AppConfig.createFor(
+                WeeklyRankingRewardPolicy.KEY,
+                "{\"enabled\":false,\"rewards\":{\"1\":10000,\"2\":5000,\"3\":2500}}",
+                configAt
+        ));
         policy(true, List.of(staff.getId()), 1000);
         when(gate.permits(any(), any())).thenReturn(true);
         when(random.scheduledAt(any())).thenReturn(Instant.parse("2026-09-18T09:00:00Z"));
