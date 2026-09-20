@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.auth.dto.response.AuthTokenResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutAllResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.LogoutResponse;
 import com.ggukmoney.beanzip.domain.auth.dto.response.TossUnlinkWebhookResponse;
+import com.ggukmoney.beanzip.global.logging.RequestLogContext;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
 import com.ggukmoney.beanzip.domain.user.dto.request.UserWithdrawalRequest;
@@ -126,6 +127,8 @@ public class AuthService {
                 Instant.now(),
                 newRefreshClaims.expiresAt()
         );
+
+        logRefreshOutcome(result, session, oldJtiHash, claims);
 
         if (result == RefreshRotationResult.ROTATED) {
             return new AuthTokenResponse(
@@ -284,6 +287,15 @@ public class AuthService {
                 "ACTIVE"
         );
         save(session);
+        RequestLogContext.putAuthenticatedPrincipal(userId, sessionId);
+        log.info(
+                "AUTH_LOGIN newUser={} userId={} sessionId={} refreshExpiresAt={} requestId={}",
+                newUser,
+                userId,
+                sessionId,
+                refreshClaims.expiresAt(),
+                RequestLogContext.currentRequestIdOrDefault()
+        );
         return new AuthTokenResponse(
                 userId,
                 accessToken,
@@ -319,8 +331,48 @@ public class AuthService {
         }
     }
 
+    /**
+     * 갱신 결과를 한 줄로 남긴다. 로그아웃이 왜 일어났는지는 결과 코드만으로는 알 수 없고,
+     * 제시된 토큰이 몇 세대 전 것인지와 교체 후 경과 시간을 함께 봐야 구분된다.
+     */
+    private void logRefreshOutcome(
+            RefreshRotationResult result,
+            AuthSession session,
+            String presentedJtiHash,
+            JwtTokenProvider.JwtTokenClaims claims
+    ) {
+        Instant rotatedAt = session.rotatedAt();
+
+        log.info(
+                "AUTH_REFRESH result={} presented={} userId={} sessionId={} elapsedSinceRotationMs={} refreshExpiresAt={} requestId={}",
+                result,
+                classifyPresentedRefreshToken(session, presentedJtiHash),
+                session.userId(),
+                session.sessionId(),
+                rotatedAt == null ? "-" : Duration.between(rotatedAt, Instant.now()).toMillis(),
+                claims.expiresAt(),
+                RequestLogContext.currentRequestIdOrDefault()
+        );
+    }
+
+    /**
+     * 제시된 리프레시 토큰이 현재 토큰인지, 직전 토큰인지, 그보다 오래된 토큰인지 구분한다.
+     * PREVIOUS 와 OLDER 는 앱이 새로 발급한 토큰을 받지 못했거나 저장하지 못했다는 신호다.
+     */
+    private String classifyPresentedRefreshToken(AuthSession session, String presentedJtiHash) {
+        if (presentedJtiHash.equals(session.currentRefreshJtiHash())) {
+            return "CURRENT";
+        }
+        if (presentedJtiHash.equals(session.previousRefreshJtiHash())) {
+            return "PREVIOUS";
+        }
+        return "OLDER";
+    }
+
     private JwtTokenProvider.JwtTokenClaims parseRefreshToken(String refreshToken) {
         JwtTokenProvider.JwtTokenClaims claims = jwtTokenProvider.parseToken(refreshToken);
+        // 만료·재사용으로 실패하는 요청도 접근 로그에 주체가 남아야 어떤 사용자의 로그인이 풀렸는지 추적할 수 있다.
+        RequestLogContext.putAuthenticatedPrincipal(claims.userId(), claims.sessionId());
         if (!REFRESH_TYPE.equals(claims.type())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_REQUIRED");
         }
