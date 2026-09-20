@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -81,6 +82,73 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
             @Param("seasonId") Long seasonId,
             @Param("finalizedAt") Instant finalizedAt
     );
+
+    @Query(value = """
+            SELECT e.user_id AS userId,
+                   e.final_rank AS sourceFinalRank,
+                   e.score AS finalScore
+            FROM ranking_entry e
+            JOIN app_user u ON u.id = e.user_id
+            WHERE e.season_id = :seasonId
+              AND u.status = 'ACTIVE'
+              AND e.score > 0
+              AND e.final_rank IS NOT NULL
+              AND e.user_id NOT IN (:excludedUserIds)
+            ORDER BY e.score DESC, CAST(e.user_id AS text) DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<RankingRewardCandidateProjection> findRewardCandidateProjections(
+            @Param("seasonId") Long seasonId,
+            @Param("excludedUserIds") Collection<UUID> excludedUserIds,
+            @Param("limit") int limit
+    );
+
+    default List<RankingRewardCandidateRow> findRewardCandidates(
+            Long seasonId,
+            Collection<UUID> excludedUserIds,
+            int limit
+    ) {
+        Collection<UUID> ids = excludedUserIds.isEmpty() ? List.of(new UUID(0, 0)) : excludedUserIds;
+        return findRewardCandidateProjections(seasonId, ids, limit).stream()
+                .map(RankingRewardCandidateRow::from)
+                .toList();
+    }
+
+    @Query(value = """
+            WITH ranked AS (
+                SELECT e.user_id,
+                       e.score,
+                       ROW_NUMBER() OVER (ORDER BY e.score DESC, CAST(e.user_id AS text) DESC) AS current_rank
+                FROM ranking_entry e
+                JOIN app_user u ON u.id = e.user_id
+                WHERE e.season_id = :seasonId
+                  AND u.status = 'ACTIVE'
+                  AND e.score > 0
+            )
+            SELECT ranked.user_id AS userId,
+                   ranked.score AS score,
+                   ranked.current_rank AS currentRank
+            FROM ranked
+            WHERE ranked.user_id NOT IN (:excludedUserIds)
+            ORDER BY ranked.score DESC, CAST(ranked.user_id AS text) DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<RankingCurrentRewardCandidateProjection> findCurrentRewardCandidateProjections(
+            @Param("seasonId") Long seasonId,
+            @Param("excludedUserIds") Collection<UUID> excludedUserIds,
+            @Param("limit") int limit
+    );
+
+    default List<RankingCurrentRewardCandidateRow> findCurrentRewardCandidates(
+            Long seasonId,
+            Collection<UUID> excludedUserIds,
+            int limit
+    ) {
+        Collection<UUID> ids = excludedUserIds.isEmpty() ? List.of(new UUID(0, 0)) : excludedUserIds;
+        return findCurrentRewardCandidateProjections(seasonId, ids, limit).stream()
+                .map(RankingCurrentRewardCandidateRow::from)
+                .toList();
+    }
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
@@ -343,6 +411,24 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
         Long getFinalRank();
     }
 
+    interface RankingRewardCandidateProjection {
+
+        UUID getUserId();
+
+        Long getSourceFinalRank();
+
+        Long getFinalScore();
+    }
+
+    interface RankingCurrentRewardCandidateProjection {
+
+        UUID getUserId();
+
+        Long getScore();
+
+        Long getCurrentRank();
+    }
+
     interface RankingBatchRankProjection {
         UUID getUserId();
 
@@ -385,6 +471,25 @@ public interface RankingEntryRepository extends JpaRepository<RankingEntry, Long
     ) {
         static RankingFinalRankRow from(RankingFinalRankProjection projection) {
             return new RankingFinalRankRow(projection.getUserId(), projection.getFinalRank());
+        }
+    }
+
+    record RankingRewardCandidateRow(UUID userId, long sourceFinalRank, long finalScore) {
+
+        static RankingRewardCandidateRow from(RankingRewardCandidateProjection projection) {
+            return new RankingRewardCandidateRow(
+                    projection.getUserId(),
+                    projection.getSourceFinalRank(),
+                    projection.getFinalScore()
+            );
+        }
+    }
+
+    record RankingCurrentRewardCandidateRow(UUID userId, long score, long currentRank) {
+
+        static RankingCurrentRewardCandidateRow from(RankingCurrentRewardCandidateProjection projection) {
+            return new RankingCurrentRewardCandidateRow(
+                    projection.getUserId(), projection.getScore(), projection.getCurrentRank());
         }
     }
 

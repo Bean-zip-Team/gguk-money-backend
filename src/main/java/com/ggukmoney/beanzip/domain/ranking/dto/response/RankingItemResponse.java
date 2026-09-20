@@ -21,6 +21,23 @@ public record RankingItemResponse(
         @Schema(description = "랭킹 점수", example = "1200")
         long score,
         @Schema(description = "현재 로그인한 사용자인지 여부", example = "false")
-        boolean isMe
+        boolean isMe,
+        @Schema(description = "예상 보상 순위. 보상권 밖이면 null", example = "1")
+        Integer rewardRank,
+        @Schema(description = "예상 보상 포인트. 보상권 밖이면 null", example = "10000")
+        Long rewardPointAmount
 ) {
+
+    public RankingItemResponse(
+            long rank,
+            Long previousRank,
+            Long rankChange,
+            UUID userId,
+            String nickname,
+            String profileImageUrl,
+            long score,
+            boolean isMe
+    ) {
+        this(rank, previousRank, rankChange, userId, nickname, profileImageUrl, score, isMe, null, null);
+    }
 }

@@ -6,6 +6,7 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingType;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardSnapshotService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -38,6 +39,7 @@ class RankingSeasonServiceTest {
     private final RankingSeasonRepository seasonRepository = mock(RankingSeasonRepository.class);
     private final RankingSeasonLockRepository seasonLockRepository = mock(RankingSeasonLockRepository.class);
     private final RankingEntryRepository entryRepository = mock(RankingEntryRepository.class);
+    private final WeeklyRankingRewardSnapshotService rewardSnapshotService = mock(WeeklyRankingRewardSnapshotService.class);
     private final RankingBackfillService backfillService = mock(RankingBackfillService.class);
     private final ObjectProvider<RankingBackfillService> backfillServiceProvider = mock(ObjectProvider.class);
     private final RankingProperties properties = new RankingProperties();
@@ -47,8 +49,8 @@ class RankingSeasonServiceTest {
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final RankingSeasonService service = new RankingSeasonService(
-            seasonRepository, seasonLockRepository, entryRepository, properties, backfillServiceProvider,
-            transactionManager, clock, businessZoneId, eventPublisher
+            seasonRepository, seasonLockRepository, entryRepository, rewardSnapshotService, properties,
+            backfillServiceProvider, transactionManager, clock, businessZoneId, eventPublisher
     );
 
     RankingSeasonServiceTest() {

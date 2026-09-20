@@ -13,6 +13,17 @@ public record CurrentRankingResponse(
         @Schema(description = "내 랭킹 정보")
         MyRankingResponse myRank,
         @Schema(description = "전체 랭킹 참가자 수", example = "124")
-        long totalParticipantCount
+        long totalParticipantCount,
+        @Schema(description = "현재 주간 랭킹 보상 등수와 포인트")
+        List<RankingRewardTierResponse> rewardTiers
 ) {
+
+    public CurrentRankingResponse(
+            RankingSeasonResponse season,
+            List<RankingItemResponse> items,
+            MyRankingResponse myRank,
+            long totalParticipantCount
+    ) {
+        this(season, items, myRank, totalParticipantCount, List.of());
+    }
 }
