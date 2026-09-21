@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.notification.scheduler;
 
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
 import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
+@Slf4j
 @Component
 public class NotificationScheduler {
 
@@ -22,18 +24,23 @@ public class NotificationScheduler {
     private final AdvisoryLockRunner advisoryLockRunner;
     private final Clock clock;
     private final ZoneId scheduleZoneId;
+    private final boolean dailyMissionEnabled;
 
     public NotificationScheduler(
             NotificationDeliveryService notificationDeliveryService,
             AdvisoryLockRunner advisoryLockRunner,
             Clock clock,
             // 크론이 도는 시간대와 같은 값이어야 한다. 둘이 갈리면 밤 9시에 깨어나서 어제 날짜로 보낸다.
-            @Value("${app.smart-message.schedule.zone:Asia/Seoul}") String scheduleZone
+            @Value("${app.smart-message.schedule.zone:Asia/Seoul}") String scheduleZone,
+            // 문구가 잘못 나갔거나 대상이 과하게 잡힐 때 끄는 스위치. 발송은 되돌릴 수 없어 멈출 수단이
+            // 필요하다. 캠페인 코드를 지워도 멈추지만, 그러면 알림 설정 토글과 동의 미션까지 함께 사라진다.
+            @Value("${app.smart-message.schedule.daily-mission-enabled:true}") boolean dailyMissionEnabled
     ) {
         this.notificationDeliveryService = notificationDeliveryService;
         this.advisoryLockRunner = advisoryLockRunner;
         this.clock = clock;
         this.scheduleZoneId = ZoneId.of(scheduleZone);
+        this.dailyMissionEnabled = dailyMissionEnabled;
     }
 
     @Scheduled(cron = "${app.smart-message.schedule.morning-cron:0 30 8 * * *}", zone = "${app.smart-message.schedule.zone:Asia/Seoul}")
@@ -58,6 +65,11 @@ public class NotificationScheduler {
             zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
     )
     public void scheduleDailyMissionNotifications() {
+        if (!dailyMissionEnabled) {
+            log.info("DAILY_MISSION_NOTIFICATION_SKIPPED reason=DISABLED");
+            return;
+        }
+
         advisoryLockRunner.runExclusively(
                 DAILY_MISSION_LOCK_KEY, () -> notificationDeliveryService.sendDailyMissionNotifications(today()));
     }

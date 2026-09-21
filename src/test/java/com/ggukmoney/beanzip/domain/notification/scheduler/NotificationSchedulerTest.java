@@ -63,13 +63,33 @@ class NotificationSchedulerTest {
                 deliveryService,
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T15:30:00Z"), ZoneOffset.UTC),
-                "Asia/Seoul"
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleDailyMissionNotifications();
 
         verify(deliveryService).sendDailyMissionNotifications(LocalDate.parse("2026-07-26"));
         verify(release).execute();
+    }
+
+    @Test
+    void doesNotSendDailyMissionNotificationsWhenTheKillSwitchIsOff() throws Exception {
+        NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
+        DataSource dataSource = mock(DataSource.class);
+        NotificationScheduler scheduler = new NotificationScheduler(
+                deliveryService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                false
+        );
+
+        scheduler.scheduleDailyMissionNotifications();
+
+        // 락을 잡기도 전에 멈춘다. 끄기로 한 배치가 DB 를 건드릴 이유가 없다.
+        verify(dataSource, never()).getConnection();
+        verify(deliveryService, never()).sendDailyMissionNotifications(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -91,7 +111,8 @@ class NotificationSchedulerTest {
                 deliveryService,
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC),
-                "Asia/Seoul"
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleMorningNotifications();
@@ -119,7 +140,8 @@ class NotificationSchedulerTest {
                 deliveryService,
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC),
-                "Asia/Seoul"
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleKeycapBoxOpenAvailableNotifications();
@@ -147,7 +169,8 @@ class NotificationSchedulerTest {
                 deliveryService,
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(now, ZoneOffset.UTC),
-                "Asia/Seoul"
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleKeycapBoxOpenAvailableNotifications();
