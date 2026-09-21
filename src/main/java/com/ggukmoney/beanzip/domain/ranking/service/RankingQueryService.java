@@ -8,6 +8,9 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisMeta;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.ProvisionalReward;
 import com.ggukmoney.beanzip.global.util.NameMasker;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -25,6 +28,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -40,6 +44,7 @@ public class RankingQueryService {
     private final RankingSeasonService seasonService;
     private final RankingEntryRepository entryRepository;
     private final RankingRedisRepository redisRepository;
+    private final WeeklyRankingRewardPreviewService rewardPreviewService;
     private final RankingProperties properties;
     private final Clock clock;
     private final ZoneId businessZoneId;
@@ -71,7 +76,7 @@ public class RankingQueryService {
             RankingRedisMeta meta
     ) {
         if (meta.participantCount() == 0 && redisRepository.isGlobalZSetMissing(season.getId())) {
-            return assembleResponse(season, List.of(), userId, null, 0L, 0L, 0L);
+            return fromPostgreSql(season, userId, limit);
         }
         if (meta.participantCount() > 0 && redisRepository.isGlobalZSetMissing(season.getId())) {
             return fromPostgreSql(season, userId, limit);
@@ -89,18 +94,44 @@ public class RankingQueryService {
             log.warn("Ranking Redis top members include inactive or missing users; falling back to PostgreSQL seasonId={}", season.getId());
             return fromPostgreSql(season, userId, limit);
         }
+        if (members.stream().anyMatch(member -> rowsByUserId.get(member.userId()).score() != member.score())) {
+            log.warn("Ranking Redis scores differ from PostgreSQL; falling back to PostgreSQL seasonId={}", season.getId());
+            return fromPostgreSql(season, userId, limit);
+        }
         List<RankedParticipant> rankedParticipants = members.stream()
                 .map(member -> new RankedParticipant(member.rank(), rowsByUserId.get(member.userId()), member.score()))
                 .toList();
 
         Long myRank = redisRepository.findRank(season.getId(), userId);
-        if (myRank != null && entryRepository.findMyParticipant(season, userId).isEmpty()) {
+        long myScore = myRank == null ? 0L : redisRepository.findScore(season.getId(), userId);
+        Preview rewardPreview = rewardPreviewService.preview(season, userId, myScore, clock.instant());
+        boolean rewardPreviewEnabled = !rewardPreview.tiers().isEmpty();
+        Optional<RankingEntryRepository.RankingParticipantRow> myParticipant = Optional.empty();
+        if (myRank != null || rewardPreviewEnabled) {
+            myParticipant = entryRepository.findMyParticipant(season, userId);
+        }
+        if ((myRank != null && myParticipant.isEmpty())
+                || (rewardPreviewEnabled && myRank == null && myParticipant.isPresent())) {
             log.warn("Ranking Redis myRank member is not an active DB participant; falling back to PostgreSQL seasonId={} userId={}", season.getId(), userId);
             return fromPostgreSql(season, userId, limit);
         }
-        long myScore = myRank == null ? 0L : redisRepository.findScore(season.getId(), userId);
+        if (rewardPreviewEnabled && myRank != null) {
+            RankingEntryRepository.RankingParticipantRow myRow = myParticipant.orElseThrow();
+            long databaseRank = entryRepository.countParticipantsAhead(season, myRow.score(), userId.toString()) + 1L;
+            if (myRow.score() != myScore || databaseRank != myRank) {
+                log.warn("Ranking Redis my score or rank differs from PostgreSQL; falling back to PostgreSQL seasonId={} userId={}",
+                        season.getId(), userId);
+                return fromPostgreSql(season, userId, limit);
+            }
+        }
         long firstScore = members.isEmpty() ? 0L : members.get(0).score();
-        return assembleResponse(season, rankedParticipants, userId, myRank, myScore, firstScore, meta.participantCount());
+        if (rewardPreviewEnabled && !isRewardPreviewConsistentWithRedis(season, members, rewardPreview)) {
+            log.warn("Ranking Redis reward candidates differ from PostgreSQL; falling back to PostgreSQL seasonId={}",
+                    season.getId());
+            return fromPostgreSql(season, userId, limit);
+        }
+        return assembleResponse(
+                season, rankedParticipants, userId, myRank, myScore, firstScore, meta.participantCount(), rewardPreview);
     }
 
     private CurrentRankingResponse fromPostgreSql(RankingSeason season, UUID userId, int limit) {
@@ -121,6 +152,7 @@ public class RankingQueryService {
                 .map(RankingEntryRepository.RankingParticipantRow::score)
                 .max(Comparator.naturalOrder())
                 .orElse(0L);
+        Preview rewardPreview = rewardPreviewService.preview(season, userId, myScore, clock.instant());
         return assembleResponse(
                 season,
                 rankedParticipants,
@@ -128,7 +160,8 @@ public class RankingQueryService {
                 myRank,
                 myScore,
                 firstScore,
-                entryRepository.countParticipants(season)
+                entryRepository.countParticipants(season),
+                rewardPreview
         );
     }
 
@@ -139,15 +172,21 @@ public class RankingQueryService {
             Long myRank,
             long myScore,
             long firstScore,
-            long totalParticipantCount
+            long totalParticipantCount,
+            Preview rewardPreview
     ) {
         Optional<RankingSeason> previousSeason =
                 Optional.ofNullable(seasonService.findPreviousClosedWeeklySeason(season)).orElse(Optional.empty());
         Map<UUID, Long> previousRanks = previousRanks(previousSeason, rankedParticipants, me);
         List<RankingItemResponse> items = rankedParticipants.stream()
-                .map(participant -> toItem(participant, previousRanks.get(participant.row().userId()), me))
+                .map(participant -> toItem(
+                        participant,
+                        previousRanks.get(participant.row().userId()),
+                        me,
+                        rewardPreview.rewardsByUser().get(participant.row().userId())))
                 .toList();
         Long previousMyRank = previousRanks.get(me);
+        ProvisionalReward myReward = rewardPreview.rewardsByUser().get(me);
         return new CurrentRankingResponse(
                 seasonResponse(season),
                 items,
@@ -156,10 +195,42 @@ public class RankingQueryService {
                         previousMyRank,
                         rankChange(previousMyRank, myRank),
                         myScore,
-                        Math.max(firstScore - myScore, 0L)
+                        Math.max(firstScore - myScore, 0L),
+                        myReward == null ? null : myReward.rewardRank(),
+                        myReward == null ? null : myReward.pointAmount(),
+                        rewardPreview.scoreGapToReward()
                 ),
-                totalParticipantCount
+                totalParticipantCount,
+                rewardPreview.tiers()
         );
+    }
+
+    private boolean isRewardPreviewConsistentWithRedis(
+            RankingSeason season,
+            List<RankingRedisRepository.RankingRedisMember> displayedMembers,
+            Preview rewardPreview
+    ) {
+        for (RankingEntryRepository.RankingCurrentRewardCandidateRow candidate : rewardPreview.candidateRows()) {
+            Long cachedRank = redisRepository.findRank(season.getId(), candidate.userId());
+            if (!Objects.equals(cachedRank, candidate.currentRank())
+                    || redisRepository.findScore(season.getId(), candidate.userId()) != candidate.score()) {
+                return false;
+            }
+        }
+
+        if (displayedMembers.isEmpty()) {
+            return true;
+        }
+        List<UUID> displayedUserIds = displayedMembers.stream()
+                .map(RankingRedisRepository.RankingRedisMember::userId)
+                .toList();
+        Map<UUID, Long> databaseRanks = entryRepository.findBatchRanks(season.getId(), displayedUserIds).stream()
+                .collect(Collectors.toMap(
+                        RankingEntryRepository.RankingBatchRankProjection::getUserId,
+                        RankingEntryRepository.RankingBatchRankProjection::getRank
+                ));
+        return displayedMembers.stream().allMatch(member ->
+                Objects.equals(databaseRanks.get(member.userId()), member.rank()));
     }
 
     private Map<UUID, Long> previousRanks(
@@ -192,7 +263,12 @@ public class RankingQueryService {
         );
     }
 
-    private RankingItemResponse toItem(RankedParticipant participant, Long previousRank, UUID me) {
+    private RankingItemResponse toItem(
+            RankedParticipant participant,
+            Long previousRank,
+            UUID me,
+            ProvisionalReward reward
+    ) {
         long rank = participant.rank();
         RankingEntryRepository.RankingParticipantRow row = participant.row();
         return new RankingItemResponse(
@@ -203,7 +279,9 @@ public class RankingQueryService {
                 NameMasker.mask(row.nickname()),
                 row.profileImageUrl(),
                 participant.score(),
-                row.userId().equals(me)
+                row.userId().equals(me),
+                reward == null ? null : reward.rewardRank(),
+                reward == null ? null : reward.pointAmount()
         );
     }
 

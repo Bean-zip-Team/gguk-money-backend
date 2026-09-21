@@ -102,7 +102,11 @@ public enum ErrorCode {
     CASHOUT_ALREADY_PROCESSING("CASHOUT_ALREADY_PROCESSING", "처리 중인 출금 존재", HttpStatus.CONFLICT),
     CASHOUT_NOT_FOUND("CASHOUT_NOT_FOUND", "출금 요청을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
-    RANKING_SEASON_NOT_FOUND("RANKING_SEASON_NOT_FOUND", "랭킹 시즌을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+    RANKING_SEASON_NOT_FOUND("RANKING_SEASON_NOT_FOUND", "랭킹 시즌을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    RANKING_REWARD_RESULT_NOT_FOUND("RANKING_REWARD_RESULT_NOT_FOUND", "종료된 주간 랭킹 결과를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    RANKING_REWARD_NOT_FOUND("RANKING_REWARD_NOT_FOUND", "주간 랭킹 보상을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    RANKING_REWARD_CONSENT_REQUIRED("RANKING_REWARD_CONSENT_REQUIRED", "순위 변동 알림 동의가 필요합니다.", HttpStatus.FORBIDDEN),
+    RANKING_REWARD_EXPIRED("RANKING_REWARD_EXPIRED", "주간 랭킹 보상 수령 기간이 만료되었습니다.", HttpStatus.GONE);
 
     private final String code;
     private final String message;
