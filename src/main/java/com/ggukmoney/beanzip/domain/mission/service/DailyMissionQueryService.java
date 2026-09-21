@@ -128,13 +128,19 @@ public class DailyMissionQueryService {
             LocalDate today,
             Map<MissionRewardService.RewardKey, MissionReward> rewards
     ) {
+        List<MissionDefinitionView> definitions = missionDefinitionCatalog.activeDefinitions();
+
         Optional<UserTapDaily> todayTapDaily = userTapDailyRepository.findByUserIdAndTapDate(userId, today);
         long todayTapCount = todayTapDaily.map(daily -> (long) daily.getTotalValidTapCount()).orElse(0L);
-        Optional<Long> rankUp = rankUpSignal.rankUpOf(userId, today);
-        boolean notificationAgreed = notificationOptInSignal.agreed(userId);
+        // 랭킹 미션이 꺼져 있으면 순위를 구할 이유가 없다. 이 조회는 목록·수령 경로에서 매번 돈다.
+        Optional<Long> rankUp = hasMissionOfType(definitions, MissionDefinition.MissionType.RANK_UP)
+                ? rankUpSignal.rankUpOf(userId, today)
+                : Optional.empty();
+        boolean notificationAgreed = hasMissionOfType(definitions, MissionDefinition.MissionType.NOTIFICATION_OPT_IN)
+                && notificationOptInSignal.agreed(userId);
 
         List<Evaluated> evaluated = new ArrayList<>();
-        for (MissionDefinitionView definition : missionDefinitionCatalog.activeDefinitions()) {
+        for (MissionDefinitionView definition : definitions) {
             MissionReward reward = rewards.get(rewardKeyOf(definition, today));
             if (definition.periodType() == MissionDefinition.PeriodType.ONE_TIME
                     && reward != null && reward.isClaimed()) {
@@ -191,6 +197,13 @@ public class DailyMissionQueryService {
             case RANK_UP -> rankUp;
             case NOTIFICATION_OPT_IN -> Optional.of(notificationAgreed ? 1L : 0L);
         };
+    }
+
+    private static boolean hasMissionOfType(
+            List<MissionDefinitionView> definitions,
+            MissionDefinition.MissionType missionType
+    ) {
+        return definitions.stream().anyMatch(definition -> definition.missionType() == missionType);
     }
 
     private static MissionRewardService.RewardKey rewardKeyOf(MissionDefinitionView definition, LocalDate today) {
