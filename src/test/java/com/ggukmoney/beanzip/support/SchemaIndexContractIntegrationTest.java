@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -16,12 +17,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import javax.sql.DataSource;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Test
     void generatedSchemaContainsRepresentableIndexContracts() {
@@ -96,6 +102,33 @@ class SchemaIndexContractIntegrationTest extends FullStackIntegrationTestSupport
                 "ON notification_delivery (user_id, notification_type, requested_at DESC)",
                 "WHERE status = 'SENT'"
         );
+    }
+
+    @Test
+    void keycapBulkOpenMigrationAllowsBulkRewardOpenHistory() {
+        jdbcTemplate.execute("""
+                ALTER TABLE keycap_box_open
+                DROP CONSTRAINT IF EXISTS keycap_box_open_open_method_check
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE keycap_box_open
+                ADD CONSTRAINT keycap_box_open_open_method_check
+                CHECK (open_method IN ('FREE', 'ADVERTISEMENT'))
+                """);
+
+        new ResourceDatabasePopulator(
+                new ClassPathResource("db/manual-keycap-box-bulk-open.sql"))
+                .execute(dataSource);
+
+        String definition = jdbcTemplate.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'keycap_box_open'::regclass
+                  AND conname = 'keycap_box_open_open_method_check'
+                """, String.class);
+
+        assertThat(definition)
+                .contains("FREE", "ADVERTISEMENT", "BULK_REWARD");
     }
 
     @Test

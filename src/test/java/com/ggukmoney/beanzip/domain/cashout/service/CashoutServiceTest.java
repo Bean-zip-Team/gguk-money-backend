@@ -131,6 +131,86 @@ class CashoutServiceTest {
     }
 
     @Test
+    void leavesTheRoundedOffRemainderInTheBalance() {
+        when(pointAccountService.getBalance(userId)).thenReturn(134L);
+
+        CashoutQuoteResponse response = cashoutService.getQuote(userId);
+
+        // 134P 를 전부 빼고 93P 를 주던 것을, 같은 93P 를 만드는 133P 만 빼도록 바꿨다.
+        assertThat(response.redeemablePoint()).isEqualTo(133L);
+        assertThat(response.remainingPoint()).isEqualTo(1L);
+        assertThat(response.tossPointAmount()).isEqualTo(93L);
+    }
+
+    @Test
+    void debitsOnlyTheRedeemablePortion() {
+        when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
+        when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
+        when(pointAccountService.getBalance(userId)).thenReturn(134L);
+
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(userService.getById(userId)).thenReturn(user);
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
+        when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(i -> i.getArgument(0));
+        stubTossIdentity();
+        when(tossPromotionClient.getKey("toss-user-key-1")).thenReturn("promo-key-1");
+        when(tossPromotionClient.executePromotion(any(), any(), any(), anyLong()))
+                .thenReturn(TossPromotionClient.PromotionExecutionOutcome.success());
+
+        cashoutService.submit(userId, idempotencyKey);
+
+        verify(pointAccountService).debit(userId, 133L);
+        verify(pointAccountService, never()).debit(userId, 134L);
+    }
+
+    @Test
+    void roundingUnitFollowsTheConfiguredRate() {
+        // rate 0.02 면 50P 단위. 99P 는 1P 로 환산되고 50P 만 빠진다.
+        when(cashoutPolicyConfig.minimumPoint()).thenReturn(50);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(new BigDecimal("0.02"));
+        when(pointAccountService.getBalance(userId)).thenReturn(99L);
+
+        CashoutQuoteResponse response = cashoutService.getQuote(userId);
+
+        assertThat(response.tossPointAmount()).isEqualTo(1L);
+        assertThat(response.redeemablePoint()).isEqualTo(50L);
+        assertThat(response.remainingPoint()).isEqualTo(49L);
+    }
+
+    @Test
+    void leavesNothingBehindWhenBalanceIsAnExactMultiple() {
+        when(cashoutPolicyConfig.minimumPoint()).thenReturn(50);
+        when(cashoutPolicyConfig.pointToKrwRate()).thenReturn(new BigDecimal("0.02"));
+        when(pointAccountService.getBalance(userId)).thenReturn(100L);
+
+        CashoutQuoteResponse response = cashoutService.getQuote(userId);
+
+        assertThat(response.redeemablePoint()).isEqualTo(100L);
+        assertThat(response.remainingPoint()).isZero();
+    }
+
+    @Test
+    void refundsExactlyWhatWasDebitedOnFailure() {
+        when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
+        when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
+        when(pointAccountService.getBalance(userId)).thenReturn(134L);
+
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(userService.getById(userId)).thenReturn(user);
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
+        when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(i -> i.getArgument(0));
+        when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS))
+                .thenReturn(Optional.empty());
+
+        cashoutService.submit(userId, idempotencyKey);
+
+        // 환불은 request.pointAmount 를 쓴다. 차감분과 같은 값이어야 잔액이 어긋나지 않는다.
+        verify(pointAccountService).credit(userId, 133L);
+    }
+
+    @Test
     void submitsFullBalanceAndTransitionsToProcessingOnTossSuccess() {
         when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
         when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
@@ -141,7 +221,7 @@ class CashoutServiceTest {
         when(userService.getById(userId)).thenReturn(user);
 
         PointAccount account = mock(PointAccount.class);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(account);
+        when(pointAccountService.debit(userId, 133L)).thenReturn(account);
 
         when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -152,10 +232,10 @@ class CashoutServiceTest {
 
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
-        assertThat(response.pointAmount()).isEqualTo(134L);
+        assertThat(response.pointAmount()).isEqualTo(133L);
         assertThat(response.tossPointAmount()).isEqualTo(93L);
         assertThat(response.status()).isEqualTo("PROCESSING");
-        verify(pointLedgerService).recordDebit(account, user, 134L, "CASHOUT", idempotencyKey);
+        verify(pointLedgerService).recordDebit(account, user, 133L, "CASHOUT", idempotencyKey);
         verify(pointAccountService, never()).credit(any(), anyLong());
     }
 
@@ -168,15 +248,15 @@ class CashoutServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(userService.getById(userId)).thenReturn(user);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
         when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(authIdentityRepository.findByUserIdAndProvider(userId, AuthIdentity.Provider.TOSS)).thenReturn(Optional.empty());
 
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
         assertThat(response.status()).isEqualTo("FAILED");
-        verify(pointAccountService).credit(userId, 134L);
-        verify(pointLedgerService).recordReversal(any(), any(), eq(134L), any(), any());
+        verify(pointAccountService).credit(userId, 133L);
+        verify(pointLedgerService).recordReversal(any(), any(), eq(133L), any(), any());
     }
 
     @Test
@@ -188,7 +268,7 @@ class CashoutServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(userService.getById(userId)).thenReturn(user);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
         when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         stubTossIdentity();
@@ -197,7 +277,7 @@ class CashoutServiceTest {
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
         assertThat(response.status()).isEqualTo("FAILED");
-        verify(pointAccountService).credit(userId, 134L);
+        verify(pointAccountService).credit(userId, 133L);
     }
 
     @Test
@@ -209,7 +289,7 @@ class CashoutServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(userService.getById(userId)).thenReturn(user);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
         when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         stubTossIdentity();
@@ -220,7 +300,7 @@ class CashoutServiceTest {
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
         assertThat(response.status()).isEqualTo("FAILED");
-        verify(pointAccountService).credit(userId, 134L);
+        verify(pointAccountService).credit(userId, 133L);
     }
 
     @Test
@@ -232,7 +312,7 @@ class CashoutServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(userService.getById(userId)).thenReturn(user);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
         when(cashoutRequestRepository.save(any(CashoutRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         stubTossIdentity();
@@ -277,13 +357,13 @@ class CashoutServiceTest {
     @Test
     void replaysExistingResponseForSameIdempotencyKeyWithoutRedebiting() {
         AppUser user = mock(AppUser.class);
-        CashoutRequest existingRequest = CashoutRequest.createFor(user, 134L, 93L, idempotencyKey);
+        CashoutRequest existingRequest = CashoutRequest.createFor(user, 133L, 93L, idempotencyKey);
         when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey))
                 .thenReturn(Optional.of(existingRequest));
 
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
-        assertThat(response.pointAmount()).isEqualTo(134L);
+        assertThat(response.pointAmount()).isEqualTo(133L);
         assertThat(response.tossPointAmount()).isEqualTo(93L);
         verify(pointAccountService, never()).debit(any(), anyLong());
         verify(cashoutRequestRepository, never()).save(any());
@@ -294,19 +374,19 @@ class CashoutServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(userService.getById(userId)).thenReturn(user);
-        CashoutRequest winningRequest = CashoutRequest.createFor(user, 134L, 93L, idempotencyKey);
+        CashoutRequest winningRequest = CashoutRequest.createFor(user, 133L, 93L, idempotencyKey);
 
         when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey))
                 .thenReturn(Optional.empty(), Optional.of(winningRequest));
         when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
         when(pointAccountService.getBalance(userId)).thenReturn(134L);
-        when(pointAccountService.debit(userId, 134L)).thenReturn(mock(PointAccount.class));
+        when(pointAccountService.debit(userId, 133L)).thenReturn(mock(PointAccount.class));
         when(cashoutRequestRepository.save(any(CashoutRequest.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
 
         CashoutSubmitResponse response = cashoutService.submit(userId, idempotencyKey);
 
-        assertThat(response.pointAmount()).isEqualTo(134L);
+        assertThat(response.pointAmount()).isEqualTo(133L);
         assertThat(response.tossPointAmount()).isEqualTo(93L);
         verify(tossPromotionClient, never()).getKey(any());
     }
@@ -320,7 +400,7 @@ class CashoutServiceTest {
         when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
         when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
         when(pointAccountService.getBalance(userId)).thenReturn(134L);
-        when(pointAccountService.debit(userId, 134L))
+        when(pointAccountService.debit(userId, 133L))
                 .thenThrow(new OptimisticLockingFailureException("version conflict"));
 
         assertThatThrownBy(() -> cashoutService.submit(userId, idempotencyKey))

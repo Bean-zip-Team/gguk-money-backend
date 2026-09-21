@@ -3,11 +3,13 @@ package com.ggukmoney.beanzip.domain.promotion.service;
 import com.ggukmoney.beanzip.domain.promotion.entity.PromotionGrant;
 import com.ggukmoney.beanzip.domain.promotion.repository.PromotionGrantRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -23,6 +25,23 @@ public class PromotionGrantStateService {
     @Transactional(readOnly = true)
     public Optional<PromotionGrant> find(Long grantId) {
         return promotionGrantRepository.findById(grantId);
+    }
+
+    /**
+     * 처리 대상을 잠그고 임대 기간만큼 뒤로 밀어 다른 인스턴스가 같은 행을 집지 않게 한다.
+     * 최후 방어선은 저장된 toss key 재사용이다.
+     *
+     * <p>스케줄러가 아니라 여기 있는 이유는 프록시다. 같은 빈 안에서 {@code @Transactional}
+     * 메서드를 자기호출하면 프록시를 거치지 않아 트랜잭션이 열리지 않고,
+     * {@code findDueForUpdate} 의 PESSIMISTIC_WRITE 가 TransactionRequiredException 으로
+     * 죽는다. {@code CashoutProcessingScheduler} 가 쓰기를 별도 빈에 위임하는 것과 같은 이유다.
+     */
+    @Transactional
+    public List<Long> claimDue(Instant now, int batchSize, Instant lease) {
+        return promotionGrantRepository.findDueForUpdate(now, PageRequest.of(0, batchSize)).stream()
+                .peek(grant -> grant.deferWithoutAttempt(lease, grant.getTossErrorCode(), now))
+                .map(PromotionGrant::getId)
+                .toList();
     }
 
     /**

@@ -25,16 +25,18 @@ class NotificationDeliveryRepositoryIntegrationTest extends FullStackIntegration
         UUID afterUser = UUID.randomUUID();
         UUID equalUser = UUID.randomUUID();
         UUID failedUser = UUID.randomUUID();
+        UUID retryWaitingUser = UUID.randomUUID();
         UUID otherTypeUser = UUID.randomUUID();
         Instant cutoff = Instant.parse("2026-07-25T04:00:00Z");
         deliveryRepository.save(sent(afterUser, NotificationType.RANK_CHANGE, cutoff.plusSeconds(1), "after"));
         deliveryRepository.save(sent(equalUser, NotificationType.RANK_CHANGE, cutoff, "equal"));
         deliveryRepository.save(failed(failedUser, cutoff.plusSeconds(1), "failed"));
+        deliveryRepository.save(retryWaiting(retryWaitingUser, cutoff.plusSeconds(1), "retry-waiting"));
         deliveryRepository.save(sent(otherTypeUser, NotificationType.DAILY_REMINDER, cutoff.plusSeconds(1), "other"));
         deliveryRepository.flush();
 
         assertThat(deliveryRepository.findUserIdsWithRecentDelivery(
-                List.of(afterUser, equalUser, failedUser, otherTypeUser),
+                List.of(afterUser, equalUser, failedUser, retryWaitingUser, otherTypeUser),
                 NotificationType.RANK_CHANGE,
                 NotificationDeliveryStatus.SENT,
                 cutoff
@@ -52,6 +54,13 @@ class NotificationDeliveryRepositoryIntegrationTest extends FullStackIntegration
         NotificationDelivery delivery = NotificationDelivery.pending(
                 userId, NotificationType.RANK_CHANGE, "failed-" + suffix + "-" + userId, "template", requestedAt);
         delivery.markFailed("FAILED", "failed", "{}");
+        return delivery;
+    }
+
+    private NotificationDelivery retryWaiting(UUID userId, Instant requestedAt, String suffix) {
+        NotificationDelivery delivery = NotificationDelivery.pending(
+                userId, NotificationType.RANK_CHANGE, "retry-" + suffix + "-" + userId, "template", requestedAt);
+        delivery.markRetryWaiting("RETRY_WAITING", "retry waiting", "{}");
         return delivery;
     }
 }

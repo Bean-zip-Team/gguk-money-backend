@@ -6,6 +6,8 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisMeta;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,6 +24,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,12 +35,18 @@ class RankingQueryServiceTest {
     private final RankingSeasonService seasonService = mock(RankingSeasonService.class);
     private final RankingEntryRepository entryRepository = mock(RankingEntryRepository.class);
     private final RankingRedisRepository redisRepository = mock(RankingRedisRepository.class);
+    private final WeeklyRankingRewardPreviewService rewardPreviewService = mock(WeeklyRankingRewardPreviewService.class);
     private final RankingProperties properties = new RankingProperties();
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
     private final RankingQueryService service = new RankingQueryService(
-            seasonService, entryRepository, redisRepository, properties, clock, businessZoneId
+            seasonService, entryRepository, redisRepository, rewardPreviewService, properties, clock, businessZoneId
     );
+
+    RankingQueryServiceTest() {
+        when(rewardPreviewService.preview(any(), any(), anyLong(), any()))
+                .thenReturn(new Preview(List.of(), java.util.Map.of(), null));
+    }
 
     @Test
     void rejectsLimitOutsideAllowedRange() {
@@ -146,13 +156,13 @@ class RankingQueryServiceTest {
         ));
         when(entryRepository.findParticipantsByUserIds(season, List.of(lexicographicallyLast, lexicographicallyMiddle, me)))
                 .thenReturn(List.of(
-                        row(me, "me", 999L),
-                        row(lexicographicallyMiddle, "middle", 999L),
-                        row(lexicographicallyLast, "last", 999L)
+                        row(me, "me", 100L),
+                        row(lexicographicallyMiddle, "middle", 100L),
+                        row(lexicographicallyLast, "last", 100L)
                 ));
         when(redisRepository.findRank(1L, me)).thenReturn(3L);
         when(redisRepository.findScore(1L, me)).thenReturn(100L);
-        when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 999L)));
+        when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 100L)));
 
         CurrentRankingResponse response = service.getCurrentRanking(me, null);
 

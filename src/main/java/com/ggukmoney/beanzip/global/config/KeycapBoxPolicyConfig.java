@@ -21,11 +21,13 @@ public class KeycapBoxPolicyConfig {
     public static final String KEY_OPEN_CYCLE_DURATION_SECONDS = "keycapBox.openCycle.durationSeconds";
     public static final String KEY_FREE_OPEN_LIMIT = "keycapBox.freeOpen.limit";
     public static final String KEY_AD_OPEN_LIMIT = "keycapBox.adOpen.limit";
+    public static final String KEY_BULK_OPEN_LIMIT = "keycapBox.bulkOpen.limit";
 
     public static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
             Map.entry(KEY_OPEN_CYCLE_DURATION_SECONDS, "3600"),
             Map.entry(KEY_FREE_OPEN_LIMIT, "2"),
-            Map.entry(KEY_AD_OPEN_LIMIT, "6")
+            Map.entry(KEY_AD_OPEN_LIMIT, "6"),
+            Map.entry(KEY_BULK_OPEN_LIMIT, "30")
     );
 
     private final AppConfigBatchLoader batchLoader;
@@ -68,6 +70,16 @@ public class KeycapBoxPolicyConfig {
 
     public int adOpenLimit() {
         return getNonNegativeInt(KEY_AD_OPEN_LIMIT);
+    }
+
+    /**
+     * 일괄 개봉 상한 (BEA-280). 예산 방어값이 아니라 체감·연출 기준으로 고른 값이다.
+     *
+     * <p>전량을 열면 재고가 0 이 되어 이후 광고 개봉 동기까지 사라진다. 30 개를 열고 나머지를
+     * 남기면 루프가 계속 돈다. 활동 유저 보유 중앙값이 32 개라 대부분은 거의 다 열린다.
+     */
+    public int bulkOpenLimit() {
+        return getInt(KEY_BULK_OPEN_LIMIT);
     }
 
     private int getInt(String key) {

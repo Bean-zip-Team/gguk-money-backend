@@ -74,11 +74,14 @@ public class CashoutService {
         int minimumPoint = cashoutPolicyConfig.minimumPoint();
         BigDecimal rate = cashoutPolicyConfig.pointToKrwRate();
         long tossPointAmount = toTossPointAmount(balance, rate);
-        boolean eligible = balance >= minimumPoint;
+        long redeemablePoint = toRedeemablePoint(tossPointAmount, rate);
+        boolean eligible = balance >= minimumPoint && redeemablePoint > 0;
 
         return new CashoutQuoteResponse(
                 balance,
                 tossPointAmount,
+                redeemablePoint,
+                balance - redeemablePoint,
                 minimumPoint,
                 new CashoutQuoteResponse.RateInfo(rate),
                 eligible
@@ -111,6 +114,25 @@ public class CashoutService {
         return BigDecimal.valueOf(balance).multiply(rate).setScale(0, RoundingMode.FLOOR).longValueExact();
     }
 
+    /**
+     * 실제로 차감할 포인트. 버림으로 사라지는 잔돈을 유저에게 남긴다.
+     *
+     * <p>전에는 잔액 전부를 빼고 {@code floor(balance x rate)} 만 지급했다. rate 가 0.02 면
+     * 99P 를 출금해도 1P 만 받고 나머지 49P 가 소멸했다 — 어디에도 기록이 남지 않는 손실이다.
+     * 이제 같은 지급액을 만드는 <b>최소 포인트만</b> 차감하고 나머지는 잔액으로 둔다.
+     *
+     * <p>{@code ceil(tossPointAmount / rate)} 이므로 rate 가 바뀌면 단위도 따라 바뀐다.
+     * 0.02 면 50P 단위, 0.05 면 20P 단위다. 하드코딩하지 않는 이유가 이것이다.
+     */
+    private long toRedeemablePoint(long tossPointAmount, BigDecimal rate) {
+        if (tossPointAmount <= 0 || rate.signum() <= 0) {
+            return 0L;
+        }
+        return BigDecimal.valueOf(tossPointAmount)
+                .divide(rate, 0, RoundingMode.CEILING)
+                .longValueExact();
+    }
+
     private Optional<CashoutSubmitResponse> findReplay(UUID userId, UUID idempotencyKey) {
         return cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
                 .map(this::toResponse);
@@ -135,13 +157,20 @@ public class CashoutService {
         }
 
         AppUser user = userService.getById(userId);
-        long tossPointAmount = toTossPointAmount(balance, cashoutPolicyConfig.pointToKrwRate());
+        BigDecimal rate = cashoutPolicyConfig.pointToKrwRate();
+        long tossPointAmount = toTossPointAmount(balance, rate);
+        long redeemablePoint = toRedeemablePoint(tossPointAmount, rate);
+        if (redeemablePoint <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CASHOUT_MINIMUM_NOT_MET");
+        }
 
-        PointAccount account = pointAccountService.debit(userId, balance);
-        pointLedgerService.recordDebit(account, user, balance, DEBIT_REASON_CASHOUT, idempotencyKey);
+        // 전액이 아니라 지급액을 만드는 만큼만 뺀다. 나머지는 잔액으로 남는다.
+        PointAccount account = pointAccountService.debit(userId, redeemablePoint);
+        pointLedgerService.recordDebit(account, user, redeemablePoint, DEBIT_REASON_CASHOUT, idempotencyKey);
 
+        // pointAmount 가 실제 차감분이므로 실패 시 환불 금액도 자동으로 맞는다.
         return cashoutRequestRepository.save(
-                CashoutRequest.createFor(user, balance, tossPointAmount, idempotencyKey)
+                CashoutRequest.createFor(user, redeemablePoint, tossPointAmount, idempotencyKey)
         );
     }
 

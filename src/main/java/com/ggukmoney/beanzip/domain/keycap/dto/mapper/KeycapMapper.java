@@ -19,6 +19,7 @@ public interface KeycapMapper {
 
     @Mapping(target = "keycapId", source = "publicId")
     @Mapping(target = "grade", expression = "java(keycap.getGrade().name())")
+    @Mapping(target = "acquisitionType", expression = "java(keycap.getAcquisitionType().name())")
     KeycapItemResponse mapToKeycapItemResponse(Keycap keycap);
 
     default KeycapListResponse mapToKeycapListResponse(List<Keycap> keycaps) {

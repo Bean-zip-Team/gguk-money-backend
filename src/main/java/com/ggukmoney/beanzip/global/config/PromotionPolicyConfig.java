@@ -36,21 +36,36 @@ public class PromotionPolicyConfig {
     private static final Logger log = LoggerFactory.getLogger(PromotionPolicyConfig.class);
 
     public static final String KEYCAP_FIVE_PROMOTION_CODE = "KEYCAP_FIVE_COMPLETE";
+    public static final String TAP_THOUSAND_PROMOTION_CODE = "TAP_THOUSAND_COMPLETE";
 
     public static final String KEY_ENABLED = "promotion.keycapFive.enabled";
     public static final String KEY_EXECUTION_ENABLED = "promotion.keycapFive.executionEnabled";
     public static final String KEY_THRESHOLD = "promotion.keycapFive.threshold";
     public static final String KEY_AMOUNT = "promotion.keycapFive.amount";
     public static final String KEY_LAUNCH_AT = "promotion.keycapFive.launchAt";
+    public static final String KEY_TAP_ENABLED = "promotion.tapThousand.enabled";
+    public static final String KEY_TAP_THRESHOLD = "promotion.tapThousand.threshold";
+    public static final String KEY_TAP_AMOUNT = "promotion.tapThousand.amount";
+    public static final String KEY_TAP_LAUNCH_AT = "promotion.tapThousand.launchAt";
+
+    /** 제외 목록과 실행 킬스위치는 프로모션 공용이다. */
     public static final String KEY_EXCLUDED_USER_IDS = "promotion.excludedUserIds";
 
-    private static final Map<String, String> DEFAULT_VALUES = Map.of(
-            KEY_ENABLED, "false",
-            KEY_EXECUTION_ENABLED, "false",
-            KEY_THRESHOLD, "5",
-            KEY_AMOUNT, "500",
-            KEY_LAUNCH_AT, "",
-            KEY_EXCLUDED_USER_IDS, "[]"
+    /**
+     * 미션이 셋 이상이 되면 키·접근자를 미션 이름으로 파라미터화한다. 둘까지는 명시적으로
+     * 나열하는 편이 읽기 쉽다.
+     */
+    private static final Map<String, String> DEFAULT_VALUES = Map.ofEntries(
+            Map.entry(KEY_ENABLED, "false"),
+            Map.entry(KEY_EXECUTION_ENABLED, "false"),
+            Map.entry(KEY_THRESHOLD, "5"),
+            Map.entry(KEY_AMOUNT, "500"),
+            Map.entry(KEY_LAUNCH_AT, ""),
+            Map.entry(KEY_TAP_ENABLED, "false"),
+            Map.entry(KEY_TAP_THRESHOLD, "1000"),
+            Map.entry(KEY_TAP_AMOUNT, "5"),
+            Map.entry(KEY_TAP_LAUNCH_AT, ""),
+            Map.entry(KEY_EXCLUDED_USER_IDS, "[]")
     );
 
     /**
@@ -100,16 +115,24 @@ public class PromotionPolicyConfig {
     }
 
     public long amount() {
-        String raw = resolve(KEY_AMOUNT).trim();
-        try {
-            long value = Long.parseLong(raw);
-            if (value <= 0) {
-                throw new IllegalStateException(KEY_AMOUNT + " must be positive");
-            }
-            return value;
-        } catch (NumberFormatException exception) {
-            throw new IllegalStateException(KEY_AMOUNT + " must be a number", exception);
-        }
+        return positiveLong(KEY_AMOUNT);
+    }
+
+    /** 1,000번 누르기 미션 (BEA-278). 키캡과 설정을 공유하지 않는다. */
+    public boolean tapThousandIssuingEnabled() {
+        return Boolean.parseBoolean(resolve(KEY_TAP_ENABLED).trim());
+    }
+
+    public int tapThousandThreshold() {
+        return positiveInt(KEY_TAP_THRESHOLD);
+    }
+
+    public long tapThousandAmount() {
+        return positiveLong(KEY_TAP_AMOUNT);
+    }
+
+    public Optional<Instant> tapThousandLaunchAt() {
+        return instantAt(KEY_TAP_LAUNCH_AT);
     }
 
     /**
@@ -119,14 +142,18 @@ public class PromotionPolicyConfig {
      * 상태에서 지급하면 출시 시점 이미 5개 이상인 유저 전원에게 나가고, 그 돈은 회수되지 않는다.
      */
     public Optional<Instant> launchAt() {
-        String raw = resolve(KEY_LAUNCH_AT);
+        return instantAt(KEY_LAUNCH_AT);
+    }
+
+    private Optional<Instant> instantAt(String key) {
+        String raw = resolve(key);
         if (raw == null || raw.isBlank()) {
             return Optional.empty();
         }
         try {
             return Optional.of(Instant.parse(raw.trim()));
         } catch (DateTimeParseException exception) {
-            log.error("Invalid {}; promotion will not be granted. value={}", KEY_LAUNCH_AT, raw, exception);
+            log.error("Invalid {}; promotion will not be granted. value={}", key, raw, exception);
             return Optional.empty();
         }
     }
@@ -155,6 +182,19 @@ public class PromotionPolicyConfig {
         } catch (Exception exception) {
             log.error("Failed to read {}; promotion will not be granted", KEY_EXCLUDED_USER_IDS, exception);
             return Optional.empty();
+        }
+    }
+
+    private long positiveLong(String key) {
+        String raw = resolve(key).trim();
+        try {
+            long value = Long.parseLong(raw);
+            if (value <= 0) {
+                throw new IllegalStateException(key + " must be positive");
+            }
+            return value;
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException(key + " must be a number", exception);
         }
     }
 

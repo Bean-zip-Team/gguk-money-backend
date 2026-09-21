@@ -120,6 +120,23 @@ public class KeycapBoxAccount {
         return adOpenUsedCount < adLimit;
     }
 
+    /**
+     * 일괄 개봉으로 상자를 소모한다 (BEA-280).
+     *
+     * <p>무료·광고 카운터를 건드리지 않는다. 개봉 주기 제한을 우회하는 것이 이 보상의 내용이라
+     * 소모 이력을 그 카운터에 섞으면 다음 주기 계산이 틀어진다.
+     *
+     * @return 실제로 소모한 개수. 보유량이 요청보다 적으면 보유량만큼이다.
+     */
+    public int consumeForBulkOpen(int requested) {
+        if (requested <= 0) {
+            return 0;
+        }
+        int consumed = Math.min(boxBalance, requested);
+        boxBalance -= consumed;
+        return consumed;
+    }
+
     public void consumeFreeOpen(int freeLimit) {
         validateLimit("freeLimit", freeLimit);
         if (!hasBox()) {

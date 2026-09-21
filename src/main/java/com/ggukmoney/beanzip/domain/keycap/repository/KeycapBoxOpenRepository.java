@@ -29,6 +29,22 @@ public interface KeycapBoxOpenRepository extends JpaRepository<KeycapBoxOpen, Lo
 
     boolean existsByAdRewardId(String adRewardId);
 
+    /** 일괄 개봉 수령 여부. 행이 있으면 이미 받은 것이다 (BEA-280). */
+    boolean existsByUserIdAndOpenMethod(UUID userId, KeycapBoxOpen.OpenMethod openMethod);
+
+    @Query("""
+            select boxOpen
+            from KeycapBoxOpen boxOpen
+            join fetch boxOpen.keycap
+            where boxOpen.user.id = :userId
+              and boxOpen.openMethod = :openMethod
+            order by boxOpen.id asc
+            """)
+    List<KeycapBoxOpen> findAllByUserIdAndOpenMethodWithKeycap(
+            @Param("userId") UUID userId,
+            @Param("openMethod") KeycapBoxOpen.OpenMethod openMethod
+    );
+
     @Query("""
             select boxOpen
             from KeycapBoxOpen boxOpen

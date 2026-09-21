@@ -91,7 +91,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
     }
 
     @Test
-    void submitsFullBalanceCashoutAndZeroesBalance() throws Exception {
+    void debitsOnlyTheRedeemablePortionAndLeavesTheRemainder() throws Exception {
         AppUser user = registerUser("cashout-tester-3");
         pointAccountService.credit(user.getId(), 134);
         TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
@@ -100,14 +100,15 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.pointAmount").value(134))
+                .andExpect(jsonPath("$.data.pointAmount").value(100))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointBalance").value(0));
+                // rate 0.02 라 100P 만 빠지고 34P 가 남는다. 전에는 134P 를 전부 빼고 2P 를 줬다.
+                .andExpect(jsonPath("$.data.pointBalance").value(34));
     }
 
     @Test
@@ -153,14 +154,15 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header("Idempotency-Key", idempotencyKey))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.cashoutId").value(firstCashoutId))
-                .andExpect(jsonPath("$.data.pointAmount").value(134))
+                .andExpect(jsonPath("$.data.pointAmount").value(100))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(get("/api/cashouts/quote")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointBalance").value(0));
+                // 중복 제출이 한 번만 차감했다는 증거. 두 번 빠졌다면 34P 가 안 남는다.
+                .andExpect(jsonPath("$.data.pointBalance").value(34));
     }
 
     @Test
@@ -224,7 +226,7 @@ class CashoutApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.cashoutId").value(cashoutId))
-                .andExpect(jsonPath("$.data.pointAmount").value(134))
+                .andExpect(jsonPath("$.data.pointAmount").value(100))
                 .andExpect(jsonPath("$.data.tossPointAmount").value(2))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.data.completedAt").doesNotExist());

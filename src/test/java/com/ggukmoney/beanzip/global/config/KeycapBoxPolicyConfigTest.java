@@ -42,11 +42,14 @@ class KeycapBoxPolicyConfigTest {
                 .containsOnlyKeys(
                         KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
                         KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                        KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT
+                        KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                        KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT
                 )
                 .containsEntry(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, "3600")
                 .containsEntry(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, "2")
-                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "6");
+                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "6")
+                // 일괄 개봉 상한 (BEA-280). 예산 방어값이 아니라 체감·연출 기준으로 고른 값이다.
+                .containsEntry(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, "30");
     }
 
     @Test

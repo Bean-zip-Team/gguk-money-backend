@@ -31,4 +31,9 @@ public interface RankingSeasonRepository extends JpaRepository<RankingSeason, Lo
             RankingSeasonStatus status,
             Instant endsAt
     );
+
+    Optional<RankingSeason> findFirstByRankingTypeAndStatusOrderByEndsAtDesc(
+            RankingType rankingType,
+            RankingSeasonStatus status
+    );
 }

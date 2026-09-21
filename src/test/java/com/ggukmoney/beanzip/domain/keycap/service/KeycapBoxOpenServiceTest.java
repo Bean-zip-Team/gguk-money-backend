@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxOpen;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
+import com.ggukmoney.beanzip.domain.promotion.service.KeycapFiveCompletionTrigger;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxOpenRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
@@ -65,6 +66,7 @@ class KeycapBoxOpenServiceTest {
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final BoosterGrantService boosterGrantService = mock(BoosterGrantService.class);
     private final PromotionGrantIssuer promotionGrantIssuer = mock(PromotionGrantIssuer.class);
+    private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger = mock(KeycapFiveCompletionTrigger.class);
     private static final Instant FIXED_NOW = Instant.parse("2026-07-16T00:10:00Z");
     private static final Duration OPEN_CYCLE_DURATION = Duration.ofHours(1);
     private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
@@ -83,6 +85,7 @@ class KeycapBoxOpenServiceTest {
             pointLedgerService,
             boosterGrantService,
             promotionGrantIssuer,
+            keycapFiveCompletionTrigger,
             new NoOpTransactionManager(),
             clock
     );
@@ -473,7 +476,8 @@ class KeycapBoxOpenServiceTest {
                 .thenReturn(Optional.empty());
         when(userService.getById(userId)).thenReturn(user);
         when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(12L);
-        when(keycapRepository.countByActiveTrue()).thenReturn(12L);
+        when(userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(userId, UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX)).thenReturn(12L);
+        when(keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX)).thenReturn(12L);
         when(pointLedgerService.isAlreadyRecorded(eq(userId), any(UUID.class))).thenReturn(false);
         when(pointAccountService.credit(userId, 1)).thenReturn(pointAccount);
         when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -500,8 +504,39 @@ class KeycapBoxOpenServiceTest {
                 .thenReturn(Optional.empty());
         when(userService.getById(userId)).thenReturn(user);
         when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(12L);
-        when(keycapRepository.countByActiveTrue()).thenReturn(12L);
+        when(userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(userId, UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX)).thenReturn(12L);
+        when(keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX)).thenReturn(12L);
         when(pointLedgerService.isAlreadyRecorded(eq(userId), any(UUID.class))).thenReturn(true);
+        when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(response(true));
+
+        service.open(userId, idempotencyKey, request);
+
+        verify(pointAccountService, never()).credit(any(UUID.class), anyLong());
+        verify(pointLedgerService, never()).recordCredit(any(), any(), anyLong(), any(), any());
+    }
+
+    /**
+     * 상자 키캡 13종과 이벤트 키캡 1종을 완성한 유저. 완성 키캡은 14개지만 상자 키캡은 아직 한 종이 남았다.
+     * 완성 개수를 전체로 세면 상자 14종을 다 모은 것으로 잘못 판정해 보너스가 나간다(BEA-285).
+     */
+    @Test
+    void skipsAllCompleteBonusWhenEventKeycapFillsTheLastSlot() {
+        AppUser user = user(userId);
+        KeycapBoxAccount account = account(user, 1, 1);
+        Keycap keycap = keycap(1);
+        KeycapBoxOpenRequest request = new KeycapBoxOpenRequest(KeycapBoxOpen.OpenMethod.FREE, null);
+        when(keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(userId, idempotencyKey))
+                .thenReturn(Optional.empty());
+        when(keycapBoxAccountService.refreshOpenCycleForUpdate(userId, FIXED_NOW, OPEN_CYCLE_DURATION)).thenReturn(account);
+        when(keycapRepository.findIncompleteActiveRewardCandidates(userId)).thenReturn(List.of(keycap));
+        when(keycapRewardSelector.select(List.of(keycap))).thenReturn(keycap);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, keycap.getId()))
+                .thenReturn(Optional.empty());
+        when(userService.getById(userId)).thenReturn(user);
+        when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(14L);
+        when(userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(userId, UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX)).thenReturn(13L);
+        when(keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX)).thenReturn(14L);
         when(keycapBoxOpenRepository.save(any(KeycapBoxOpen.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(keycapBoxMapper.mapToOpenResponse(any(KeycapBoxOpen.class))).thenReturn(response(true));
 

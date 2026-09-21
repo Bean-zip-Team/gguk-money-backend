@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
+import com.ggukmoney.beanzip.domain.promotion.service.KeycapFiveCompletionTrigger;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionTriggerContext;
 import com.ggukmoney.beanzip.domain.keycap.dto.mapper.KeycapBoxMapper;
@@ -63,6 +64,7 @@ public class KeycapBoxOpenService {
     private final BoosterGrantService boosterGrantService;
 
     private final PromotionGrantIssuer promotionGrantIssuer;
+    private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
 
@@ -108,12 +110,9 @@ public class KeycapBoxOpenService {
             validateFreeOpenResources(account);
         }
 
-        List<Keycap> candidates = keycapRepository.findIncompleteActiveRewardCandidates(userId);
-        if (candidates.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "KEYCAP_REWARD_NOT_AVAILABLE");
-        }
+        // 소모보다 먼저 확인한다. 후보가 없는데 개봉권을 쓰면 그대로 날아간다.
+        List<Keycap> candidates = requireRewardCandidates(userId);
 
-        Keycap selected = keycapRewardSelector.select(candidates);
         if (isAdOpen) {
             account.consumeAdOpen(keycapBoxPolicyConfig.adOpenLimit());
         } else {
@@ -121,6 +120,36 @@ public class KeycapBoxOpenService {
         }
 
         AppUser user = userService.getById(userId);
+        KeycapBoxOpen boxOpen = drawAndRecord(
+                user, request.openMethod(), idempotencyKey, requestHash,
+                normalizeAdRewardId(request.adRewardId()), acceptedAt, candidates);
+
+        KeycapBoxOpenResponse response = keycapBoxMapper.mapToOpenResponse(boxOpen);
+        log.info("Keycap box opened: userId={} selectedKeycapId={} responseKeycapId={} responseImageUrl={}",
+                userId, boxOpen.getKeycap().getId(), response.keycapId(), response.imageUrl());
+        return response;
+    }
+
+    /**
+     * 상자 1개를 열어 조각을 지급하고 개봉 이력을 남긴다.
+     *
+     * <p>단건 개봉과 일괄 개봉(BEA-280)이 공유한다. 개봉 주기·무료/광고 횟수 검사는 <b>여기에
+     * 없다</b> — 호출자가 책임진다. 일괄 개봉은 그 제한을 우회하는 것이 보상의 내용이기 때문이다.
+     *
+     * <p>후보 목록은 호출자가 넘긴다. 단건 개봉은 개봉권을 소모하기 <b>전에</b> 확인해야 하고,
+     * 일괄 개봉은 완성된 종이 빠지도록 매 회 다시 조회해야 해서 조회 시점이 서로 다르다.
+     */
+    KeycapBoxOpen drawAndRecord(
+            AppUser user,
+            KeycapBoxOpen.OpenMethod openMethod,
+            String idempotencyKey,
+            String requestHash,
+            String adRewardId,
+            Instant acceptedAt,
+            List<Keycap> candidates
+    ) {
+        UUID userId = user.getId();
+        Keycap selected = keycapRewardSelector.select(candidates);
         UserKeycap userKeycap = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId())
                 .orElseGet(() -> UserKeycap.createInProgress(user, selected));
         int shardCountBefore = userKeycap.getShardCount();
@@ -133,29 +162,26 @@ public class KeycapBoxOpenService {
 
         if (completedNow) {
             long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);
-            awardAllCompleteBonusIfEligible(userId, user, completedCount);
+            awardAllCompleteBonusIfEligible(userId, user);
             promotionGrantIssuer.issueIfEligible(
+                    keycapFiveCompletionTrigger,
                     PromotionTriggerContext.keycapCompleted(user, completedCount, acceptedAt));
         }
 
-        KeycapBoxOpen boxOpen = KeycapBoxOpen.createFor(
-                user,
-                request.openMethod(),
-                selected,
-                grantedShardCount,
-                idempotencyKey,
-                requestHash,
-                normalizeAdRewardId(request.adRewardId()),
-                completedNow,
-                acceptedAt
-        );
-        KeycapBoxOpenResponse response = keycapBoxMapper.mapToOpenResponse(keycapBoxOpenRepository.save(boxOpen));
-        log.info(
-                "Keycap box opened: userId={} candidateCount={} selectedKeycapId={} selectedCode={} selectedImageUrl={} responseKeycapId={} responseImageUrl={}",
-                userId, candidates.size(), selected.getId(), selected.getCode(), selected.getImageUrl(),
-                response.keycapId(), response.imageUrl()
-        );
-        return response;
+        return keycapBoxOpenRepository.save(KeycapBoxOpen.createFor(
+                user, openMethod, selected, grantedShardCount,
+                idempotencyKey, requestHash, adRewardId, completedNow, acceptedAt));
+    }
+
+    /**
+     * 지급 가능한 키캡 후보. 완성된 종은 빠진다 — 연속 개봉에서 이미 완성한 키캡이 또 뽑히면 안 된다.
+     */
+    List<Keycap> requireRewardCandidates(UUID userId) {
+        List<Keycap> candidates = keycapRepository.findIncompleteActiveRewardCandidates(userId);
+        if (candidates.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "KEYCAP_REWARD_NOT_AVAILABLE");
+        }
+        return candidates;
     }
 
     /**
@@ -170,9 +196,18 @@ public class KeycapBoxOpenService {
                 .intValueExact();
     }
 
-    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user, long completedCount) {
-        long activeCatalogCount = keycapRepository.countByActiveTrue();
-        if (activeCatalogCount == 0 || completedCount < activeCatalogCount) {
+    /**
+     * 전체 완성 보너스는 상자 풀({@code BOX})만 보고 판정한다(BEA-285).
+     *
+     * <p>기준 개수와 완성 개수를 <b>둘 다</b> BOX 로 센다. 기준만 BOX 로 바꾸면 이벤트 키캡이 상자 키캡 한 종을
+     * 대신 채워, 상자 키캡을 다 모으지 않았는데도 보너스가 나간다. 키캡 5개 미션은 이벤트 키캡도 세므로
+     * 호출부의 완성 개수는 미션 판정에만 그대로 넘긴다.
+     */
+    private void awardAllCompleteBonusIfEligible(UUID userId, AppUser user) {
+        long boxCatalogCount = keycapRepository.countByAcquisitionTypeAndActiveTrue(Keycap.AcquisitionType.BOX);
+        long completedBoxCount = userKeycapRepository.countByUserIdAndStatusAndKeycapAcquisitionType(
+                userId, UserKeycap.Status.COMPLETED, Keycap.AcquisitionType.BOX);
+        if (boxCatalogCount == 0 || completedBoxCount < boxCatalogCount) {
             return;
         }
 

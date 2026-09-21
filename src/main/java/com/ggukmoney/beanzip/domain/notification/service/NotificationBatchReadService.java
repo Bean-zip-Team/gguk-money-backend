@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class NotificationBatchReadService {
 
     static final int PAGE_SIZE = 100;
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final NotificationPreferenceRepository preferenceRepository;
     private final AuthIdentityRepository authIdentityRepository;
@@ -79,6 +81,23 @@ public class NotificationBatchReadService {
         boosterGrantRepository.countByUserIdsAndGrantDate(ids, date)
                 .forEach(row -> boosterCounts.put(row.getUserId(), row.getGrantCount()));
         return new NotificationPageData(identities, validTapUserIds, boosterCounts);
+    }
+
+    public Set<UUID> findSentUserIdsSinceStartOfDay(
+            Collection<UUID> userIds,
+            NotificationType type,
+            LocalDate date
+    ) {
+        if (userIds.isEmpty()) {
+            return Set.of();
+        }
+        List<UUID> ids = List.copyOf(new LinkedHashSet<>(userIds));
+        return new LinkedHashSet<>(deliveryRepository.findUserIdsWithRecentDelivery(
+                ids,
+                type,
+                NotificationDeliveryStatus.SENT,
+                date.atStartOfDay(KST).toInstant()
+        ));
     }
 
     public Optional<RankPageData> loadRankPage(Collection<UUID> userIds) {

@@ -7,6 +7,7 @@ import com.ggukmoney.beanzip.domain.ranking.event.RankingWeeklySeasonActivatedEv
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardSnapshotService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.ApplicationEventPublisher;
@@ -35,6 +36,7 @@ public class RankingSeasonService {
     private final RankingSeasonRepository seasonRepository;
     private final RankingSeasonLockRepository seasonLockRepository;
     private final RankingEntryRepository entryRepository;
+    private final WeeklyRankingRewardSnapshotService rewardSnapshotService;
     private final RankingProperties properties;
     private final ObjectProvider<RankingBackfillService> backfillServiceProvider;
     private final PlatformTransactionManager transactionManager;
@@ -173,6 +175,7 @@ public class RankingSeasonService {
         entryRepository.snapshotFinalRanks(season.getId(), closedAt);
         RankingSeason refreshed = seasonRepository.findById(season.getId())
                 .orElseThrow(() -> new IllegalStateException("ranking season not found seasonId=" + season.getId()));
+        rewardSnapshotService.snapshot(refreshed, closedAt);
         refreshed.close(closedAt);
     }
 

@@ -56,6 +56,55 @@ class NotificationDeliveryPersistenceServiceTest {
     );
 
     @Test
+    void systemBoostPreparesOneStepDropWithExistingRankTypeAndCampaign() {
+        UUID userId = UUID.randomUUID();
+        String key = "RANK_CHANGE:SYSTEM_RANKING_BOOST:1:2026-07-25:" + userId;
+        NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, key);
+        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
+                .thenReturn(Optional.of(agreed(userId, NotificationType.RANK_CHANGE)));
+        when(deliveryRepository.insertPendingIfAbsent(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq("RANK_CHANGE"),
+                org.mockito.ArgumentMatchers.eq(key), org.mockito.ArgumentMatchers.eq("RANK_SET"),
+                org.mockito.ArgumentMatchers.eq("{\"currentRank\":2,\"rankChange\":1,\"direction\":\"DOWN\"}"),
+                org.mockito.ArgumentMatchers.any())).thenReturn(1);
+        when(deliveryRepository.findByDedupeKey(key)).thenReturn(Optional.of(pending));
+        Optional<?> result = ReflectionTestUtils.invokeMethod(service, "prepareSystemRankingBoost",
+                userId, 1L, LocalDate.of(2026, 7, 25), 1L, 2L);
+        assertThat(result.orElseThrow()).isEqualTo(pending);
+    }
+
+    @Test
+    void ordinaryOneStepDropRemainsSilent() {
+        UUID userId = UUID.randomUUID();
+        NotificationRankState state = NotificationRankState.record(userId, 1L, 1L, Instant.parse("2026-07-25T09:00:00Z"));
+        assertThat(service.prepareScheduledRankChange(userId, weeklySeason(1L), 2L, state, false)).isEmpty();
+        assertThat(state.getBaselineRank()).isEqualTo(2L);
+    }
+
+    @Test
+    void systemBoostRejectsOtherTransitionsAndMissingConsent() {
+        UUID userId = UUID.randomUUID();
+        Optional<?> other = ReflectionTestUtils.invokeMethod(service, "prepareSystemRankingBoost",
+                userId, 1L, LocalDate.of(2026, 7, 25), 2L, 3L);
+        assertThat(other).isEmpty();
+        Optional<?> noConsent = ReflectionTestUtils.invokeMethod(service, "prepareSystemRankingBoost",
+                userId, 1L, LocalDate.of(2026, 7, 25), 1L, 2L);
+        assertThat(noConsent).isEmpty();
+    }
+
+    @Test
+    void systemBoostRespectsExistingSentCooldown() {
+        UUID userId = UUID.randomUUID();
+        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE))
+                .thenReturn(Optional.of(agreed(userId, NotificationType.RANK_CHANGE)));
+        when(deliveryRepository.existsByUserIdAndTypeAndStatusAndRequestedAtAfter(userId, NotificationType.RANK_CHANGE,
+                NotificationDeliveryStatus.SENT, Instant.parse("2026-07-25T04:00:00Z"))).thenReturn(true);
+        Optional<?> result = ReflectionTestUtils.invokeMethod(service, "prepareSystemRankingBoost",
+                userId, 1L, LocalDate.of(2026, 7, 25), 1L, 2L);
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void publicPersistenceMethodsAreTransactional() throws Exception {
         for (String methodName : java.util.List.of(
                 "createPending",
