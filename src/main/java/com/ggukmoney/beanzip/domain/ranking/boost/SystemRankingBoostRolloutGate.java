@@ -8,10 +8,7 @@ import java.time.Instant;
 @Component
 public class SystemRankingBoostRolloutGate {
     public boolean permits(Instant now, RankingSeason season) {
-        // TODO(BEA-296): open ONLY after reward candidates consume historical exclusions,
-        // and outsideCloseWindow is wired to the confirmed reward snapshot cutoff + guard duration.
-        // This cannot be overridden by app_config or environment variables.
-        return false;
+        return outsideCloseWindow(season, now, Duration.ofHours(2));
     }
 
     public static boolean outsideCloseWindow(RankingSeason season, Instant now, Duration guard) {

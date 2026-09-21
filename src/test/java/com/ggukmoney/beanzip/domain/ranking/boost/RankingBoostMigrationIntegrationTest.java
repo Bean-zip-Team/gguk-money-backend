@@ -21,6 +21,7 @@ class RankingBoostMigrationIntegrationTest extends FullStackIntegrationTestSuppo
         assertThat(jdbcTemplate.queryForObject("SELECT column_default FROM information_schema.columns WHERE table_name='ranking_entry' AND column_name='ranking_boost_score'", String.class)).isEqualTo("0");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM pg_constraint WHERE conrelid='ranking_boost_run'::regclass AND conname='uq_ranking_boost_run_date'", Long.class)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT config_value->>'enabled' FROM app_config WHERE config_key=?", String.class, SystemRankingBoostPolicy.KEY)).isEqualTo("false");
+        assertThat(jdbcTemplate.queryForObject("SELECT jsonb_array_length(config_value->'internalUserIds') FROM app_config WHERE config_key=?", Integer.class, SystemRankingBoostPolicy.KEY)).isEqualTo(6);
         jdbcTemplate.update("UPDATE app_config SET config_value = jsonb_set(config_value, '{minimumLeaderScore}', '42') WHERE config_key = ?", SystemRankingBoostPolicy.KEY);
         jdbcTemplate.execute(migration);
         assertThat(jdbcTemplate.queryForObject("SELECT config_value->>'minimumLeaderScore' FROM app_config WHERE config_key=?", String.class, SystemRankingBoostPolicy.KEY)).isEqualTo("42");
