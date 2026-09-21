@@ -10,6 +10,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +41,16 @@ class GlobalExceptionHandlerTest extends FullStackIntegrationTestSupport {
         assertThat(result.getResponse().getContentAsString())
                 .doesNotContain("Authorization")
                 .doesNotContain("Bearer ");
+    }
+
+    @Test
+    void missingStaticResourceIsNotFoundInsteadOfServerError() throws Exception {
+        // NoResourceFoundException 은 ResponseStatusException 이 아니라 ServletException 을 상속한다.
+        // 핸들러를 등록하지 않으면 catch-all 에 걸려 404 가 500 으로 나가고 ERROR 로그가 쌓인다.
+        mockMvc.perform(get("/swagger-ui/"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("COMMON_NOT_FOUND"));
     }
 
     @Test

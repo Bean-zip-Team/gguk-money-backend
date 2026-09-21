@@ -17,6 +17,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -98,6 +99,19 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return simpleFailure(ErrorCode.COMMON_METHOD_NOT_ALLOWED, request, exception);
+    }
+
+    /**
+     * 없는 정적 경로 요청이다. {@code NoResourceFoundException} 은 {@code ResponseStatusException} 이 아니라
+     * {@code ServletException} 을 상속하므로, 등록하지 않으면 catch-all 에 걸려 404 가 500 으로 나간다.
+     * 스택 트레이스까지 ERROR 로 쌓여 5xx 알람이 오탐이 된다.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResourceFoundException(
+            NoResourceFoundException exception,
+            HttpServletRequest request
+    ) {
+        return simpleFailure(ErrorCode.COMMON_NOT_FOUND, request, exception);
     }
 
     @ExceptionHandler(Exception.class)
