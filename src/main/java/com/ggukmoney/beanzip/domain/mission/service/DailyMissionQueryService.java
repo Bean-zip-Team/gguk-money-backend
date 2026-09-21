@@ -136,8 +136,10 @@ public class DailyMissionQueryService {
         Optional<Long> rankUp = hasMissionOfType(definitions, MissionDefinition.MissionType.RANK_UP)
                 ? rankUpSignal.rankUpOf(userId, today)
                 : Optional.empty();
-        boolean notificationAgreed = hasMissionOfType(definitions, MissionDefinition.MissionType.NOTIFICATION_OPT_IN)
-                && notificationOptInSignal.agreed(userId);
+        Optional<Boolean> notificationAgreed =
+                hasMissionOfType(definitions, MissionDefinition.MissionType.NOTIFICATION_OPT_IN)
+                        ? notificationOptInSignal.agreed(userId)
+                        : Optional.empty();
 
         List<Evaluated> evaluated = new ArrayList<>();
         for (MissionDefinitionView definition : definitions) {
@@ -188,14 +190,14 @@ public class DailyMissionQueryService {
             boolean attendedToday,
             long todayTapCount,
             Optional<Long> rankUp,
-            boolean notificationAgreed
+            Optional<Boolean> notificationAgreed
     ) {
         return switch (definition.missionType()) {
             // 앱을 켜면 홈이 오늘 탭 상태를 조회하면서 오늘자 행을 만든다. 그래서 행의 존재가 곧 출석이다.
             case ATTENDANCE -> Optional.of(attendedToday ? 1L : 0L);
             case TAP_COUNT -> Optional.of(todayTapCount);
             case RANK_UP -> rankUp;
-            case NOTIFICATION_OPT_IN -> Optional.of(notificationAgreed ? 1L : 0L);
+            case NOTIFICATION_OPT_IN -> notificationAgreed.map(agreed -> agreed ? 1L : 0L);
         };
     }
 

@@ -63,7 +63,7 @@ class DailyMissionQueryServiceTest {
         ));
         lenient().when(userTapDailyRepository.findByUserIdAndTapDate(userId, TODAY)).thenReturn(Optional.empty());
         lenient().when(rankUpSignal.rankUpOf(eq(userId), any())).thenReturn(Optional.empty());
-        lenient().when(notificationOptInSignal.agreed(userId)).thenReturn(false);
+        lenient().when(notificationOptInSignal.agreed(userId)).thenReturn(Optional.of(false));
         lenient().when(userTapDailyRepository.findRecentTapDates(eq(userId), eq(TODAY), any(Pageable.class)))
                 .thenReturn(List.of());
         lenient().when(missionRewardService.rewardsOf(eq(userId), anyList())).thenReturn(Map.of());
@@ -147,7 +147,7 @@ class DailyMissionQueryServiceTest {
 
     @Test
     void showsOneTimeMissionsInTheListButKeepsThemOutOfTheDailySummary() {
-        when(notificationOptInSignal.agreed(userId)).thenReturn(true);
+        when(notificationOptInSignal.agreed(userId)).thenReturn(Optional.of(true));
         givenTodayTaps(0);
 
         DailyMissionQueryService.DailyMissionFeed feed = service.feedOf(userId);
@@ -162,6 +162,16 @@ class DailyMissionQueryServiceTest {
     }
 
     @Test
+    void hidesTheOptInMissionWhenThereIsNoWayToAgree() {
+        // 동의 토글이 내려가지 않는 상태다. 그대로 두면 켤 방법이 없는 미션을 계속 보여 주게 된다.
+        when(notificationOptInSignal.agreed(userId)).thenReturn(Optional.empty());
+
+        assertThat(service.feedOf(userId).missions())
+                .extracting(MissionListResponse.Mission::code)
+                .doesNotContain("NOTIFICATION_OPT_IN");
+    }
+
+    @Test
     void marksAchievedMissionsClaimableWithTheRewardIdentifierToClaimWith() {
         givenTodayTaps(700);
 
@@ -173,7 +183,7 @@ class DailyMissionQueryServiceTest {
 
     @Test
     void hidesAOneTimeMissionOnceItsRewardWasClaimed() {
-        when(notificationOptInSignal.agreed(userId)).thenReturn(true);
+        when(notificationOptInSignal.agreed(userId)).thenReturn(Optional.of(true));
         when(missionRewardService.rewardsOf(eq(userId), anyList()))
                 .thenReturn(Map.of(
                         new MissionRewardService.RewardKey("NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY),
@@ -188,7 +198,7 @@ class DailyMissionQueryServiceTest {
     @Test
     void keepsARewardClaimableAfterTheConditionStopsHolding() {
         // 알림을 허용해 보상이 생긴 뒤 다시 껐다. 이미 달성한 보상은 받을 수 있어야 한다.
-        when(notificationOptInSignal.agreed(userId)).thenReturn(false);
+        when(notificationOptInSignal.agreed(userId)).thenReturn(Optional.of(false));
         when(missionRewardService.rewardsOf(eq(userId), anyList()))
                 .thenReturn(Map.of(
                         new MissionRewardService.RewardKey("NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY),

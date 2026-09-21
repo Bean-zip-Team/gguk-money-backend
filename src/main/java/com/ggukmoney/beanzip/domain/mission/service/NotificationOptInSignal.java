@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -10,5 +11,11 @@ import java.util.UUID;
  */
 public interface NotificationOptInSignal {
 
-    boolean agreed(UUID userId);
+    /**
+     * 비어 있으면 <b>오늘은 판정하지 않는다</b>는 뜻이고, 미션이 목록에서 빠진다.
+     *
+     * <p>동의를 받을 수단 자체가 없는 상태가 여기 해당한다. 그때 미션을 그대로 보여 주면 유저는
+     * 켤 방법이 없는 미션을 영원히 미완료로 보게 된다.
+     */
+    Optional<Boolean> agreed(UUID userId);
 }

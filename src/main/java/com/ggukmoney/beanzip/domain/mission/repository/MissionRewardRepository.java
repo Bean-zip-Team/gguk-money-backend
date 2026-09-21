@@ -82,6 +82,60 @@ public interface MissionRewardRepository extends JpaRepository<MissionReward, Lo
     );
 
     /**
+     * 오늘 안에 받아야 할 보상이 남은 유저. 저녁 알림 대상을 고르는 데 쓴다(BEA-299).
+     *
+     * <p>오늘 기간의 보상만 센다. 단발성 보상은 만료가 없어서, 한 번 달성하고 받지 않은 유저가
+     * 매일 밤 대상으로 잡히기 때문이다. 알림 동의 미션이 바로 그런 경우다 — 알림에 동의한 유저만
+     * 발송 대상이므로, 오늘 할 일을 다 끝낸 유저에게도 영원히 알림이 가게 된다.
+     *
+     * <p>이미 자정을 넘긴 보상도 뺀다. 자정 배치가 아직 돌지 않았을 뿐 받을 수 없는 보상인데,
+     * 이걸로 알림을 보내면 들어와서 받을 게 없다.
+     */
+    @Query("""
+            select distinct reward.userId
+            from MissionReward reward
+            where reward.userId in :userIds
+              and reward.periodKey = :periodKey
+              and reward.status = com.ggukmoney.beanzip.domain.mission.entity.MissionReward.Status.CLAIMABLE
+              and (reward.expiresAt is null or reward.expiresAt > :now)
+            """)
+    List<UUID> findUserIdsWithClaimableRewardsInPeriod(
+            @Param("userIds") List<UUID> userIds,
+            @Param("periodKey") String periodKey,
+            @Param("now") Instant now
+    );
+
+    /**
+     * 유저별로 그 기간에 쌓인 보상 행의 수. 지정한 미션만 센다.
+     *
+     * <p>미션 코드를 받는 이유는 알림 대상을 고를 때 기준이 되는 미션과 세는 미션이 같아야 하기
+     * 때문이다. 기준에서 뺀 미션의 보상이 이 수에 섞이면 그 한 건이 다른 미션 한 건의 자리를 채운다.
+     *
+     * <p>"달성한 미션 수"와 정확히 같지는 않다. 보상 행은 미션 목록을 열거나 수령을 부를 때 만들어지므로,
+     * 조건을 채웠지만 미션 화면을 한 번도 열지 않은 유저는 행이 없다. 알림 대상 선정에서는 그래도 맞는
+     * 방향으로 동작한다 — 그런 유저는 받아 갈 보상이 남아 있어 알림을 받아야 한다.
+     */
+    @Query("""
+            select reward.userId as userId, count(reward) as rewardCount
+            from MissionReward reward
+            where reward.userId in :userIds
+              and reward.periodKey = :periodKey
+              and reward.missionCode in :missionCodes
+            group by reward.userId
+            """)
+    List<UserRewardCount> countRewardsInPeriod(
+            @Param("userIds") List<UUID> userIds,
+            @Param("periodKey") String periodKey,
+            @Param("missionCodes") List<String> missionCodes
+    );
+
+    interface UserRewardCount {
+        UUID getUserId();
+
+        long getRewardCount();
+    }
+
+    /**
      * 자정 배치가 마감할 금액. UPDATE 전에 한 번 읽는다.
      *
      * <p>{@code expires_at} 이 없는 단발성 보상은 비교에서 자연히 빠진다.

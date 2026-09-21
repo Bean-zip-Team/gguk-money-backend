@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
+import com.ggukmoney.beanzip.domain.mission.service.DailyMissionNudgeService;
 import com.ggukmoney.beanzip.domain.notification.client.TossSmartMessageClient;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
@@ -18,12 +19,15 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.lang.reflect.Method;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.LocalDate;
 import java.time.Duration;
 import java.util.List;
@@ -44,6 +48,10 @@ import static org.mockito.Mockito.when;
 
 class NotificationDeliveryServiceTest {
 
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC);
+    private static final DailyMissionNudgeService.NudgeCriteria CRITERIA =
+            new DailyMissionNudgeService.NudgeCriteria("2026-07-25", List.of("ATTENDANCE"));
+
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
     private final NotificationPreferenceRepository preferenceRepository = mock(NotificationPreferenceRepository.class);
     private final AuthIdentityRepository authIdentityRepository = mock(AuthIdentityRepository.class);
@@ -57,11 +65,13 @@ class NotificationDeliveryServiceTest {
             "clickmoney-asfasf",
             "TPL_BOOSTER",
             "TPL_DAILY",
+            "TPL_MISSION",
             "TPL_UNUSED",
             "clickmoney-box"
     );
     private final TossSmartMessageClient smartMessageClient = mock(TossSmartMessageClient.class);
     private final NotificationBatchReadService batchReadService = mock(NotificationBatchReadService.class);
+    private final DailyMissionNudgeService dailyMissionNudgeService = mock(DailyMissionNudgeService.class);
     private final NotificationDeliveryService service = new NotificationDeliveryService(
             persistenceService,
             preferenceRepository,
@@ -72,7 +82,9 @@ class NotificationDeliveryServiceTest {
             keycapBoxPolicyConfig,
             templateProperties,
             smartMessageClient,
-            batchReadService
+            batchReadService,
+            dailyMissionNudgeService,
+            CLOCK
     );
 
     @Test
@@ -83,6 +95,7 @@ class NotificationDeliveryServiceTest {
                 "evaluateRankChange",
                 "sendMorningNotifications",
                 "sendEveningNotifications",
+                "sendDailyMissionNotifications",
                 "sendKeycapBoxOpenAvailableNotifications"
         )) {
             Method method = java.util.Arrays.stream(NotificationDeliveryService.class.getMethods())
@@ -127,9 +140,11 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", "TPL_BOOSTER", null, null, null),
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", "TPL_BOOSTER", null, null, null, null),
                     smartMessageClient,
-                    batchReadService
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
             );
             stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
 
@@ -450,6 +465,126 @@ class NotificationDeliveryServiceTest {
     }
 
     @Nested
+    class DailyMission {
+
+        private final LocalDate today = LocalDate.parse("2026-07-25");
+
+        @Test
+        void sendsOnlyToUsersTheNudgeServicePicked() {
+            UUID nudgedUserId = UUID.randomUUID();
+            UUID doneUserId = UUID.randomUUID();
+            NotificationDelivery pending = pending(nudgedUserId, NotificationType.DAILY_MISSION, "mission-nudge");
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(List.of(
+                    sendableCandidate(1L, nudgedUserId),
+                    sendableCandidate(2L, doneUserId)
+            ));
+            when(dailyMissionNudgeService.criteriaOf(today)).thenReturn(CRITERIA);
+            when(dailyMissionNudgeService.usersNeedingNudge(
+                    CRITERIA, List.of(nudgedUserId, doneUserId), CLOCK.instant()
+            )).thenReturn(Set.of(nudgedUserId));
+            when(batchReadService.loadProviderUserIds(List.of(nudgedUserId, doneUserId)))
+                    .thenReturn(Map.of(nudgedUserId, "toss-user-1", doneUserId, "toss-user-1"));
+            when(persistenceService.createPending(
+                    nudgedUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + nudgedUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenReturn(Optional.of(pending));
+            stubSuccessfulToss(nudgedUserId, pending);
+
+            assertThat(service.sendDailyMissionNotifications(today)).containsExactly(pending);
+
+            // 오늘 미션을 다 받아 간 유저에게는 보내지 않는다. 할 일이 없는데 오는 알림이기 때문이다.
+            verify(persistenceService, never()).createPending(
+                    doneUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + doneUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            );
+        }
+
+        @Test
+        void oneFailingUserDoesNotStopTheRestOfThePage() {
+            UUID failingUserId = UUID.randomUUID();
+            UUID nextUserId = UUID.randomUUID();
+            NotificationDelivery pending = pending(nextUserId, NotificationType.DAILY_MISSION, "mission-next");
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(List.of(
+                    sendableCandidate(1L, failingUserId),
+                    sendableCandidate(2L, nextUserId)
+            ));
+            when(dailyMissionNudgeService.criteriaOf(today)).thenReturn(CRITERIA);
+            when(dailyMissionNudgeService.usersNeedingNudge(
+                    CRITERIA, List.of(failingUserId, nextUserId), CLOCK.instant()
+            )).thenReturn(Set.of(failingUserId, nextUserId));
+            when(batchReadService.loadProviderUserIds(List.of(failingUserId, nextUserId)))
+                    .thenReturn(Map.of(failingUserId, "toss-user-1", nextUserId, "toss-user-1"));
+            when(persistenceService.createPending(
+                    failingUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + failingUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenThrow(new IllegalStateException("boom"));
+            when(persistenceService.createPending(
+                    nextUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + nextUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenReturn(Optional.of(pending));
+            stubSuccessfulToss(nextUserId, pending);
+
+            assertThat(service.sendDailyMissionNotifications(today)).containsExactly(pending);
+        }
+
+        // 커서가 전진하지 않으면 첫 페이지를 영원히 다시 읽는다. 제한이 없으면 실패가 아니라 멈춤으로 나타난다.
+        @Test
+        @Timeout(10)
+        void walksEveryKeysetPageOfCandidates() {
+            List<NotificationPreferenceRepository.SendableCandidate> firstPage = candidates(1, 100);
+            List<NotificationPreferenceRepository.SendableCandidate> secondPage = candidates(101, 101);
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(firstPage);
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 100L)).thenReturn(secondPage);
+            when(dailyMissionNudgeService.usersNeedingNudge(any(), any(), any())).thenReturn(Set.of());
+            when(batchReadService.loadProviderUserIds(any())).thenReturn(Map.of());
+
+            assertThat(service.sendDailyMissionNotifications(today)).isEmpty();
+
+            verify(batchReadService).findCandidates(NotificationType.DAILY_MISSION, 100L);
+            verify(persistenceService, never()).createPending(any(), any(), anyString(), any(), anyString());
+        }
+
+        @Test
+        void unconfiguredCampaignDoesNotQueryCandidates() {
+            NotificationDeliveryService unconfiguredService = new NotificationDeliveryService(
+                    persistenceService,
+                    preferenceRepository,
+                    authIdentityRepository,
+                    boosterGrantRepository,
+                    tapPolicyConfig,
+                    keycapBoxAccountRepository,
+                    keycapBoxPolicyConfig,
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
+                    smartMessageClient,
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
+            );
+
+            assertThat(unconfiguredService.sendDailyMissionNotifications(today)).isEmpty();
+
+            verify(batchReadService, never()).findCandidates(
+                    org.mockito.ArgumentMatchers.eq(NotificationType.DAILY_MISSION),
+                    org.mockito.ArgumentMatchers.anyLong()
+            );
+            verify(dailyMissionNudgeService, never()).criteriaOf(any());
+            verify(dailyMissionNudgeService, never()).usersNeedingNudge(any(), any(), any());
+        }
+    }
+
+    @Nested
     class KeycapBoxOpenAvailable {
 
         @Test
@@ -462,9 +597,11 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null),
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
                     smartMessageClient,
-                    batchReadService
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
             );
 
             assertThat(unconfiguredService.sendKeycapBoxOpenAvailableNotifications(
@@ -596,6 +733,7 @@ class NotificationDeliveryServiceTest {
             case RANK_CHANGE -> "clickmoney-asfasf";
             case BOOSTER_RECHARGED -> "TPL_BOOSTER";
             case DAILY_REMINDER -> "TPL_DAILY";
+            case DAILY_MISSION -> "TPL_MISSION";
             case BOOSTER_UNUSED -> "TPL_UNUSED";
             case KEYCAP_BOX_OPEN_AVAILABLE -> "clickmoney-box";
         }, Instant.now());
