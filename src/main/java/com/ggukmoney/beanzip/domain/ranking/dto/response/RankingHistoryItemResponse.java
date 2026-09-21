@@ -3,6 +3,8 @@ package com.ggukmoney.beanzip.domain.ranking.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.UUID;
+import com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse.RewardStatus;
 
 @Schema(description = "주간 랭킹 히스토리 항목")
 public record RankingHistoryItemResponse(
@@ -15,6 +17,11 @@ public record RankingHistoryItemResponse(
         @Schema(description = "해당 주간 시즌에서 확정된 내 순위", example = "7")
         Long myFinalRank,
         @Schema(description = "해당 주간 시즌에서 확정된 내 랭킹 점수", example = "950")
-        long myFinalScore
+        long myFinalScore,
+        UUID rewardId,
+        RewardStatus rewardStatus,
+        Long rewardPointAmount,
+        Instant expiresAt,
+        Instant claimedAt
 ) {
 }

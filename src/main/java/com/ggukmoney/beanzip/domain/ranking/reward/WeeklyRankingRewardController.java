@@ -51,9 +51,8 @@ public class WeeklyRankingRewardController {
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수령 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "순위 변동 알림 동의 필요"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보상을 찾을 수 없음"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "수령 기간 만료")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "수령 기간 만료")
     })
     @PostMapping("/{rewardId}/claim")
     public ApiResponse<MyWeeklyRankingRewardResponse> claim(
@@ -63,5 +62,20 @@ public class WeeklyRankingRewardController {
         UUID userId = AuthRequestAttributes.getRequiredUserId(request);
         WeeklyRankingReward reward = claimService.claim(userId, rewardId);
         return ApiResponse.success(queryService.toMyReward(userId, reward));
+    }
+
+    @Operation(summary = "주간 랭킹 수상 결과 열람 기록")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "열람 기록 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보상을 찾을 수 없음")
+    })
+    @PostMapping("/{rewardId}/view")
+    public ApiResponse<Void> markViewed(
+            @Parameter(hidden = true) HttpServletRequest request,
+            @PathVariable UUID rewardId
+    ) {
+        queryService.markViewed(AuthRequestAttributes.getRequiredUserId(request), rewardId);
+        return ApiResponse.success(null);
     }
 }

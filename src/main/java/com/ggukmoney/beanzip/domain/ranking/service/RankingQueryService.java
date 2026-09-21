@@ -11,6 +11,9 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.ProvisionalReward;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.global.util.NameMasker;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -45,6 +48,7 @@ public class RankingQueryService {
     private final RankingEntryRepository entryRepository;
     private final RankingRedisRepository redisRepository;
     private final WeeklyRankingRewardPreviewService rewardPreviewService;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final RankingProperties properties;
     private final Clock clock;
     private final ZoneId businessZoneId;
@@ -198,7 +202,10 @@ public class RankingQueryService {
                         Math.max(firstScore - myScore, 0L),
                         myReward == null ? null : myReward.rewardRank(),
                         myReward == null ? null : myReward.pointAmount(),
-                        rewardPreview.scoreGapToReward()
+                        rewardPreview.scoreGapToReward(),
+                        notificationPreferenceRepository.findByUserIdAndType(me, NotificationType.RANK_CHANGE)
+                                .map(NotificationPreference::isSendable)
+                                .orElse(false)
                 ),
                 totalParticipantCount,
                 rewardPreview.tiers()

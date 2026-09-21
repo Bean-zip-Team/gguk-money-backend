@@ -3,11 +3,16 @@ package com.ggukmoney.beanzip.domain.ranking.reward;
 import com.ggukmoney.beanzip.domain.ranking.boost.RankingBoostRewardExclusions;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
+import com.ggukmoney.beanzip.domain.notification.event.WeeklyRewardAvailableEvent;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +35,9 @@ public class WeeklyRankingRewardSnapshotService {
     private final RankingBoostRewardExclusions exclusions;
     private final RankingEntryRepository entryRepository;
     private final AppUserRepository userRepository;
+    private final NotificationPreferenceRepository preferenceRepository;
     private final WeeklyRankingRewardRepository rewardRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public int snapshot(RankingSeason season, Instant finalizedAt) {
@@ -50,7 +57,7 @@ public class WeeklyRankingRewardSnapshotService {
                 .orElseThrow(() -> new IllegalStateException("weekly ranking reward exclusions unavailable"));
         List<RankingEntryRepository.RankingRewardCandidateRow> candidates = entryRepository.findRewardCandidates(
                 season.getId(), excludedUserIds, policySnapshot.maxRewardRank());
-        Instant expiresAt = season.getEndsAt().plus(7, ChronoUnit.DAYS);
+        Instant expiresAt = finalizedAt.plus(3, ChronoUnit.DAYS);
 
         Map<UUID, AppUser> usersById = userRepository.findAllById(
                         candidates.stream().map(RankingEntryRepository.RankingRewardCandidateRow::userId).toList())
@@ -58,6 +65,8 @@ public class WeeklyRankingRewardSnapshotService {
                 .collect(Collectors.toMap(AppUser::getId, Function.identity()));
 
         List<WeeklyRankingReward> rewards = new ArrayList<>(candidates.size());
+        int missedCount = 0;
+        long missedAmount = 0L;
         for (int index = 0; index < candidates.size(); index++) {
             RankingEntryRepository.RankingRewardCandidateRow candidate = candidates.get(index);
             AppUser user = usersById.get(candidate.userId());
@@ -65,19 +74,31 @@ public class WeeklyRankingRewardSnapshotService {
                 throw new IllegalStateException("reward candidate user disappeared userId=" + candidate.userId());
             }
             int rewardRank = index + 1;
+            long pointAmount = policySnapshot.pointAmount(rewardRank);
+            boolean sendableAtSnapshot = preferenceRepository
+                    .findByUserIdAndType(candidate.userId(), NotificationType.RANK_CHANGE)
+                    .map(NotificationPreference::isSendable)
+                    .orElse(false);
+            if (!sendableAtSnapshot) {
+                missedCount++;
+                missedAmount += pointAmount;
+                continue;
+            }
             rewards.add(WeeklyRankingReward.open(
                     season,
                     user,
                     candidate.sourceFinalRank(),
                     rewardRank,
                     candidate.finalScore(),
-                    policySnapshot.pointAmount(rewardRank),
+                    pointAmount,
                     expiresAt
             ));
         }
         rewardRepository.saveAll(rewards);
-        log.info("Weekly ranking rewards snapshotted seasonId={} enabled=true excludedCount={} rewardCount={}",
-                season.getId(), excludedUserIds.size(), rewards.size());
+        rewards.forEach(reward -> eventPublisher.publishEvent(new WeeklyRewardAvailableEvent(
+                reward.getUser().getId(), season.getCode(), finalizedAt)));
+        log.info("Weekly ranking rewards snapshotted seasonId={} enabled=true excludedCount={} rewardCount={} missedCount={} missedAmount={}",
+                season.getId(), excludedUserIds.size(), rewards.size(), missedCount, missedAmount);
         return rewards.size();
     }
 }

@@ -19,7 +19,9 @@ public record MyRankingResponse(
         @Schema(description = "예상 보상 포인트. 보상권 밖이면 null", example = "5000")
         Long rewardPointAmount,
         @Schema(description = "보상권 진입에 필요한 추가 점수. 보상 제외 또는 정책 미사용 시 null", example = "25")
-        Long scoreGapToReward
+        Long scoreGapToReward,
+        @Schema(description = "현재 순위 변동 알림 전송 동의 여부", example = "true")
+        boolean rankChangeNotificationEnabled
 ) {
 
     public MyRankingResponse(
@@ -29,6 +31,6 @@ public record MyRankingResponse(
             long score,
             long scoreGapToFirst
     ) {
-        this(rank, previousRank, rankChange, score, scoreGapToFirst, null, null, null);
+        this(rank, previousRank, rankChange, score, scoreGapToFirst, null, null, null, false);
     }
 }
