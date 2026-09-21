@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -89,7 +90,7 @@ class NotificationSchedulerTest {
 
         // 락을 잡기도 전에 멈춘다. 끄기로 한 배치가 DB 를 건드릴 이유가 없다.
         verify(dataSource, never()).getConnection();
-        verify(deliveryService, never()).sendDailyMissionNotifications(org.mockito.ArgumentMatchers.any());
+        verify(deliveryService, never()).sendDailyMissionNotifications(any());
     }
 
     @Test
