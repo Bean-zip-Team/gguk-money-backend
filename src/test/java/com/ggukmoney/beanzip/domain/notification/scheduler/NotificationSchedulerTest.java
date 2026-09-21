@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.scheduler;
 
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
+import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -47,7 +48,7 @@ class NotificationSchedulerTest {
 
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
-                dataSource,
+                new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC)
         );
 
@@ -74,7 +75,7 @@ class NotificationSchedulerTest {
 
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
-                dataSource,
+                new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC)
         );
 
@@ -101,7 +102,7 @@ class NotificationSchedulerTest {
         Instant now = Instant.parse("2026-08-03T01:01:00Z");
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
-                dataSource,
+                new AdvisoryLockRunner(dataSource),
                 Clock.fixed(now, ZoneOffset.UTC)
         );
 

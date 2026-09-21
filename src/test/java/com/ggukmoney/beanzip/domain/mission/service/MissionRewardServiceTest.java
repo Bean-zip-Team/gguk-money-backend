@@ -121,7 +121,7 @@ class MissionRewardServiceTest {
     void claimsEveryRewardThatIsStillAliveAndSkipsTheExpiredOnes() {
         MissionReward alive = claimableReward("ATTENDANCE", "2026-09-21", 100, MIDNIGHT);
         MissionReward expired = claimableReward("TAP_500", "2026-09-20", 15, Instant.parse("2026-09-20T15:00:00Z"));
-        when(missionRewardRepository.findClaimablesForUpdate(userId)).thenReturn(List.of(alive, expired));
+        when(missionRewardRepository.findClaimablesForUpdate(userId, NOW)).thenReturn(List.of(alive, expired));
 
         MissionRewardService.ClaimResult result = service.claimAll(userId, NOW);
 

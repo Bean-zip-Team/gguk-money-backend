@@ -148,7 +148,7 @@ public class MissionRewardService {
     /** 미수령 보상을 한 번에 받는다. 시안의 {@code 보상 2개 모두 받기} 가 이 경로다. */
     @Transactional
     public ClaimResult claimAll(UUID userId, Instant now) {
-        List<MissionReward> claimables = missionRewardRepository.findClaimablesForUpdate(userId);
+        List<MissionReward> claimables = missionRewardRepository.findClaimablesForUpdate(userId, now);
         AppUser user = userService.getById(userId);
 
         int claimedCount = 0;
@@ -164,6 +164,19 @@ public class MissionRewardService {
             claimedCount++;
         }
         return new ClaimResult(claimedCount, claimedPointAmount, pointAccountService.getBalance(userId));
+    }
+
+    /**
+     * 자정을 넘긴 미수령 보상을 마감한다. 포인트는 지급하지 않는다.
+     *
+     * <p>한 문장으로 끝낸다. 행마다 분기가 없어 엔티티로 올릴 이유가 없고, 트랜잭션과 락을 짧게
+     * 유지해야 같은 시각에 들어온 수령 요청이 배치 뒤에서 기다리지 않는다.
+     */
+    @Transactional
+    public ExpiryResult expireDueRewards(Instant now) {
+        long expiredPointAmount = missionRewardRepository.sumClaimableExpiredAmount(now);
+        int expiredCount = missionRewardRepository.expireDueRewards(now);
+        return new ExpiryResult(expiredCount, expiredPointAmount);
     }
 
     private long credit(AppUser user, MissionReward reward) {
@@ -209,5 +222,9 @@ public class MissionRewardService {
     }
 
     public record ClaimResult(int claimedCount, long claimedPointAmount, long pointBalance) {
+    }
+
+    /** 자정 배치가 마감한 결과. 소멸 규모를 재는 값이다. */
+    public record ExpiryResult(int expiredCount, long expiredPointAmount) {
     }
 }

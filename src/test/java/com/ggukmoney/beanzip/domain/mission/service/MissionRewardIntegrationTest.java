@@ -67,12 +67,105 @@ class MissionRewardIntegrationTest extends FullStackIntegrationTestSupport {
                 .hasSize(2);
     }
 
+    @Test
+    void closesUnclaimedRewardsThatPassedMidnightAndLeavesTheRestAlone() {
+        UUID userId = savedUserId();
+        missionRewardService.createMissing(
+                userId,
+                List.of(
+                        // 어제 자정에 만료됐어야 할 보상
+                        new MissionRewardService.AchievedMission(
+                                "ATTENDANCE", "2026-09-20", 100, Instant.parse("2026-09-20T15:00:00Z")),
+                        // 오늘 자정에 만료될 보상
+                        new MissionRewardService.AchievedMission("TAP_500", PERIOD_KEY, 15, MIDNIGHT),
+                        // 단발성 보상은 만료가 없다
+                        new MissionRewardService.AchievedMission(
+                                "NOTIFICATION_OPT_IN", MissionReward.ONE_TIME_PERIOD_KEY, 100, null)
+                ),
+                Map.of(),
+                NOW
+        );
+
+        missionRewardService.expireDueRewards(NOW);
+
+        assertThat(missionRewardRepository.findByUserIdAndStatusOrderByAchievedAtDesc(
+                userId, MissionReward.Status.EXPIRED))
+                .extracting(MissionReward::getMissionCode)
+                .containsExactly("ATTENDANCE");
+        assertThat(missionRewardRepository.findByUserIdAndStatusOrderByAchievedAtDesc(
+                userId, MissionReward.Status.CLAIMABLE))
+                .extracting(MissionReward::getMissionCode)
+                .containsExactlyInAnyOrder("TAP_500", "NOTIFICATION_OPT_IN");
+    }
+
+    @Test
+    void doesNotTouchRewardsTheUserAlreadyClaimed() {
+        UUID userId = savedUserId();
+        MissionReward reward = missionRewardService.createMissing(
+                userId,
+                List.of(new MissionRewardService.AchievedMission(
+                        "ATTENDANCE", "2026-09-20", 100, Instant.parse("2026-09-20T15:00:00Z"))),
+                Map.of(),
+                Instant.parse("2026-09-20T05:00:00Z")
+        ).get(new MissionRewardService.RewardKey("ATTENDANCE", "2026-09-20"));
+        missionRewardService.claim(userId, reward.getPublicId(), Instant.parse("2026-09-20T06:00:00Z"));
+
+        missionRewardService.expireDueRewards(NOW);
+
+        assertThat(missionRewardRepository.findByUserIdAndStatusOrderByAchievedAtDesc(
+                userId, MissionReward.Status.EXPIRED)).isEmpty();
+    }
+
+    @Test
+    void marksNothingTwiceWhenTheBatchRunsAgain() {
+        UUID userId = savedUserId();
+        missionRewardService.createMissing(
+                userId,
+                List.of(new MissionRewardService.AchievedMission(
+                        "ATTENDANCE", "2026-09-20", 100, Instant.parse("2026-09-20T15:00:00Z"))),
+                Map.of(),
+                NOW
+        );
+
+        missionRewardService.expireDueRewards(NOW);
+        // 배치가 두 번 돌아도(재시작·중복 실행) 같은 행을 다시 세지 않는다.
+        MissionRewardService.ExpiryResult second = missionRewardService.expireDueRewards(NOW);
+
+        assertThat(second.expiredCount()).isZero();
+        assertThat(second.expiredPointAmount()).isZero();
+    }
+
+    @Test
+    void closesRewardsAtTheExactExpiryInstant() {
+        UUID userId = savedUserId();
+        missionRewardService.createMissing(
+                userId,
+                List.of(new MissionRewardService.AchievedMission("TAP_500", PERIOD_KEY, 15, MIDNIGHT)),
+                Map.of(),
+                NOW
+        );
+
+        // 수령 경로의 만료 판정(!now.isBefore(expiresAt))과 같은 경계여야 한다. 한쪽만 어긋나면
+        // 자정 정각에 "배치는 소멸시켰는데 화면은 받을 수 있다고 한다"는 틈이 생긴다.
+        missionRewardService.expireDueRewards(MIDNIGHT);
+
+        assertThat(missionRewardRepository.findByUserIdAndStatusOrderByAchievedAtDesc(
+                userId, MissionReward.Status.EXPIRED))
+                .extracting(MissionReward::getMissionCode)
+                .containsExactly("TAP_500");
+    }
+
     private UUID savedUserId() {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO app_user (id, status, onboarding_reward_claimed, created_at, updated_at)
                 VALUES (?, 'ACTIVE', false, now(), now())
                 """, userId);
+        jdbcTemplate.update("""
+                INSERT INTO point_account
+                    (public_id, user_id, balance, lifetime_earned, lifetime_spent, version, created_at, updated_at)
+                VALUES (?, ?, 0, 0, 0, 0, now(), now())
+                """, UUID.randomUUID(), userId);
         return userId;
     }
 }

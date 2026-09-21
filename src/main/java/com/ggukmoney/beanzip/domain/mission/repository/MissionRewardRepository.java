@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.mission.repository;
 
 import com.ggukmoney.beanzip.domain.mission.entity.MissionReward;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -29,15 +30,22 @@ public interface MissionRewardRepository extends JpaRepository<MissionReward, Lo
             @Param("publicId") UUID publicId
     );
 
+    /**
+     * 일괄 수령 대상.
+     *
+     * <p>이미 자정을 넘긴 보상은 아예 잠그지 않는다. 어차피 지급하지 않을 행인데 잠그면 같은 행을
+     * 마감하는 자정 배치와 서로를 기다리게 된다.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select reward
             from MissionReward reward
             where reward.userId = :userId
               and reward.status = com.ggukmoney.beanzip.domain.mission.entity.MissionReward.Status.CLAIMABLE
+              and (reward.expiresAt is null or reward.expiresAt > :now)
             order by reward.achievedAt desc
             """)
-    List<MissionReward> findClaimablesForUpdate(@Param("userId") UUID userId);
+    List<MissionReward> findClaimablesForUpdate(@Param("userId") UUID userId, @Param("now") Instant now);
 
     /**
      * 달성한 보상을 만든다. 이미 있으면 아무것도 하지 않는다.
@@ -69,6 +77,35 @@ public interface MissionRewardRepository extends JpaRepository<MissionReward, Lo
             @Param("now") Instant now
     );
 
-    /** 자정 배치가 마감할 대상. 상태를 먼저 걸러 인덱스를 그대로 탄다. */
-    List<MissionReward> findByStatusAndExpiresAtLessThanEqual(MissionReward.Status status, Instant expiresAt);
+    /**
+     * 자정 배치가 마감할 금액. UPDATE 전에 한 번 읽는다.
+     *
+     * <p>{@code expires_at} 이 없는 단발성 보상은 비교에서 자연히 빠진다.
+     */
+    @Query("""
+            select coalesce(sum(reward.rewardPointAmount), 0)
+            from MissionReward reward
+            where reward.status = com.ggukmoney.beanzip.domain.mission.entity.MissionReward.Status.CLAIMABLE
+              and reward.expiresAt <= :now
+            """)
+    long sumClaimableExpiredAmount(@Param("now") Instant now);
+
+    /**
+     * 자정을 넘긴 미수령 보상을 한 문장으로 마감한다.
+     *
+     * <p>엔티티로 올려 하나씩 바꾸지 않는다. 하는 일이 상태 변경뿐이라 행마다 분기도 부수 효과도
+     * 없고, 한 문장이면 트랜잭션도 락도 짧게 끝난다.
+     *
+     * @return 마감한 행 수
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update MissionReward reward
+            set reward.status = com.ggukmoney.beanzip.domain.mission.entity.MissionReward.Status.EXPIRED,
+                reward.updatedAt = :now,
+                reward.version = reward.version + 1
+            where reward.status = com.ggukmoney.beanzip.domain.mission.entity.MissionReward.Status.CLAIMABLE
+              and reward.expiresAt <= :now
+            """)
+    int expireDueRewards(@Param("now") Instant now);
 }
