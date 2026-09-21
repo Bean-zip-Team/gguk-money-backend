@@ -54,6 +54,10 @@ public interface MissionRewardRepository extends JpaRepository<MissionReward, Lo
      * 같은 트랜잭션 안에서는 재조회도 커밋도 할 수 없다. 알림 발송이 쓰는
      * {@code INSERT ... ON CONFLICT DO NOTHING} 과 같은 방식으로 충돌 자체를 없앤다.
      *
+     * <p>충돌 대상은 제약 이름이 아니라 <b>컬럼</b>으로 지정한다. 운영 DDL 은 유니크 인덱스를
+     * 만들 뿐 제약을 만들지 않아서, 이름으로 지정하면 운영에서만 실패한다. 테스트는 Hibernate 가
+     * 스키마를 만들어 제약이 생기므로 이 차이를 잡지 못한다.
+     *
      * @return 삽입된 행 수. 0이면 이미 있다는 뜻이다.
      */
     @Modifying
@@ -64,7 +68,7 @@ public interface MissionRewardRepository extends JpaRepository<MissionReward, Lo
             VALUES
                 (:publicId, :userId, :missionCode, :periodKey, :rewardPointAmount,
                  'CLAIMABLE', :achievedAt, :expiresAt, :now, :now, 0)
-            ON CONFLICT ON CONSTRAINT uq_mission_reward_user_code_period DO NOTHING
+            ON CONFLICT (user_id, mission_code, period_key) DO NOTHING
             """, nativeQuery = true)
     int insertClaimableIfAbsent(
             @Param("publicId") UUID publicId,
