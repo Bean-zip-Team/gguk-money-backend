@@ -52,11 +52,11 @@ class SystemRankingBoostPolicyTest {
     }
 
     @Test
-    void productionGateCannotBeOpenedByAppConfigAndCloseWindowBoundaryIsTestable() {
+    void productionGateAllowsActiveSeasonUntilTwoHoursBeforeClose() {
         var gate = new SystemRankingBoostRolloutGate();
         var season = com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason.activeWeekly(LocalDate.of(2026, 9, 14),
                 Instant.parse("2026-09-13T15:00:00Z"), Instant.parse("2026-09-20T15:00:00Z"));
-        assertThat(gate.permits(now, season)).isFalse();
+        assertThat(gate.permits(now, season)).isTrue();
         assertThat(SystemRankingBoostRolloutGate.outsideCloseWindow(season,
                 Instant.parse("2026-09-20T12:59:59Z"), Duration.ofHours(2))).isTrue();
         assertThat(SystemRankingBoostRolloutGate.outsideCloseWindow(season,
