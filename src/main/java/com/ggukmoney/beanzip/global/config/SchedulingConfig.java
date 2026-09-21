@@ -35,7 +35,11 @@ public class SchedulingConfig {
     public ThreadPoolTaskSchedulerCustomizer schedulingPoolSizeCustomizer(
             @Value("${spring.task.scheduling.pool.size:5}") int poolSize
     ) {
-        log.info("SCHEDULER_POOL_CONFIGURED poolSize={}", poolSize);
-        return scheduler -> scheduler.setPoolSize(poolSize);
+        // 실제로 적용될 때만 남긴다. 빈이 만들어지는 시점에 찍으면, 가상 스레드를 켜서 이 설정이
+        // 쓰이지 않는 상황에서도 적용된 것처럼 보인다.
+        return scheduler -> {
+            scheduler.setPoolSize(poolSize);
+            log.info("SCHEDULER_POOL_CONFIGURED poolSize={}", poolSize);
+        };
     }
 }
