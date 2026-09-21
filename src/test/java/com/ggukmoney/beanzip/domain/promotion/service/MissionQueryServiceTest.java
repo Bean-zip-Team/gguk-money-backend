@@ -51,10 +51,10 @@ class MissionQueryServiceTest {
 
     @Test
     void returnsDefinitionAndProgressTogether() {
-        MissionListResponse response = service.missionsOf(userId);
+        List<MissionListResponse.Mission> missions = service.promotionMissionsOf(userId);
 
-        assertThat(response.missions()).hasSize(2);
-        MissionListResponse.Mission keycap = response.missions().getFirst();
+        assertThat(missions).hasSize(2);
+        MissionListResponse.Mission keycap = missions.getFirst();
         assertThat(keycap.code()).isEqualTo("KEYCAP_FIVE_COMPLETE");
         assertThat(keycap.name()).isEqualTo("키캡 5개 모으기");
         assertThat(keycap.rewardAmount()).isEqualTo(500L);
@@ -64,12 +64,22 @@ class MissionQueryServiceTest {
     }
 
     @Test
+    void marksPromotionMissionsAsOneTimeTossPointRewardsWithoutClaimStep() {
+        MissionListResponse.Mission keycap = service.promotionMissionsOf(userId).getFirst();
+
+        assertThat(keycap.periodType()).isEqualTo(MissionListResponse.PeriodType.ONE_TIME);
+        assertThat(keycap.rewardType()).isEqualTo(MissionListResponse.RewardType.TOSS_POINT);
+        // 상시 미션은 달성하면 서버가 알아서 지급한다. 받기 버튼이 없으므로 수령 상태도 없다.
+        assertThat(keycap.claimStatus()).isNull();
+    }
+
+    @Test
     void marksRewardedWhenGrantSucceeded() {
         List<PromotionGrant> grants = List.of(grantWith("TAP_THOUSAND_COMPLETE", PromotionGrant.Status.SUCCEEDED));
         when(promotionGrantRepository.findByUserIdOrderByCreatedAtDesc(userId))
                 .thenReturn(grants);
 
-        MissionListResponse.Status status = service.missionsOf(userId).missions().stream()
+        MissionListResponse.Status status = service.promotionMissionsOf(userId).stream()
                 .filter(mission -> mission.code().equals("TAP_THOUSAND_COMPLETE"))
                 .findFirst().orElseThrow().status();
 
@@ -82,7 +92,7 @@ class MissionQueryServiceTest {
         when(promotionGrantRepository.findByUserIdOrderByCreatedAtDesc(userId))
                 .thenReturn(grants);
 
-        MissionListResponse.Status status = service.missionsOf(userId).missions().stream()
+        MissionListResponse.Status status = service.promotionMissionsOf(userId).stream()
                 .filter(mission -> mission.code().equals("TAP_THOUSAND_COMPLETE"))
                 .findFirst().orElseThrow().status();
 
@@ -95,7 +105,7 @@ class MissionQueryServiceTest {
         when(promotionGrantRepository.findByUserIdOrderByCreatedAtDesc(userId))
                 .thenReturn(grants);
 
-        MissionListResponse.Status status = service.missionsOf(userId).missions().stream()
+        MissionListResponse.Status status = service.promotionMissionsOf(userId).stream()
                 .filter(mission -> mission.code().equals("TAP_THOUSAND_COMPLETE"))
                 .findFirst().orElseThrow().status();
 
@@ -107,7 +117,7 @@ class MissionQueryServiceTest {
     void hidesMissionsThatAreTurnedOff() {
         when(tapTrigger.issuingEnabled()).thenReturn(false);
 
-        assertThat(service.missionsOf(userId).missions())
+        assertThat(service.promotionMissionsOf(userId))
                 .extracting(MissionListResponse.Mission::code)
                 .containsExactly("KEYCAP_FIVE_COMPLETE");
     }
@@ -120,14 +130,14 @@ class MissionQueryServiceTest {
                 .thenReturn(grants);
 
         // 받은 뒤 미션이 내려갔다고 목록에서 사라지면 받은 적이 있는지 확인할 수 없다.
-        assertThat(service.missionsOf(userId).missions())
+        assertThat(service.promotionMissionsOf(userId))
                 .extracting(MissionListResponse.Mission::code)
                 .contains("TAP_THOUSAND_COMPLETE");
     }
 
     @Test
     void readsGrantsOnceRegardlessOfMissionCount() {
-        service.missionsOf(userId);
+        service.promotionMissionsOf(userId);
 
         org.mockito.Mockito.verify(promotionGrantRepository, org.mockito.Mockito.times(1))
                 .findByUserIdOrderByCreatedAtDesc(userId);

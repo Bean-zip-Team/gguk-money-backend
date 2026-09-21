@@ -73,14 +73,29 @@ public class NotificationBatchReadService {
             return new NotificationPageData(Map.of(), Set.of(), Map.of());
         }
         List<UUID> ids = List.copyOf(new LinkedHashSet<>(userIds));
-        Map<UUID, String> identities = new LinkedHashMap<>();
-        authIdentityRepository.findProviderIdentitiesByUserIds(ids, AuthIdentity.Provider.TOSS)
-                .forEach(row -> identities.put(row.getUserId(), row.getProviderUserId()));
+        Map<UUID, String> identities = loadProviderUserIds(ids);
         Set<UUID> validTapUserIds = new LinkedHashSet<>(userTapDailyRepository.findUserIdsWithValidTaps(ids, date));
         Map<UUID, Long> boosterCounts = new LinkedHashMap<>();
         boosterGrantRepository.countByUserIdsAndGrantDate(ids, date)
                 .forEach(row -> boosterCounts.put(row.getUserId(), row.getGrantCount()));
         return new NotificationPageData(identities, validTapUserIds, boosterCounts);
+    }
+
+    /**
+     * 토스 발송에 필요한 식별자만 읽는다.
+     *
+     * <p>{@link #loadPage} 는 탭 기록과 부스터 지급 수까지 같이 읽는다. 그 두 값을 보지 않는
+     * 발송 경로가 {@code loadPage} 를 부르면 매일 밤 전체 유저에 대해 쓰지 않을 쿼리를 두 번 더 돌린다.
+     */
+    public Map<UUID, String> loadProviderUserIds(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = List.copyOf(new LinkedHashSet<>(userIds));
+        Map<UUID, String> identities = new LinkedHashMap<>();
+        authIdentityRepository.findProviderIdentitiesByUserIds(ids, AuthIdentity.Provider.TOSS)
+                .forEach(row -> identities.put(row.getUserId(), row.getProviderUserId()));
+        return identities;
     }
 
     public Set<UUID> findSentUserIdsSinceStartOfDay(
