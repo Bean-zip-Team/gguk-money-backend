@@ -52,7 +52,9 @@ public class WeeklyRankingRewardController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수령 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보상을 찾을 수 없음"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "수령 기간 만료")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "수령 기간 만료"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503", description = "사내 계정 지급 정책을 확인할 수 없음")
     })
     @PostMapping("/{rewardId}/claim")
     public ApiResponse<MyWeeklyRankingRewardResponse> claim(

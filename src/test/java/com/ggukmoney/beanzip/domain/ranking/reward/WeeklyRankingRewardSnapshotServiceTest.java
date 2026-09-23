@@ -3,13 +3,15 @@ package com.ggukmoney.beanzip.domain.ranking.reward;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
-import com.ggukmoney.beanzip.domain.ranking.boost.RankingBoostRewardExclusions;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
@@ -25,21 +27,21 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(OutputCaptureExtension.class)
 class WeeklyRankingRewardSnapshotServiceTest {
 
     private final WeeklyRankingRewardPolicy policy = mock(WeeklyRankingRewardPolicy.class);
-    private final RankingBoostRewardExclusions exclusions = mock(RankingBoostRewardExclusions.class);
     private final RankingEntryRepository entries = mock(RankingEntryRepository.class);
     private final AppUserRepository users = mock(AppUserRepository.class);
     private final NotificationPreferenceRepository preferences = mock(NotificationPreferenceRepository.class);
     private final WeeklyRankingRewardRepository rewards = mock(WeeklyRankingRewardRepository.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final WeeklyRankingRewardSnapshotService service = new WeeklyRankingRewardSnapshotService(
-            policy, exclusions, entries, users, preferences, rewards, events
+            policy, entries, users, preferences, rewards, events
     );
 
     @Test
-    void keepsRewardSlotsWhenAnEligibleRankLacksSnapshotConsent() {
+    void keepsRewardSlotsWhenAnEligibleRankLacksSnapshotConsent(CapturedOutput output) {
         Instant finalizedAt = Instant.parse("2026-09-21T15:00:00Z");
         RankingSeason season = mock(RankingSeason.class);
         when(season.getId()).thenReturn(10L);
@@ -47,8 +49,6 @@ class WeeklyRankingRewardSnapshotServiceTest {
         when(policy.load(finalizedAt)).thenReturn(Optional.of(new WeeklyRankingRewardPolicy.Snapshot(
                 true, new java.util.TreeMap<>(Map.of(1, 10_000L, 2, 5_000L, 3, 2_500L))
         )));
-        when(exclusions.excludedUserIds(10L, finalizedAt)).thenReturn(Optional.of(Set.of()));
-
         UUID firstId = UUID.randomUUID();
         UUID secondId = UUID.randomUUID();
         UUID thirdId = UUID.randomUUID();
@@ -73,6 +73,14 @@ class WeeklyRankingRewardSnapshotServiceTest {
         assertThat(captor.getValue()).extracting(WeeklyRankingReward::getRewardRank).containsExactly(1, 3);
         assertThat(captor.getValue()).extracting(WeeklyRankingReward::getExpiresAt)
                 .containsOnly(finalizedAt.plusSeconds(3 * 24 * 60 * 60));
+        org.mockito.Mockito.verify(entries).findRewardCandidates(10L, java.util.Set.of(), 3);
+        assertThat(output).contains(
+                "WEEKLY_RANKING_REWARD_UNPAID",
+                "reason=CONSENT_NOT_GRANTED",
+                "seasonId=10",
+                "count=1",
+                "pointAmount=5000"
+        );
     }
 
     private AppUser user(UUID id) {

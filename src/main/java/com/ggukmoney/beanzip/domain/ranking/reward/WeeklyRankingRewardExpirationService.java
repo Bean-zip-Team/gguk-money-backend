@@ -27,7 +27,11 @@ public class WeeklyRankingRewardExpirationService {
             }
         }
         if (expiredCount > 0) {
-            log.info("Weekly ranking rewards expired count={} amount={}", expiredCount, expiredAmount);
+            log.warn(
+                    "WEEKLY_RANKING_REWARD_UNPAID reason=EXPIRED count={} pointAmount={}",
+                    expiredCount,
+                    expiredAmount
+            );
         }
         return expiredCount;
     }

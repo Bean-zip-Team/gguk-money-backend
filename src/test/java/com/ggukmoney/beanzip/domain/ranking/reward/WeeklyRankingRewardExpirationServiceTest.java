@@ -3,6 +3,9 @@ package com.ggukmoney.beanzip.domain.ranking.reward;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.time.Instant;
 import java.util.List;
@@ -11,10 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(OutputCaptureExtension.class)
 class WeeklyRankingRewardExpirationServiceTest {
 
     @Test
-    void expiresEveryDuePendingRewardOnce() {
+    void expiresEveryDuePendingRewardOnce(CapturedOutput output) {
         Instant now = Instant.parse("2026-09-24T00:00:00Z");
         WeeklyRankingReward first = reward(now.minusSeconds(1), 10_000L);
         WeeklyRankingReward second = reward(now, 5_000L);
@@ -26,6 +30,12 @@ class WeeklyRankingRewardExpirationServiceTest {
         assertThat(first.getStatus()).isEqualTo(WeeklyRankingReward.Status.EXPIRED);
         assertThat(second.getStatus()).isEqualTo(WeeklyRankingReward.Status.EXPIRED);
         assertThat(service.expireDue(now)).isZero();
+        assertThat(output).contains(
+                "WEEKLY_RANKING_REWARD_UNPAID",
+                "reason=EXPIRED",
+                "count=2",
+                "pointAmount=15000"
+        );
     }
 
     private WeeklyRankingReward reward(Instant expiresAt, long amount) {

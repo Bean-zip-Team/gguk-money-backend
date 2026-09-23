@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.domain.ranking.reward;
 
-import com.ggukmoney.beanzip.domain.ranking.boost.RankingBoostRewardExclusions;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
@@ -32,7 +31,6 @@ import java.util.stream.Collectors;
 public class WeeklyRankingRewardSnapshotService {
 
     private final WeeklyRankingRewardPolicy policy;
-    private final RankingBoostRewardExclusions exclusions;
     private final RankingEntryRepository entryRepository;
     private final AppUserRepository userRepository;
     private final NotificationPreferenceRepository preferenceRepository;
@@ -53,10 +51,8 @@ public class WeeklyRankingRewardSnapshotService {
             return 0;
         }
 
-        Set<UUID> excludedUserIds = exclusions.excludedUserIds(season.getId(), finalizedAt)
-                .orElseThrow(() -> new IllegalStateException("weekly ranking reward exclusions unavailable"));
         List<RankingEntryRepository.RankingRewardCandidateRow> candidates = entryRepository.findRewardCandidates(
-                season.getId(), excludedUserIds, policySnapshot.maxRewardRank());
+                season.getId(), Set.of(), policySnapshot.maxRewardRank());
         Instant expiresAt = finalizedAt.plus(3, ChronoUnit.DAYS);
 
         Map<UUID, AppUser> usersById = userRepository.findAllById(
@@ -97,8 +93,16 @@ public class WeeklyRankingRewardSnapshotService {
         rewardRepository.saveAll(rewards);
         rewards.forEach(reward -> eventPublisher.publishEvent(new WeeklyRewardAvailableEvent(
                 reward.getUser().getId(), season.getCode(), finalizedAt)));
-        log.info("Weekly ranking rewards snapshotted seasonId={} enabled=true excludedCount={} rewardCount={} missedCount={} missedAmount={}",
-                season.getId(), excludedUserIds.size(), rewards.size(), missedCount, missedAmount);
+        if (missedCount > 0) {
+            log.warn(
+                    "WEEKLY_RANKING_REWARD_UNPAID reason=CONSENT_NOT_GRANTED seasonId={} count={} pointAmount={}",
+                    season.getId(),
+                    missedCount,
+                    missedAmount
+            );
+        }
+        log.info("Weekly ranking rewards snapshotted seasonId={} enabled=true rewardCount={} missedCount={} missedAmount={}",
+                season.getId(), rewards.size(), missedCount, missedAmount);
         return rewards.size();
     }
 }

@@ -3,7 +3,9 @@ package com.ggukmoney.beanzip.domain.ranking.reward;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
+import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +16,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class WeeklyRankingRewardClaimService {
 
@@ -22,6 +25,7 @@ public class WeeklyRankingRewardClaimService {
     private final WeeklyRankingRewardRepository rewardRepository;
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
+    private final SystemRankingBoostPolicy internalAccountPolicy;
     private final Clock clock;
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
@@ -38,6 +42,24 @@ public class WeeklyRankingRewardClaimService {
         Instant now = clock.instant();
         if (reward.expire(now)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "RANKING_REWARD_EXPIRED");
+        }
+
+        SystemRankingBoostPolicy.Snapshot internalAccountSnapshot = internalAccountPolicy.load(now)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE"
+                ));
+        if (internalAccountSnapshot.internalUserIds().contains(userId)) {
+            reward.claim(now);
+            log.warn(
+                    "WEEKLY_RANKING_REWARD_UNPAID reason=INTERNAL_ACCOUNT seasonId={} rewardRank={} userId={} rewardId={} pointAmount={}",
+                    reward.getSeason().getId(),
+                    reward.getRewardRank(),
+                    userId,
+                    reward.getPublicId(),
+                    reward.getPointAmount()
+            );
+            return reward;
         }
 
         PointAccount account = pointAccountService.credit(userId, reward.getPointAmount());
