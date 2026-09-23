@@ -8,6 +8,7 @@ public enum ErrorCode {
 
     COMMON_INVALID_REQUEST("COMMON_INVALID_REQUEST", "요청 형식이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
     COMMON_VALIDATION_ERROR("COMMON_VALIDATION_ERROR", "요청 값이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    COMMON_NOT_FOUND("COMMON_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     COMMON_METHOD_NOT_ALLOWED("COMMON_METHOD_NOT_ALLOWED", "허용되지 않은 메서드입니다.", HttpStatus.METHOD_NOT_ALLOWED),
     COMMON_UNSUPPORTED_MEDIA_TYPE("COMMON_UNSUPPORTED_MEDIA_TYPE", "지원하지 않는 요청 형식입니다.", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
     COMMON_INTERNAL_SERVER_ERROR("COMMON_INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
@@ -94,6 +95,10 @@ public enum ErrorCode {
     ONBOARDING_ATTEMPT_ALREADY_CLAIMED("ONBOARDING_ATTEMPT_ALREADY_CLAIMED", "이미 사용된 온보딩 보상입니다.", HttpStatus.CONFLICT),
     ONBOARDING_REWARD_INVALID("ONBOARDING_REWARD_INVALID", "온보딩 보상 정보가 유효하지 않습니다.", HttpStatus.CONFLICT),
 
+    MISSION_REWARD_NOT_FOUND("MISSION_REWARD_NOT_FOUND", "미션 보상을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    MISSION_REWARD_ALREADY_CLAIMED("MISSION_REWARD_ALREADY_CLAIMED", "이미 받은 미션 보상입니다.", HttpStatus.CONFLICT),
+    MISSION_REWARD_EXPIRED("MISSION_REWARD_EXPIRED", "받을 수 있는 시간이 지난 미션 보상입니다.", HttpStatus.GONE),
+
     AD_GROUP_ID_REQUIRED("AD_GROUP_ID_REQUIRED", "adGroupId가 필요합니다.", HttpStatus.BAD_REQUEST),
     BOOSTER_ALREADY_ACTIVE("BOOSTER_ALREADY_ACTIVE", "이미 부스터가 활성화되어 있습니다.", HttpStatus.CONFLICT),
     BOOSTER_DAILY_LIMIT_EXCEEDED("BOOSTER_DAILY_LIMIT_EXCEEDED", "오늘 부스터 사용 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS),
@@ -105,8 +110,12 @@ public enum ErrorCode {
     RANKING_SEASON_NOT_FOUND("RANKING_SEASON_NOT_FOUND", "랭킹 시즌을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     RANKING_REWARD_RESULT_NOT_FOUND("RANKING_REWARD_RESULT_NOT_FOUND", "종료된 주간 랭킹 결과를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     RANKING_REWARD_NOT_FOUND("RANKING_REWARD_NOT_FOUND", "주간 랭킹 보상을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-    RANKING_REWARD_CONSENT_REQUIRED("RANKING_REWARD_CONSENT_REQUIRED", "순위 변동 알림 동의가 필요합니다.", HttpStatus.FORBIDDEN),
-    RANKING_REWARD_EXPIRED("RANKING_REWARD_EXPIRED", "주간 랭킹 보상 수령 기간이 만료되었습니다.", HttpStatus.GONE);
+    RANKING_REWARD_EXPIRED("RANKING_REWARD_EXPIRED", "주간 랭킹 보상 수령 기간이 만료되었습니다.", HttpStatus.CONFLICT),
+    RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE(
+            "RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE",
+            "주간 랭킹 보상 지급 정책을 일시적으로 확인할 수 없습니다.",
+            HttpStatus.SERVICE_UNAVAILABLE
+    );
 
     private final String code;
     private final String message;

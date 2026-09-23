@@ -1,14 +1,12 @@
 package com.ggukmoney.beanzip.domain.ranking.reward;
 
-import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
-import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeasonStatus;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingType;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
 import com.ggukmoney.beanzip.domain.ranking.reward.dto.LatestWeeklyRankingRewardResponse;
 import com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse;
-import com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse.ClaimStatus;
+import com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse.RewardStatus;
 import com.ggukmoney.beanzip.global.util.NameMasker;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -28,7 +26,6 @@ public class WeeklyRankingRewardQueryService {
 
     private final RankingSeasonRepository seasonRepository;
     private final WeeklyRankingRewardRepository rewardRepository;
-    private final NotificationPreferenceRepository preferenceRepository;
     private final Clock clock;
 
     public LatestWeeklyRankingRewardResponse latest(UUID userId) {
@@ -41,17 +38,20 @@ public class WeeklyRankingRewardQueryService {
         List<LatestWeeklyRankingRewardResponse.Winner> winners = rewards.stream()
                 .map(reward -> toWinner(reward, userId))
                 .toList();
-        MyWeeklyRankingRewardResponse myReward = rewards.stream()
+        WeeklyRankingReward myRewardRecord = rewards.stream()
                 .filter(reward -> reward.getUser().getId().equals(userId))
                 .findFirst()
-                .map(reward -> toMyReward(userId, reward, now))
                 .orElse(null);
+        MyWeeklyRankingRewardResponse myReward = myRewardRecord == null
+                ? MyWeeklyRankingRewardResponse.none()
+                : toMyReward(userId, myRewardRecord, now);
 
         return new LatestWeeklyRankingRewardResponse(
                 new LatestWeeklyRankingRewardResponse.Season(
                         season.getCode(), season.getStartsAt(), season.getEndsAt()),
                 winners,
-                myReward
+                myReward,
+                myRewardRecord != null && myRewardRecord.getViewedAt() == null
         );
     }
 
@@ -59,17 +59,22 @@ public class WeeklyRankingRewardQueryService {
         return toMyReward(userId, reward, clock.instant());
     }
 
+    @Transactional
+    public void markViewed(UUID userId, UUID rewardId) {
+        WeeklyRankingReward reward = rewardRepository.findOwnedByPublicIdForUpdate(rewardId, userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "RANKING_REWARD_NOT_FOUND"));
+        reward.markViewed(clock.instant());
+    }
+
     private MyWeeklyRankingRewardResponse toMyReward(UUID userId, WeeklyRankingReward reward, Instant now) {
-        ClaimStatus claimStatus;
+        RewardStatus claimStatus;
         if (reward.getStatus() == WeeklyRankingReward.Status.CLAIMED) {
-            claimStatus = ClaimStatus.CLAIMED;
-        } else if (reward.isExpired(now)) {
-            claimStatus = ClaimStatus.EXPIRED;
+            claimStatus = RewardStatus.CLAIMED;
+        } else if (reward.getStatus() == WeeklyRankingReward.Status.EXPIRED || reward.isExpired(now)) {
+            claimStatus = RewardStatus.EXPIRED;
         } else {
-            boolean sendable = preferenceRepository.findByUserIdAndType(userId, NotificationType.RANK_CHANGE)
-                    .map(preference -> preference.isSendable())
-                    .orElse(false);
-            claimStatus = sendable ? ClaimStatus.CLAIMABLE : ClaimStatus.CONSENT_REQUIRED;
+            claimStatus = RewardStatus.PENDING;
         }
         return new MyWeeklyRankingRewardResponse(
                 reward.getPublicId(),

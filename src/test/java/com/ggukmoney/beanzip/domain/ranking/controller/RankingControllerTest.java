@@ -169,10 +169,16 @@ class RankingControllerTest {
                         Instant.parse("2026-07-19T15:00:00Z"),
                         Instant.parse("2026-07-26T15:00:00Z"),
                         7L,
-                        950L
+                        950L,
+                        null,
+                        com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse.RewardStatus.NONE,
+                        null,
+                        null,
+                        null
                 )),
                 "next-cursor",
-                true
+                true,
+                0L
         );
         when(rankingHistoryService.getHistory(userId, "cursor-1", 20)).thenReturn(response);
 

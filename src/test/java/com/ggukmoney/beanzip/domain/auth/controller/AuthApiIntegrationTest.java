@@ -1,10 +1,16 @@
 package com.ggukmoney.beanzip.domain.auth.controller;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
+import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
@@ -33,6 +39,73 @@ class AuthApiIntegrationTest extends FullStackIntegrationTestSupport {
 
         assertThat(authService.findBySessionId(tokens.session().sessionId()).orElseThrow().previousRefreshJtiHash())
                 .isEqualTo(tokens.session().currentRefreshJtiHash());
+    }
+
+    @Test
+    void refreshRecordsPrincipalSoAccessLogShowsWhoRefreshed() throws Exception {
+        UUID userId = UUID.randomUUID();
+        TestTokens tokens = saveTokenBackedSession(userId, UUID.randomUUID().toString());
+
+        MvcResult result = mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(result.getRequest().getAttribute(AuthRequestAttributes.USER_ID)).isEqualTo(userId);
+        assertThat(result.getRequest().getAttribute(AuthRequestAttributes.SESSION_ID))
+                .isEqualTo(tokens.session().sessionId());
+    }
+
+    @Test
+    void failedRefreshAlsoRecordsPrincipalSoLogoutCauseIsTraceable() throws Exception {
+        UUID userId = UUID.randomUUID();
+        TestTokens tokens = saveTokenBackedSession(userId, UUID.randomUUID().toString());
+        authService.deleteSession(tokens.session().sessionId());
+
+        MvcResult result = mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_NOT_FOUND"))
+                .andReturn();
+
+        assertThat(result.getRequest().getAttribute(AuthRequestAttributes.USER_ID)).isEqualTo(userId);
+        assertThat(result.getRequest().getAttribute(AuthRequestAttributes.SESSION_ID))
+                .isEqualTo(tokens.session().sessionId());
+    }
+
+    @Test
+    void refreshLogsOutcomeWithTokenGenerationOfThePresentedToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        TestTokens tokens = saveTokenBackedSession(userId, UUID.randomUUID().toString());
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
+                    .andExpect(status().isOk());
+
+            // 교체된 뒤 같은 토큰을 다시 보내면 직전 세대 토큰으로 판정된다. 앱이 새 토큰을 못 받았을 때 나타나는 형태다.
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"refreshToken\":\"" + tokens.refreshToken() + "\"}"))
+                    .andExpect(status().isConflict());
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("AUTH_REFRESH", "result=ROTATED", "presented=CURRENT", "userId=" + userId))
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("AUTH_REFRESH", "result=CONFLICT", "presented=PREVIOUS", "userId=" + userId));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

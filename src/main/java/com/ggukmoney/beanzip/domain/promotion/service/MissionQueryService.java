@@ -27,8 +27,12 @@ public class MissionQueryService {
     private final List<PromotionTrigger> promotionTriggers;
     private final PromotionGrantRepository promotionGrantRepository;
 
+    /**
+     * 상시 미션만 돌려준다. 데일리 미션과 합쳐 하나의 응답으로 만드는 일은
+     * {@code MissionFeedService} 가 맡는다(BEA-299).
+     */
     @Transactional(readOnly = true)
-    public MissionListResponse missionsOf(UUID userId) {
+    public List<MissionListResponse.Mission> promotionMissionsOf(UUID userId) {
         Map<String, PromotionGrant> grants = promotionGrantRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -37,12 +41,10 @@ public class MissionQueryService {
                         (first, second) -> first,
                         LinkedHashMap::new));
 
-        List<MissionListResponse.Mission> missions = promotionTriggers.stream()
+        return promotionTriggers.stream()
                 .filter(trigger -> isVisible(trigger, grants))
                 .map(trigger -> toMission(trigger, userId, grants.get(trigger.promotionCode())))
                 .toList();
-
-        return new MissionListResponse(missions);
     }
 
     /**
@@ -58,10 +60,16 @@ public class MissionQueryService {
         return new MissionListResponse.Mission(
                 trigger.promotionCode(),
                 trigger.missionName(),
+                null,
+                MissionListResponse.PeriodType.ONE_TIME,
+                MissionListResponse.RewardType.TOSS_POINT,
                 trigger.amount(),
                 progress.current(),
                 progress.target(),
-                statusOf(grant)
+                statusOf(grant),
+                // 상시 미션은 달성하면 서버가 알아서 지급한다. 받기 버튼이 없으므로 수령 상태도 보상 식별자도 없다.
+                null,
+                null
         );
     }
 

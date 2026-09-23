@@ -59,7 +59,7 @@ class NotificationDeliveryPersistenceServiceTest {
             keycapBoxAccountRepository,
             keycapBoxPolicyConfig,
             rankChangePolicyConfig,
-            new NotificationTemplateProperties("WEEKLY", "RANK_SET", "BOOSTER", null, null, "clickmoney-box"),
+            new NotificationTemplateProperties("WEEKLY", "RANK_SET", "BOOSTER", null, null, null, "clickmoney-box"),
             Clock.fixed(Instant.parse("2026-07-25T10:00:00Z"), ZoneOffset.UTC)
     );
 
@@ -613,7 +613,7 @@ class NotificationDeliveryPersistenceServiceTest {
                 keycapBoxAccountRepository,
                 keycapBoxPolicyConfig,
                 rankChangePolicyConfig,
-                new NotificationTemplateProperties(null, "RANK_SET", null, null, null, null),
+                new NotificationTemplateProperties(null, "RANK_SET", null, null, null, null, null),
                 Clock.fixed(Instant.parse("2026-08-03T01:00:00Z"), ZoneOffset.UTC)
         );
         UUID userId = UUID.randomUUID();

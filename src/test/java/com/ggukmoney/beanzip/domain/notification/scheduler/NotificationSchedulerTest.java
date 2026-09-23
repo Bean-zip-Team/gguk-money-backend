@@ -2,6 +2,7 @@ package com.ggukmoney.beanzip.domain.notification.scheduler;
 
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
 import com.ggukmoney.beanzip.domain.notification.service.WeeklyRankingResetNotificationService;
+import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -11,8 +12,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,6 +35,17 @@ class NotificationSchedulerTest {
     }
 
     @Test
+    void dailyMissionScheduleRunsAtNineInTheEveningInKst() throws Exception {
+        Scheduled scheduled = NotificationScheduler.class
+                .getMethod("scheduleDailyMissionNotifications")
+                .getAnnotation(Scheduled.class);
+
+        // 자정에 미수령 보상이 소멸하므로, 아직 받을 시간이 남아 있을 때 알린다.
+        assertThat(scheduled.cron()).isEqualTo("${app.smart-message.schedule.daily-mission-cron:0 0 21 * * *}");
+        assertThat(scheduled.zone()).isEqualTo("${app.smart-message.schedule.zone:Asia/Seoul}");
+    }
+
+    @Test
     void weeklyResetScheduleUsesConfigurableEveryMinuteCronInKst() throws Exception {
         Scheduled scheduled = NotificationScheduler.class
                 .getMethod("scheduleWeeklyRankingResetNotifications")
@@ -39,6 +53,59 @@ class NotificationSchedulerTest {
 
         assertThat(scheduled.cron()).isEqualTo("${app.smart-message.schedule.weekly-reset-cron:0 * * * * *}");
         assertThat(scheduled.zone()).isEqualTo("${app.smart-message.schedule.zone:Asia/Seoul}");
+    }
+
+    @Test
+    void invokesDailyMissionDeliveryWithTheDateOfTheZoneTheCronRunsIn() throws Exception {
+        NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
+        WeeklyRankingResetNotificationService resetService = mock(WeeklyRankingResetNotificationService.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement acquire = mock(PreparedStatement.class);
+        PreparedStatement release = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(acquire);
+        when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(release);
+        when(acquire.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true);
+        when(resultSet.getBoolean(1)).thenReturn(true);
+        // UTC 로는 7월 25일이지만 한국 시간으로는 이미 7월 26일 0시 30분이다. 날짜가 갈리는 시각을
+        // 써야 시간대를 무시하는 회귀가 드러난다.
+        NotificationScheduler scheduler = new NotificationScheduler(
+                deliveryService,
+                resetService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-07-25T15:30:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
+        );
+
+        scheduler.scheduleDailyMissionNotifications();
+
+        verify(deliveryService).sendDailyMissionNotifications(LocalDate.parse("2026-07-26"));
+        verify(release).execute();
+    }
+
+    @Test
+    void doesNotSendDailyMissionNotificationsWhenTheKillSwitchIsOff() throws Exception {
+        NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
+        WeeklyRankingResetNotificationService resetService = mock(WeeklyRankingResetNotificationService.class);
+        DataSource dataSource = mock(DataSource.class);
+        NotificationScheduler scheduler = new NotificationScheduler(
+                deliveryService,
+                resetService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                false
+        );
+
+        scheduler.scheduleDailyMissionNotifications();
+
+        // 락을 잡기도 전에 멈춘다. 끄기로 한 배치가 DB 를 건드릴 이유가 없다.
+        verify(dataSource, never()).getConnection();
+        verify(deliveryService, never()).sendDailyMissionNotifications(any());
     }
 
     @Test
@@ -60,8 +127,10 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
-                dataSource,
-                Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC)
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleMorningNotifications();
@@ -89,8 +158,10 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
-                dataSource,
-                Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC)
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleKeycapBoxOpenAvailableNotifications();
@@ -119,8 +190,10 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
-                dataSource,
-                Clock.fixed(now, ZoneOffset.UTC)
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(now, ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleKeycapBoxOpenAvailableNotifications();
@@ -147,8 +220,10 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
-                dataSource,
-                Clock.fixed(Instant.parse("2026-08-03T01:10:00Z"), ZoneOffset.UTC)
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-08-03T01:10:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
         );
 
         scheduler.scheduleWeeklyRankingResetNotifications();
