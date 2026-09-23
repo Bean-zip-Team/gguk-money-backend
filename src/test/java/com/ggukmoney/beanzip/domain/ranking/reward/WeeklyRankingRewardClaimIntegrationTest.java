@@ -51,7 +51,7 @@ class WeeklyRankingRewardClaimIntegrationTest extends FullStackIntegrationTestSu
     void concurrentClaimsCreditPointsExactlyOnce() throws Exception {
         AppUser user = userRepository.saveAndFlush(AppUser.createActive("weekly winner", null));
         pointAccountService.createFor(user);
-        configureInternalUsers(List.of());
+        configureInternalUsers(List.of(UUID.randomUUID()));
         Instant startsAt = Instant.parse("2026-09-21T15:00:00Z");
         RankingSeason season = seasonRepository.saveAndFlush(RankingSeason.activeWeekly(
                 LocalDate.of(2026, 9, 22), startsAt, startsAt.plusSeconds(7 * 24 * 60 * 60)));

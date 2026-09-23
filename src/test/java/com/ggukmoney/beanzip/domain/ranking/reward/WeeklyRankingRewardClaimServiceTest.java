@@ -47,7 +47,7 @@ class WeeklyRankingRewardClaimServiceTest {
         UUID rewardId = reward.getPublicId();
         PointAccount account = mock(PointAccount.class);
         when(rewards.findOwnedByPublicIdForUpdate(rewardId, userId)).thenReturn(Optional.of(reward));
-        when(internalAccountPolicy.load(now)).thenReturn(Optional.of(policy(Set.of())));
+        when(internalAccountPolicy.load(now)).thenReturn(Optional.of(policy(Set.of(UUID.randomUUID()))));
         when(accounts.credit(userId, 10_000L)).thenReturn(account);
 
         assertThat(service.claim(userId, rewardId).getStatus()).isEqualTo(WeeklyRankingReward.Status.CLAIMED);
@@ -97,6 +97,22 @@ class WeeklyRankingRewardClaimServiceTest {
         assertThat(reward.getStatus()).isEqualTo(WeeklyRankingReward.Status.PENDING);
         verify(accounts, never()).credit(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyLong());
         verifyNoInteractions(ledgers);
+    }
+
+    @Test
+    void emptyInternalAccountListFailsClosedBeforeClaimOrCredit() {
+        UUID userId = UUID.randomUUID();
+        WeeklyRankingReward reward = reward(mock(AppUser.class), now.plusSeconds(60));
+        when(rewards.findOwnedByPublicIdForUpdate(reward.getPublicId(), userId)).thenReturn(Optional.of(reward));
+        when(internalAccountPolicy.load(now)).thenReturn(Optional.of(policy(Set.of())));
+
+        assertThatThrownBy(() -> service.claim(userId, reward.getPublicId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("503 SERVICE_UNAVAILABLE")
+                .hasMessageContaining("RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE");
+
+        assertThat(reward.getStatus()).isEqualTo(WeeklyRankingReward.Status.PENDING);
+        verifyNoInteractions(accounts, ledgers);
     }
 
     @Test

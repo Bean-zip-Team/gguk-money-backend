@@ -49,6 +49,12 @@ public class WeeklyRankingRewardClaimService {
                         HttpStatus.SERVICE_UNAVAILABLE,
                         "RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE"
                 ));
+        if (internalAccountSnapshot.internalUserIds().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE"
+            );
+        }
         if (internalAccountSnapshot.internalUserIds().contains(userId)) {
             reward.claim(now);
             log.warn(
