@@ -4,8 +4,10 @@ import com.ggukmoney.beanzip.support.DelayedHttpServer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
@@ -16,12 +18,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class TossSmartMessageClientTest {
 
@@ -58,6 +62,9 @@ class TossSmartMessageClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("x-toss-user-key", "toss-user-1"))
                 .andExpect(jsonPath("$.templateSetCode").value("TPL_RANK"))
+                .andExpect(content().json("""
+                        {"templateSetCode":"TPL_RANK","context":{}}
+                        """, JsonCompareMode.STRICT))
                 .andRespond(withSuccess("""
                         {"resultType":"SUCCESS","success":{"contentId":"content-1"}}
                         """, MediaType.APPLICATION_JSON));
@@ -139,5 +146,24 @@ class TossSmartMessageClientTest {
         assertThat(result.succeeded()).isFalse();
         assertThat(result.retryable()).isTrue();
         assertThat(result.errorCode()).isEqualTo("TEMPORARY");
+    }
+
+    @Test
+    void transientHttpStatusesAreRetryable() {
+        for (int status : List.of(408, 429, 500)) {
+            RestClient.Builder builder = RestClient.builder();
+            MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+            TossSmartMessageClient client = new TossSmartMessageClient(
+                    objectMapper, "https://apps-in-toss-api.toss.im", null, "toss-auth", builder);
+            server.expect(requestTo("https://apps-in-toss-api.toss.im/api-partner/v1/apps-in-toss/messenger/send-message"))
+                    .andRespond(withStatus(HttpStatusCode.valueOf(status))
+                            .body("{\"resultType\":\"FAIL\",\"error\":{\"errorCode\":\"TEMPORARY\",\"reason\":\"temporary\"}}")
+                            .contentType(MediaType.APPLICATION_JSON));
+
+            TossSmartMessageClient.SendResult result = client.sendMessage("toss-user-1", "TPL_RANK", "{}");
+
+            assertThat(result.retryable()).as("HTTP %s", status).isTrue();
+            server.verify();
+        }
     }
 }

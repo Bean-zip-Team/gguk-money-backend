@@ -7,6 +7,7 @@ import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository
 import com.ggukmoney.beanzip.domain.notification.client.TossSmartMessageClient;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.event.WeeklyRewardAvailableEvent;
@@ -19,11 +20,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -34,6 +37,7 @@ import java.util.UUID;
 public class NotificationDeliveryService {
 
     private static final int KEYCAP_BOX_BATCH_SIZE = 200;
+    private static final int WEEKLY_RESET_SENDS_PER_MINUTE = 100;
 
     private final NotificationDeliveryPersistenceService persistenceService;
     private final NotificationPreferenceRepository preferenceRepository;
@@ -45,6 +49,7 @@ public class NotificationDeliveryService {
     private final NotificationTemplateProperties templateProperties;
     private final TossSmartMessageClient smartMessageClient;
     private final NotificationBatchReadService batchReadService;
+    private final Clock clock;
 
     public Optional<NotificationDelivery> handleWeeklyRewardAvailable(WeeklyRewardAvailableEvent event) {
         return send(
@@ -61,6 +66,115 @@ public class NotificationDeliveryService {
 
     public Optional<NotificationDelivery> dispatchPreparedRankChange(Long deliveryId) {
         return dispatch(persistenceService.findPendingRankChange(deliveryId));
+    }
+
+    /** Sends the durable reset outbox without applying ordinary rank-change cooldowns. */
+    public int dispatchWeeklyResetDue(int maximum) {
+        if (maximum <= 0) {
+            return 0;
+        }
+        Instant now = clock.instant();
+        long recentAttempts = persistenceService.countWeeklyResetAttemptsSince(now.minus(Duration.ofMinutes(1)));
+        int availableSlots = recentAttempts >= WEEKLY_RESET_SENDS_PER_MINUTE
+                ? 0
+                : Math.min(maximum, WEEKLY_RESET_SENDS_PER_MINUTE - (int) recentAttempts);
+        if (availableSlots == 0) {
+            log.info("Weekly rank reset dispatch rate limit reached. recentAttempts={}", recentAttempts);
+            return 0;
+        }
+
+        List<NotificationDelivery> due = persistenceService.findDueWeeklyResetDeliveries(now, availableSlots);
+        if (due.isEmpty()) {
+            return 0;
+        }
+        List<UUID> userIds = due.stream().map(NotificationDelivery::getUserId).distinct().toList();
+        Map<UUID, String> providerUserIds = batchReadService.loadProviderUserIds(userIds);
+
+        int providerCalls = 0;
+        int consentRejected = 0;
+        int missingProviderIdentity = 0;
+        int sent = 0;
+        int retryWaiting = 0;
+        int failed = 0;
+        for (NotificationDelivery candidate : due) {
+            UUID userId = candidate.getUserId();
+            NotificationPreferenceRepository.WeeklyResetEligibility eligibility = preferenceRepository
+                    .findWeeklyResetEligibility(userId)
+                    .orElse(null);
+            if (eligibility == null
+                    || !Boolean.TRUE.equals(eligibility.getEnabled())
+                    || !"AGREED".equals(eligibility.getAgreementStatus())) {
+                persistenceService.markWeeklyResetFailed(
+                        candidate.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null);
+                consentRejected++;
+                failed++;
+                continue;
+            }
+            if (!"ACTIVE".equals(eligibility.getUserStatus())) {
+                persistenceService.markWeeklyResetFailed(
+                        candidate.getId(), "USER_NOT_ACTIVE", "User is no longer active", null);
+                failed++;
+                continue;
+            }
+
+            String providerUserId = providerUserIds.get(userId);
+            if (providerUserId == null) {
+                persistenceService.markWeeklyResetFailed(
+                        candidate.getId(), "TOSS_USER_KEY_MISSING", "Toss auth identity was not found", null);
+                missingProviderIdentity++;
+                failed++;
+                continue;
+            }
+
+            Instant attemptAt = clock.instant();
+            Optional<NotificationDelivery> claimed = persistenceService.claimWeeklyResetAttempt(
+                    candidate.getId(), attemptAt);
+            if (claimed.isEmpty()) {
+                continue;
+            }
+            NotificationDelivery delivery = claimed.get();
+            providerCalls++;
+            try {
+                TossSmartMessageClient.SendResult result = smartMessageClient.sendMessage(
+                        providerUserId, delivery.getTemplateSetCode(), delivery.getContextJson());
+                NotificationDelivery updated;
+                if (result.succeeded()) {
+                    updated = persistenceService.markSent(delivery.getId(), result.contentId(), result.responseBody());
+                    sent++;
+                } else if (result.retryable()) {
+                    updated = persistenceService.markWeeklyResetRetryWaiting(
+                            delivery.getId(), clock.instant(), result.errorCode(), result.reason(), result.responseBody());
+                    if (updated.getStatus() == NotificationDeliveryStatus.RETRY_WAITING) {
+                        retryWaiting++;
+                    } else {
+                        failed++;
+                    }
+                } else {
+                    updated = persistenceService.markWeeklyResetFailed(
+                            delivery.getId(), result.errorCode(), result.reason(), result.responseBody());
+                    failed++;
+                }
+                log.info("Weekly rank reset smart message result. deliveryId={}, userId={}, attempt={}, status={}, "
+                                + "tossResultType={}, errorCode={}",
+                        updated.getId(), userId, delivery.getAttemptCount(), updated.getStatus(),
+                        result.providerResultType(), result.errorCode());
+            } catch (Exception exception) {
+                NotificationDelivery updated = persistenceService.markWeeklyResetRetryWaiting(
+                        delivery.getId(), clock.instant(), "TOSS_SEND_EXCEPTION", exception.getMessage(), null);
+                if (updated.getStatus() == NotificationDeliveryStatus.RETRY_WAITING) {
+                    retryWaiting++;
+                } else {
+                    failed++;
+                }
+                log.error("Weekly rank reset smart message call threw. deliveryId={}, userId={}, attempt={}, status={}",
+                        updated.getId(), userId, delivery.getAttemptCount(), updated.getStatus(), exception);
+            }
+        }
+        log.info("Weekly rank reset dispatch page completed. targetCount={}, providerCalls={}, sent={}, retryWaiting={}, "
+                        + "failed={}, consentRejected={}, missingProviderIdentity={}, availableSlots={}",
+                due.size(), providerCalls, sent, retryWaiting, failed, consentRejected, missingProviderIdentity,
+                availableSlots);
+        return providerCalls;
     }
 
     public List<NotificationDelivery> sendMorningNotifications(LocalDate today) {

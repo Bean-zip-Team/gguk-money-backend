@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
+import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
@@ -99,6 +100,36 @@ class NotificationBatchReadServiceTest {
         )).isEmpty();
 
         verify(deliveryRepository, never()).findUserIdsWithRecentDelivery(any(), any(), any(), any());
+    }
+
+    @Test
+    void providerIdentitiesAreLoadedOnceForDistinctUsers() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        AuthIdentityRepository.UserProviderIdentity first = mock(AuthIdentityRepository.UserProviderIdentity.class);
+        AuthIdentityRepository.UserProviderIdentity second = mock(AuthIdentityRepository.UserProviderIdentity.class);
+        when(first.getUserId()).thenReturn(firstUserId);
+        when(first.getProviderUserId()).thenReturn("toss-first");
+        when(second.getUserId()).thenReturn(secondUserId);
+        when(second.getProviderUserId()).thenReturn("toss-second");
+        when(authIdentityRepository.findProviderIdentitiesByUserIds(
+                List.of(firstUserId, secondUserId), AuthIdentity.Provider.TOSS))
+                .thenReturn(List.of(first, second));
+
+        assertThat(service.loadProviderUserIds(List.of(firstUserId, secondUserId, firstUserId)))
+                .containsEntry(firstUserId, "toss-first")
+                .containsEntry(secondUserId, "toss-second")
+                .hasSize(2);
+
+        verify(authIdentityRepository).findProviderIdentitiesByUserIds(
+                List.of(firstUserId, secondUserId), AuthIdentity.Provider.TOSS);
+    }
+
+    @Test
+    void emptyProviderIdentityPageDoesNotQueryAuthRepository() {
+        assertThat(service.loadProviderUserIds(List.of())).isEmpty();
+
+        verify(authIdentityRepository, never()).findProviderIdentitiesByUserIds(any(), any());
     }
 
     @Test

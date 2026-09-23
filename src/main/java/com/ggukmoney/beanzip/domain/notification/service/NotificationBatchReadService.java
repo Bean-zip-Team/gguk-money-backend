@@ -68,6 +68,17 @@ public class NotificationBatchReadService {
         return preferenceRepository.findSendableCandidates(type, lastPreferenceId, PageRequest.of(0, PAGE_SIZE));
     }
 
+    public Map<UUID, String> loadProviderUserIds(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> identities = new LinkedHashMap<>();
+        authIdentityRepository.findProviderIdentitiesByUserIds(
+                        List.copyOf(new LinkedHashSet<>(userIds)), AuthIdentity.Provider.TOSS)
+                .forEach(row -> identities.put(row.getUserId(), row.getProviderUserId()));
+        return identities;
+    }
+
     public NotificationPageData loadPage(Collection<UUID> userIds, LocalDate date) {
         if (userIds.isEmpty()) {
             return new NotificationPageData(Map.of(), Set.of(), Map.of());

@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.scheduler;
 
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
+import com.ggukmoney.beanzip.domain.notification.service.WeeklyRankingResetNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,9 +23,11 @@ public class NotificationScheduler {
     private static final long MORNING_LOCK_KEY = 1_920_830L;
     private static final long EVENING_LOCK_KEY = 1_920_190L;
     private static final long KEYCAP_BOX_LOCK_KEY = 1_590_001L;
+    private static final long WEEKLY_RANKING_RESET_LOCK_KEY = 1_580_309L;
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final NotificationDeliveryService notificationDeliveryService;
+    private final WeeklyRankingResetNotificationService weeklyRankingResetNotificationService;
     private final DataSource dataSource;
     private final Clock clock;
 
@@ -47,6 +50,18 @@ public class NotificationScheduler {
                 KEYCAP_BOX_LOCK_KEY,
                 () -> notificationDeliveryService.sendKeycapBoxOpenAvailableNotifications(clock.instant())
         );
+    }
+
+    @Scheduled(
+            cron = "${app.smart-message.schedule.weekly-reset-cron:0 * * * * *}",
+            zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
+    )
+    public void scheduleWeeklyRankingResetNotifications() {
+        withAdvisoryLock(WEEKLY_RANKING_RESET_LOCK_KEY, () -> {
+            weeklyRankingResetNotificationService.enqueueNextPreferencePage();
+            notificationDeliveryService.dispatchWeeklyResetDue(100);
+            weeklyRankingResetNotificationService.completeOneDrainedBatch();
+        });
     }
 
     private LocalDate today() {
