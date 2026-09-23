@@ -54,8 +54,8 @@ public class NotificationDeliveryService {
     public Optional<NotificationDelivery> handleWeeklyRewardAvailable(WeeklyRewardAvailableEvent event) {
         return send(
                 event.userId(),
-                NotificationType.WEEKLY_REWARD_AVAILABLE,
-                "WEEKLY_REWARD_AVAILABLE:" + event.userId() + ":" + event.rewardCycleKey(),
+                NotificationType.RANK_CHANGE,
+                "RANK_CHANGE:WEEKLY_REWARD_AVAILABLE:" + event.userId() + ":" + event.rewardCycleKey(),
                 "{\"rewardCycleKey\":\"%s\",\"availableAt\":\"%s\"}".formatted(event.rewardCycleKey(), event.availableAt())
         );
     }

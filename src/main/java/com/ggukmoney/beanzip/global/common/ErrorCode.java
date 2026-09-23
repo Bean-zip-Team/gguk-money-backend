@@ -110,8 +110,12 @@ public enum ErrorCode {
     RANKING_SEASON_NOT_FOUND("RANKING_SEASON_NOT_FOUND", "랭킹 시즌을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     RANKING_REWARD_RESULT_NOT_FOUND("RANKING_REWARD_RESULT_NOT_FOUND", "종료된 주간 랭킹 결과를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     RANKING_REWARD_NOT_FOUND("RANKING_REWARD_NOT_FOUND", "주간 랭킹 보상을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-    RANKING_REWARD_CONSENT_REQUIRED("RANKING_REWARD_CONSENT_REQUIRED", "순위 변동 알림 동의가 필요합니다.", HttpStatus.FORBIDDEN),
-    RANKING_REWARD_EXPIRED("RANKING_REWARD_EXPIRED", "주간 랭킹 보상 수령 기간이 만료되었습니다.", HttpStatus.GONE);
+    RANKING_REWARD_EXPIRED("RANKING_REWARD_EXPIRED", "주간 랭킹 보상 수령 기간이 만료되었습니다.", HttpStatus.CONFLICT),
+    RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE(
+            "RANKING_REWARD_INTERNAL_ACCOUNT_POLICY_UNAVAILABLE",
+            "주간 랭킹 보상 지급 정책을 일시적으로 확인할 수 없습니다.",
+            HttpStatus.SERVICE_UNAVAILABLE
+    );
 
     private final String code;
     private final String message;

@@ -113,13 +113,13 @@ class NotificationDeliveryServiceTest {
         void agreedUserCreatesPendingThenCallsTossOutsideTransaction() {
             UUID userId = UUID.randomUUID();
             WeeklyRewardAvailableEvent event = new WeeklyRewardAvailableEvent(userId, "2026-W30", Instant.parse("2026-07-25T00:00:00Z"));
-            NotificationDelivery pending = pending(userId, NotificationType.WEEKLY_REWARD_AVAILABLE, "weekly");
-            stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
+            NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, "weekly");
+            stubAgreed(userId, NotificationType.RANK_CHANGE);
             when(persistenceService.createPending(
                     userId,
-                    NotificationType.WEEKLY_REWARD_AVAILABLE,
-                    "WEEKLY_REWARD_AVAILABLE:" + userId + ":2026-W30",
-                    "TPL_WEEKLY",
+                    NotificationType.RANK_CHANGE,
+                    "RANK_CHANGE:WEEKLY_REWARD_AVAILABLE:" + userId + ":2026-W30",
+                    "clickmoney-asfasf",
                     "{\"rewardCycleKey\":\"2026-W30\",\"availableAt\":\"2026-07-25T00:00:00Z\"}"
             )).thenReturn(Optional.of(pending));
 
@@ -140,13 +140,13 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", "TPL_BOOSTER", null, null, null, null),
+                    new NotificationTemplateProperties(null, null, "TPL_BOOSTER", null, null, null, null),
                     smartMessageClient,
                     batchReadService,
                     dailyMissionNudgeService,
                     CLOCK
             );
-            stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
+            stubAgreed(userId, NotificationType.RANK_CHANGE);
 
             assertThat(unconfiguredService.handleWeeklyRewardAvailable(event)).isEmpty();
 

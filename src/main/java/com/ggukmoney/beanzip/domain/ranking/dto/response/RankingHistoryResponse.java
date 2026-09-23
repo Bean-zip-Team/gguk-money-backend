@@ -11,6 +11,8 @@ public record RankingHistoryResponse(
         @Schema(description = "다음 페이지 조회에 전달할 커서입니다. 다음 페이지가 없으면 null입니다.", example = "MjAyNi0wNy0yNlQxNTowMDowMFp8MTIz")
         String nextCursor,
         @Schema(description = "다음 페이지 존재 여부입니다.", example = "true")
-        boolean hasNext
+        boolean hasNext,
+        @Schema(description = "실제로 수령한 주간 랭킹 보상 포인트 합계", example = "17500")
+        long claimedRewardPointTotal
 ) {
 }

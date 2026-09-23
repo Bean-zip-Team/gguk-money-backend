@@ -8,6 +8,9 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,11 +39,13 @@ class RankingQueryServiceTest {
     private final RankingEntryRepository entryRepository = mock(RankingEntryRepository.class);
     private final RankingRedisRepository redisRepository = mock(RankingRedisRepository.class);
     private final WeeklyRankingRewardPreviewService rewardPreviewService = mock(WeeklyRankingRewardPreviewService.class);
+    private final NotificationPreferenceRepository notificationPreferenceRepository = mock(NotificationPreferenceRepository.class);
     private final RankingProperties properties = new RankingProperties();
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
     private final RankingQueryService service = new RankingQueryService(
-            seasonService, entryRepository, redisRepository, rewardPreviewService, properties, clock, businessZoneId
+            seasonService, entryRepository, redisRepository, rewardPreviewService,
+            notificationPreferenceRepository, properties, clock, businessZoneId
     );
 
     RankingQueryServiceTest() {
@@ -116,6 +121,10 @@ class RankingQueryServiceTest {
         when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 100L)));
         when(entryRepository.countParticipants(season)).thenReturn(2L);
         when(entryRepository.countParticipantsAhead(season, 100L, me.toString())).thenReturn(1L);
+        NotificationPreference preference = NotificationPreference.defaultOf(me, NotificationType.RANK_CHANGE);
+        preference.applyAgreement("newAgreement");
+        when(notificationPreferenceRepository.findByUserIdAndType(me, NotificationType.RANK_CHANGE))
+                .thenReturn(Optional.of(preference));
 
         CurrentRankingResponse response = service.getCurrentRanking(me, null);
 
@@ -124,6 +133,7 @@ class RankingQueryServiceTest {
         assertThat(response.myRank().rank()).isEqualTo(2L);
         assertThat(response.myRank().score()).isEqualTo(100L);
         assertThat(response.myRank().scoreGapToFirst()).isEqualTo(100L);
+        assertThat(response.myRank().rankChangeNotificationEnabled()).isTrue();
         assertThat(response.totalParticipantCount()).isEqualTo(2L);
         verify(redisRepository, never()).findTopMembers(season.getId(), 50);
     }
