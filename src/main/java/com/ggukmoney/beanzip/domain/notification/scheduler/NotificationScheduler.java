@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.notification.scheduler;
 
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
+import com.ggukmoney.beanzip.domain.notification.service.WeeklyRankingResetNotificationService;
 import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,9 +19,11 @@ public class NotificationScheduler {
     private static final long MORNING_LOCK_KEY = 1_920_830L;
     private static final long EVENING_LOCK_KEY = 1_920_190L;
     private static final long KEYCAP_BOX_LOCK_KEY = 1_590_001L;
+    private static final long WEEKLY_RANKING_RESET_LOCK_KEY = 1_580_309L;
     private static final long DAILY_MISSION_LOCK_KEY = 2_990_021L;
 
     private final NotificationDeliveryService notificationDeliveryService;
+    private final WeeklyRankingResetNotificationService weeklyRankingResetNotificationService;
     private final AdvisoryLockRunner advisoryLockRunner;
     private final Clock clock;
     private final ZoneId scheduleZoneId;
@@ -28,6 +31,7 @@ public class NotificationScheduler {
 
     public NotificationScheduler(
             NotificationDeliveryService notificationDeliveryService,
+            WeeklyRankingResetNotificationService weeklyRankingResetNotificationService,
             AdvisoryLockRunner advisoryLockRunner,
             Clock clock,
             // 크론이 도는 시간대와 같은 값이어야 한다. 둘이 갈리면 밤 9시에 깨어나서 어제 날짜로 보낸다.
@@ -37,6 +41,7 @@ public class NotificationScheduler {
             @Value("${app.smart-message.schedule.daily-mission-enabled:true}") boolean dailyMissionEnabled
     ) {
         this.notificationDeliveryService = notificationDeliveryService;
+        this.weeklyRankingResetNotificationService = weeklyRankingResetNotificationService;
         this.advisoryLockRunner = advisoryLockRunner;
         this.clock = clock;
         this.scheduleZoneId = ZoneId.of(scheduleZone);
@@ -83,6 +88,18 @@ public class NotificationScheduler {
                 KEYCAP_BOX_LOCK_KEY,
                 () -> notificationDeliveryService.sendKeycapBoxOpenAvailableNotifications(clock.instant())
         );
+    }
+
+    @Scheduled(
+            cron = "${app.smart-message.schedule.weekly-reset-cron:0 * * * * *}",
+            zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
+    )
+    public void scheduleWeeklyRankingResetNotifications() {
+        advisoryLockRunner.runExclusively(WEEKLY_RANKING_RESET_LOCK_KEY, () -> {
+            weeklyRankingResetNotificationService.enqueueNextPreferencePage();
+            notificationDeliveryService.dispatchWeeklyResetDue(100);
+            weeklyRankingResetNotificationService.completeOneDrainedBatch();
+        });
     }
 
     private LocalDate today() {

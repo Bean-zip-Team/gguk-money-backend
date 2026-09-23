@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.ranking.service;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeasonStatus;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingType;
+import com.ggukmoney.beanzip.domain.ranking.event.WeeklyRankingSeasonClosedEvent;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
@@ -237,6 +238,7 @@ class RankingSeasonServiceTest {
         verify(entryRepository).snapshotFinalRanks(1L, Instant.parse("2026-07-26T15:10:00Z"));
         assertThat(finalizing.getStatus()).isEqualTo(RankingSeasonStatus.CLOSED);
         assertThat(finalizing.getClosedAt()).isEqualTo(Instant.parse("2026-07-26T15:10:00Z"));
+        verify(eventPublisher).publishEvent(new WeeklyRankingSeasonClosedEvent(1L));
         verify(transactionManager).commit(transactionStatus);
     }
 

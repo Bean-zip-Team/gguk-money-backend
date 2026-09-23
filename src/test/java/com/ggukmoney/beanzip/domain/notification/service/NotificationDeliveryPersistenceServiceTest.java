@@ -15,6 +15,10 @@ import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import com.ggukmoney.beanzip.global.config.AppConfigBatchLoader;
+import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
+import com.ggukmoney.beanzip.global.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -43,6 +47,9 @@ class NotificationDeliveryPersistenceServiceTest {
     private final RankingEntryRepository rankingEntryRepository = mock(RankingEntryRepository.class);
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
+    private final AppConfigRepository appConfigRepository = mock(AppConfigRepository.class);
+    private final RankChangeNotificationPolicyConfig rankChangePolicyConfig =
+            new RankChangeNotificationPolicyConfig(new AppConfigBatchLoader(appConfigRepository));
     private final NotificationDeliveryPersistenceService service = new NotificationDeliveryPersistenceService(
             deliveryRepository,
             preferenceRepository,
@@ -51,6 +58,7 @@ class NotificationDeliveryPersistenceServiceTest {
             rankingEntryRepository,
             keycapBoxAccountRepository,
             keycapBoxPolicyConfig,
+            rankChangePolicyConfig,
             new NotificationTemplateProperties("WEEKLY", "RANK_SET", "BOOSTER", null, null, null, "clickmoney-box"),
             Clock.fixed(Instant.parse("2026-07-25T10:00:00Z"), ZoneOffset.UTC)
     );
@@ -74,11 +82,111 @@ class NotificationDeliveryPersistenceServiceTest {
     }
 
     @Test
-    void ordinaryOneStepDropRemainsSilent() {
+    void ordinaryOneStepDropCreatesPendingWithDefaultPolicy() {
         UUID userId = UUID.randomUUID();
+        RankingSeason season = weeklySeason(1L);
         NotificationRankState state = NotificationRankState.record(userId, 1L, 1L, Instant.parse("2026-07-25T09:00:00Z"));
-        assertThat(service.prepareScheduledRankChange(userId, weeklySeason(1L), 2L, state, false)).isEmpty();
+        String dedupeKey = rankDedupeKey(season, userId, state);
+        NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
+        when(deliveryRepository.insertPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq("RANK_CHANGE"), org.mockito.ArgumentMatchers.eq(dedupeKey),
+                org.mockito.ArgumentMatchers.eq("RANK_SET"), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(1);
+        when(deliveryRepository.findByDedupeKey(dedupeKey)).thenReturn(Optional.of(pending));
+
+        assertThat(service.prepareScheduledRankChange(userId, season, 2L, state, false)).contains(pending);
         assertThat(state.getBaselineRank()).isEqualTo(2L);
+    }
+
+    @Test
+    void topTenExitAloneDoesNotOverrideConfiguredThreeRankThreshold() {
+        when(appConfigRepository.findLatestEffectiveByConfigKeys(
+                org.mockito.ArgumentMatchers.eq(java.util.Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)),
+                org.mockito.ArgumentMatchers.any(Instant.class)
+        )).thenReturn(java.util.List.of(AppConfig.createFor(
+                RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "3", Instant.EPOCH)));
+        rankChangePolicyConfig.refresh();
+        UUID userId = UUID.randomUUID();
+        RankingSeason season = weeklySeason(1L);
+        NotificationRankState state = NotificationRankState.record(userId, 1L, 10L, Instant.parse("2026-07-25T09:00:00Z"));
+
+        assertThat(service.prepareScheduledRankChange(userId, season, 11L, state, false)).isEmpty();
+        assertThat(state.getBaselineRank()).isEqualTo(11L);
+        verify(deliveryRepository, never()).insertPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void unchangedRankDoesNotCreatePendingDelivery() {
+        UUID userId = UUID.randomUUID();
+        RankingSeason season = weeklySeason(1L);
+        NotificationRankState state = NotificationRankState.record(
+                userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));
+
+        assertThat(service.prepareScheduledRankChange(userId, season, 5L, state, false)).isEmpty();
+
+        assertThat(state.getBaselineRank()).isEqualTo(5L);
+        verify(deliveryRepository, never()).insertPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void weeklyResetAttemptsUseOneThenFiveMinuteBackoffAndStopAfterThirdTransientFailure() {
+        UUID userId = UUID.randomUUID();
+        NotificationDelivery delivery = pending(userId, NotificationType.RANK_CHANGE, "reset-retry");
+        delivery.attachWeeklyResetBatch(20L);
+        ReflectionTestUtils.setField(delivery, "id", 30L);
+        when(deliveryRepository.findById(30L)).thenReturn(Optional.of(delivery));
+        Instant first = Instant.parse("2026-07-25T10:00:00Z");
+
+        assertThat(service.claimWeeklyResetAttempt(30L, first)).contains(delivery);
+        assertThat(delivery.getAttemptCount()).isEqualTo(1);
+        assertThat(delivery.getLastAttemptAt()).isEqualTo(first);
+        assertThat(delivery.getNextAttemptAt()).isEqualTo(Instant.parse("2026-07-25T10:01:00Z"));
+        service.markWeeklyResetRetryWaiting(30L, first, "RATE_LIMITED", "temporary", "{\"error\":true}");
+        assertThat(delivery.getNextAttemptAt()).isEqualTo(Instant.parse("2026-07-25T10:01:00Z"));
+
+        Instant second = Instant.parse("2026-07-25T10:01:00Z");
+        assertThat(service.claimWeeklyResetAttempt(30L, second)).contains(delivery);
+        assertThat(delivery.getLastAttemptAt()).isEqualTo(second);
+        service.markWeeklyResetRetryWaiting(30L, second, "SERVER_ERROR", "temporary", null);
+        assertThat(delivery.getAttemptCount()).isEqualTo(2);
+        assertThat(delivery.getNextAttemptAt()).isEqualTo(Instant.parse("2026-07-25T10:06:00Z"));
+
+        Instant third = Instant.parse("2026-07-25T10:06:00Z");
+        assertThat(service.claimWeeklyResetAttempt(30L, third)).contains(delivery);
+        service.markWeeklyResetRetryWaiting(30L, third, "SERVER_ERROR", "temporary", null);
+        assertThat(delivery.getAttemptCount()).isEqualTo(3);
+        assertThat(delivery.getStatus()).isEqualTo(NotificationDeliveryStatus.FAILED);
+        assertThat(delivery.getNextAttemptAt()).isNull();
+    }
+
+    @Test
+    void weeklyResetEnqueueUsesTheExistingRankChangeCampaignAndSeasonUserKey() {
+        UUID userId = UUID.randomUUID();
+        when(deliveryRepository.insertWeeklyResetPendingIfAbsent(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(20L),
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq("RANK_CHANGE:WEEKLY_RESET:10:" + userId),
+                org.mockito.ArgumentMatchers.eq("RANK_SET"),
+                org.mockito.ArgumentMatchers.eq(Instant.parse("2026-07-25T10:00:00Z"))
+        )).thenReturn(1);
+
+        assertThat(service.enqueueWeeklyReset(userId, 20L, 10L)).isEqualTo(1);
+
+        verify(preferenceRepository, never()).findByUserIdAndType(userId, NotificationType.RANK_CHANGE);
     }
 
     @Test
@@ -110,6 +218,9 @@ class NotificationDeliveryPersistenceServiceTest {
                 "createPending",
                 "prepareRankChange",
                 "prepareScheduledRankChange",
+                "enqueueWeeklyReset",
+                "claimWeeklyResetAttempt",
+                "markWeeklyResetRetryWaiting",
                 "prepareKeycapBoxOpenAvailable",
                 "captureRankBaselineOnAgreement",
                 "markSent",
@@ -304,7 +415,6 @@ class NotificationDeliveryPersistenceServiceTest {
 
     @Test
     void oneRankChangeCreatesPendingForTestThreshold() {
-        ReflectionTestUtils.setField(service, "minimumRankChange", 1);
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
         NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T10:00:00Z"));
@@ -502,6 +612,7 @@ class NotificationDeliveryPersistenceServiceTest {
                 rankingEntryRepository,
                 keycapBoxAccountRepository,
                 keycapBoxPolicyConfig,
+                rankChangePolicyConfig,
                 new NotificationTemplateProperties(null, "RANK_SET", null, null, null, null, null),
                 Clock.fixed(Instant.parse("2026-08-03T01:00:00Z"), ZoneOffset.UTC)
         );

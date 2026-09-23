@@ -26,10 +26,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.lang.reflect.Method;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.LocalDate;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,10 +45,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyInt;
 
 class NotificationDeliveryServiceTest {
 
-    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC);
+    private static final Instant NOW = Instant.parse("2026-07-25T12:00:00Z");
+    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final DailyMissionNudgeService.NudgeCriteria CRITERIA =
             new DailyMissionNudgeService.NudgeCriteria("2026-07-25", List.of("ATTENDANCE"));
 
@@ -157,6 +159,224 @@ class NotificationDeliveryServiceTest {
 
     @Nested
     class RankChange {
+
+        @Test
+        void weeklyResetUsesExistingRankChangeCampaignAndRechecksConsentBeforeSending() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-send");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-reset", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(delivery.getId(), "content-reset", "{\"ok\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(preferenceRepository).findWeeklyResetEligibility(userId);
+            verify(smartMessageClient).sendMessage("toss-user-reset", "clickmoney-asfasf", "{}");
+            verify(persistenceService).markSent(delivery.getId(), "content-reset", "{\"ok\":true}");
+            verify(authIdentityRepository, never()).findByUserIdAndProvider(any(), any());
+        }
+
+        @Test
+        void weeklyResetConsentRevocationFailsWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-revoked");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId)).thenReturn(Optional.empty());
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of());
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetRechecksEligibilityImmediatelyBeforeEachRecipient() {
+            UUID firstUserId = UUID.randomUUID();
+            UUID revokedUserId = UUID.randomUUID();
+            NotificationDelivery first = weeklyResetPending(firstUserId, "reset-consent-first");
+            NotificationDelivery revoked = weeklyResetPending(revokedUserId, "reset-consent-revoked");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(first, revoked));
+            when(preferenceRepository.findWeeklyResetEligibility(firstUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(preferenceRepository.findWeeklyResetEligibility(revokedUserId)).thenReturn(Optional.empty());
+            when(batchReadService.loadProviderUserIds(List.of(firstUserId, revokedUserId))).thenReturn(Map.of(
+                    firstUserId, "toss-user-first",
+                    revokedUserId, "toss-user-revoked"
+            ));
+            when(persistenceService.claimWeeklyResetAttempt(first.getId(), NOW)).thenReturn(Optional.of(first));
+            when(smartMessageClient.sendMessage("toss-user-first", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-first", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(first.getId(), "content-first", "{\"ok\":true}"))
+                    .thenReturn(first);
+            when(persistenceService.markWeeklyResetFailed(
+                    revoked.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null))
+                    .thenReturn(revoked);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(smartMessageClient, never()).sendMessage(
+                    "toss-user-revoked", "clickmoney-asfasf", "{}");
+            verify(persistenceService).markWeeklyResetFailed(
+                    revoked.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null);
+        }
+
+        @Test
+        void weeklyResetInactiveUserFailsWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-inactive-user");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "WITHDRAWN")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-inactive"));
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "USER_NOT_ACTIVE", "User is no longer active", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "USER_NOT_ACTIVE", "User is no longer active", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetDispatchDoesNotExceedRollingMinuteRateLimit() {
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(100L);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService, never()).findDueWeeklyResetDeliveries(any(), anyInt());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetRecordsTheActualTimeOfEachProviderAttempt() {
+            UUID firstUserId = UUID.randomUUID();
+            UUID secondUserId = UUID.randomUUID();
+            NotificationDelivery first = weeklyResetPending(firstUserId, "reset-first-attempt-time");
+            NotificationDelivery second = weeklyResetPending(secondUserId, "reset-second-attempt-time");
+            Instant firstAttemptAt = NOW.plusSeconds(20);
+            Instant secondAttemptAt = NOW.plusSeconds(40);
+            Clock changingClock = mock(Clock.class);
+            when(changingClock.instant()).thenReturn(NOW).thenReturn(firstAttemptAt).thenReturn(secondAttemptAt);
+            NotificationDeliveryService timedService = serviceWithClock(changingClock);
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(first, second));
+            when(preferenceRepository.findWeeklyResetEligibility(firstUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(preferenceRepository.findWeeklyResetEligibility(secondUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(firstUserId, secondUserId))).thenReturn(Map.of(
+                    firstUserId, "toss-user-first",
+                    secondUserId, "toss-user-second"
+            ));
+            when(persistenceService.claimWeeklyResetAttempt(first.getId(), firstAttemptAt))
+                    .thenReturn(Optional.of(first));
+            when(persistenceService.claimWeeklyResetAttempt(second.getId(), secondAttemptAt))
+                    .thenReturn(Optional.of(second));
+            when(smartMessageClient.sendMessage("toss-user-first", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-first", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(smartMessageClient.sendMessage("toss-user-second", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-second", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(first.getId(), "content-first", "{\"ok\":true}"))
+                    .thenReturn(first);
+            when(persistenceService.markSent(second.getId(), "content-second", "{\"ok\":true}"))
+                    .thenReturn(second);
+
+            assertThat(timedService.dispatchWeeklyResetDue(100)).isEqualTo(2);
+
+            verify(persistenceService).claimWeeklyResetAttempt(first.getId(), firstAttemptAt);
+            verify(persistenceService).claimWeeklyResetAttempt(second.getId(), secondAttemptAt);
+        }
+
+        @Test
+        void retryableWeeklyResetProviderFailureIsRecordedWithProviderResponse() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-retry");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            false, null, "RATE_LIMITED", "temporary", true, "FAIL", "{\"error\":true}"));
+            when(persistenceService.markWeeklyResetRetryWaiting(
+                    delivery.getId(), NOW, "RATE_LIMITED", "temporary", "{\"error\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(persistenceService).markWeeklyResetRetryWaiting(
+                    delivery.getId(), NOW, "RATE_LIMITED", "temporary", "{\"error\":true}");
+        }
+
+        @Test
+        void missingTossIdentityFailsPermanentlyWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-missing-key");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of());
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "TOSS_USER_KEY_MISSING", "Toss auth identity was not found", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "TOSS_USER_KEY_MISSING", "Toss auth identity was not found", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void permanentWeeklyResetProviderFailureIsTerminal() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-permanent-failure");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            false, null, "INVALID_REQUEST", "invalid", false, "FAIL", "{\"error\":true}"));
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "INVALID_REQUEST", "invalid", "{\"error\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "INVALID_REQUEST", "invalid", "{\"error\":true}");
+            verify(persistenceService, never()).markWeeklyResetRetryWaiting(any(), any(), any(), any(), any());
+        }
 
         @Test
         void onlyPreparedPendingDeliveryCallsTossOutsideTransaction() {
@@ -739,5 +959,51 @@ class NotificationDeliveryServiceTest {
         }, Instant.now());
         ReflectionTestUtils.setField(delivery, "id", Math.abs(dedupeKey.hashCode()) + 1L);
         return delivery;
+    }
+
+    private NotificationDelivery weeklyResetPending(UUID userId, String dedupeKey) {
+        NotificationDelivery delivery = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
+        delivery.attachWeeklyResetBatch(301L);
+        return delivery;
+    }
+
+    private NotificationPreferenceRepository.WeeklyResetEligibility weeklyResetEligibility(
+            boolean enabled,
+            String agreementStatus,
+            String userStatus
+    ) {
+        return new NotificationPreferenceRepository.WeeklyResetEligibility() {
+            @Override
+            public Boolean getEnabled() {
+                return enabled;
+            }
+
+            @Override
+            public String getAgreementStatus() {
+                return agreementStatus;
+            }
+
+            @Override
+            public String getUserStatus() {
+                return userStatus;
+            }
+        };
+    }
+
+    private NotificationDeliveryService serviceWithClock(Clock clock) {
+        return new NotificationDeliveryService(
+                persistenceService,
+                preferenceRepository,
+                authIdentityRepository,
+                boosterGrantRepository,
+                tapPolicyConfig,
+                keycapBoxAccountRepository,
+                keycapBoxPolicyConfig,
+                templateProperties,
+                smartMessageClient,
+                batchReadService,
+                dailyMissionNudgeService,
+                clock
+        );
     }
 }
