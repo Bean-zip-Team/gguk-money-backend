@@ -1,5 +1,5 @@
 -- Run after manual-weekly-ranking-reward.sql and manual-system-ranking-boost.sql.
--- This prepares runtime configuration only; both policies remain disabled.
+-- This prepares runtime configuration only; the boost policy is appended disabled.
 BEGIN;
 
 DO $$
@@ -24,13 +24,12 @@ BEGIN
     END IF;
 END $$;
 
+-- Weekly rewards may already be live (BEA-296). Seed only; never override the operator's policy.
 INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
-VALUES (
-    gen_random_uuid(),
-    'ranking.weeklyReward.policy',
-    '{"enabled":false,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb,
-    now(), now(), now()
-);
+SELECT gen_random_uuid(), 'ranking.weeklyReward.policy',
+       '{"enabled":false,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb,
+       now(), now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM app_config WHERE config_key = 'ranking.weeklyReward.policy');
 
 INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
 VALUES (

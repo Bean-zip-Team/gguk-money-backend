@@ -57,6 +57,29 @@ class RankingPolicyRolloutMigrationIntegrationTest extends FullStackIntegrationT
     }
 
     @Test
+    void rolloutLeavesAWeeklyRewardPolicyTheOperatorAlreadyTurnedOnAlone() throws Exception {
+        for (UUID userId : INTERNAL_USER_IDS) {
+            insertActiveUser(userId);
+        }
+        // 주간 상금은 BEA-296 으로 이미 운영 중이다. 이 SQL 이 꺼진 정책을 새로 얹으면 상금이 멈춘다.
+        jdbcTemplate.update("""
+                INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
+                VALUES (gen_random_uuid(), 'ranking.weeklyReward.policy',
+                        '{"enabled":true,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb, now(), now(), now())
+                """);
+
+        jdbcTemplate.execute(rolloutSql());
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM app_config WHERE config_key = 'ranking.weeklyReward.policy'
+                """, Long.class)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT config_value->>'enabled' FROM app_config
+                WHERE config_key = 'ranking.weeklyReward.policy'
+                """, String.class)).isEqualTo("true");
+    }
+
+    @Test
     void rolloutFailsClosedWhenAnyInternalAccountIsMissing() throws Exception {
         INTERNAL_USER_IDS.stream().limit(5).forEach(this::insertActiveUser);
 
