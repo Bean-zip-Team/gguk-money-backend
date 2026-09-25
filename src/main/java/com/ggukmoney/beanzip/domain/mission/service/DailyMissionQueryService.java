@@ -221,6 +221,7 @@ public class DailyMissionQueryService {
                 definition.code(),
                 definition.name(),
                 definition.description(),
+                missionTypeOf(definition.missionType()),
                 definition.periodType() == MissionDefinition.PeriodType.DAILY
                         ? MissionListResponse.PeriodType.DAILY
                         : MissionListResponse.PeriodType.ONE_TIME,
@@ -232,6 +233,21 @@ public class DailyMissionQueryService {
                 claimStatusOf(reward),
                 reward == null ? null : reward.getPublicId()
         );
+    }
+
+    /**
+     * 화면이 종류마다 다르게 그려야 하므로 분류를 그대로 내려준다. code 문자열로 추측하게 두면
+     * 미션 코드를 바꾸는 순간 화면이 깨지고, 정의를 서버가 내려준다는 전제도 무너진다.
+     *
+     * <p>switch 로 적는다. 종류가 추가되면 컴파일이 깨져 응답에 빠뜨리는 일을 막아준다.
+     */
+    private static MissionListResponse.MissionType missionTypeOf(MissionDefinition.MissionType missionType) {
+        return switch (missionType) {
+            case ATTENDANCE -> MissionListResponse.MissionType.ATTENDANCE;
+            case TAP_COUNT -> MissionListResponse.MissionType.TAP_COUNT;
+            case RANK_UP -> MissionListResponse.MissionType.RANK_UP;
+            case NOTIFICATION_OPT_IN -> MissionListResponse.MissionType.NOTIFICATION_OPT_IN;
+        };
     }
 
     private MissionListResponse.Status statusOf(Evaluated mission, MissionReward reward) {

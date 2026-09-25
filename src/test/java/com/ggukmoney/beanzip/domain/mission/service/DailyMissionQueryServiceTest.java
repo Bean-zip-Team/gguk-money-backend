@@ -134,6 +134,24 @@ class DailyMissionQueryServiceTest {
     }
 
     @Test
+    void tellsTheScreenWhatKindOfMissionEachRowIs() {
+        when(rankUpSignal.rankUpOf(eq(userId), any())).thenReturn(Optional.of(7L));
+
+        List<MissionListResponse.Mission> missions = service.feedOf(userId).missions();
+
+        // 화면이 종류마다 다르게 그린다. code 문자열 규칙으로 추측하게 두면 코드명을 바꿀 때 화면이 깨지고,
+        // 정의를 서버가 내려준다는 전제도 무너진다.
+        assertThat(missionOf(missions, "ATTENDANCE").missionType())
+                .isEqualTo(MissionListResponse.MissionType.ATTENDANCE);
+        assertThat(missionOf(missions, "TAP_500").missionType())
+                .isEqualTo(MissionListResponse.MissionType.TAP_COUNT);
+        assertThat(missionOf(missions, "RANK_UP_5").missionType())
+                .isEqualTo(MissionListResponse.MissionType.RANK_UP);
+        assertThat(missionOf(missions, "NOTIFICATION_OPT_IN").missionType())
+                .isEqualTo(MissionListResponse.MissionType.NOTIFICATION_OPT_IN);
+    }
+
+    @Test
     void summarisesOnlyTheMissionsShownToday() {
         givenTodayTaps(700);
 

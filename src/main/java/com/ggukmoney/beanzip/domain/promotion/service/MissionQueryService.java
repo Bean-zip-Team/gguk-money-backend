@@ -61,6 +61,8 @@ public class MissionQueryService {
                 trigger.promotionCode(),
                 trigger.missionName(),
                 null,
+                // 상시 미션은 프로모션 기반이라 데일리 카탈로그의 분류를 갖지 않는다.
+                null,
                 MissionListResponse.PeriodType.ONE_TIME,
                 MissionListResponse.RewardType.TOSS_POINT,
                 trigger.amount(),
