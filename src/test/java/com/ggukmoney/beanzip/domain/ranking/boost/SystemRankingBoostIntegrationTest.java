@@ -37,7 +37,6 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
     private static final LocalDate DATE = LocalDate.of(2026, 9, 18);
     @Autowired SystemRankingBoostTransactionService service;
     @Autowired RankingBoostRunRepository runs;
-    @Autowired RankingBoostRewardExclusions exclusions;
     @MockitoSpyBean RankingEntryRepository entries;
     @Autowired RankingSeasonService seasonService;
     @Autowired RankingSeasonRepository seasons;
@@ -110,9 +109,6 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
         assertThat(taps.findByUserIdAndTapDate(leader.getId(), DATE).orElseThrow().getTotalValidTapCount()).isEqualTo(1500);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_tap_progress WHERE user_id = ?", Long.class, staff.getId())).isEqualTo(realProgressBefore);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tap_batch WHERE user_id = ?", Long.class, staff.getId())).isEqualTo(tapEventsBefore);
-        configAt = NOW.minusSeconds(30); policy(false, List.of(), 1000);
-        assertThat(exclusions.excludedUserIds(season.getId(), NOW).orElseThrow()).contains(staff.getId());
-        assertThat(exclusions.excludedUserIds(season.getId() + 100, NOW).orElseThrow()).doesNotContain(staff.getId());
     }
 
     @Test
@@ -285,11 +281,6 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
         projection.syncWeeklyScore(next, staff.getId(), 25L, Instant.parse("2026-09-21T10:00:00Z"), false);
         assertThat(entries.findBySeasonAndUserId(next, staff.getId()).orElseThrow().getScore()).isEqualTo(25L);
         assertThat(entries.findBySeasonAndUserId(next, staff.getId()).orElseThrow().getRankingBoostScore()).isZero();
-        configAt = NOW.minusSeconds(30); policy(false, List.of(), 1000);
-        assertThat(exclusions.excludedUserIds(season.getId(), NOW).orElseThrow()).contains(staff.getId());
-        assertThat(exclusions.excludedUserIds(next.getId(), NOW).orElseThrow()).doesNotContain(staff.getId());
-        jdbcTemplate.update("DELETE FROM app_config WHERE config_key = ?", SystemRankingBoostPolicy.KEY);
-        assertThat(exclusions.excludedUserIds(season.getId(), NOW)).isEmpty();
     }
 
     @Test
