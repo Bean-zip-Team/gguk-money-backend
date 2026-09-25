@@ -29,20 +29,11 @@ public class MissionFeedService {
     private final MissionRewardService missionRewardService;
     private final Clock clock;
 
-    /**
-     * @param includeDaily 데일리 미션을 함께 내려줄지. <b>구버전 앱을 보호하는 장치다</b> — 지금 앱은
-     *                     목록에 상시 미션만 온다고 보고 보상을 전부 토스 포인트로 그린다. 데일리
-     *                     미션이 섞이면 내부 포인트가 토스 포인트로 표시되고, 달성했는데 지급되지
-     *                     않는 상태가 화면에 남는다. 데일리 화면을 붙인 앱만 이 값을 켠다.
-     */
     // 조회지만 쓰기 트랜잭션이다. 데일리 미션은 달성한 순간 보상 행을 만들어 둬야 "달성했지만
     // 아직 안 받은" 상태가 존재할 수 있다.
     @Transactional
-    public MissionListResponse feedOf(UUID userId, boolean includeDaily) {
+    public MissionListResponse feedOf(UUID userId) {
         List<MissionListResponse.Mission> missions = new ArrayList<>(missionQueryService.promotionMissionsOf(userId));
-        if (!includeDaily) {
-            return new MissionListResponse(missions, null);
-        }
 
         DailyMissionQueryService.DailyMissionFeed daily = dailyMissionQueryService.feedOf(userId);
         missions.addAll(daily.missions());

@@ -20,10 +20,10 @@ import java.util.UUID;
  */
 @Schema(description = "미션 목록 응답")
 public record MissionListResponse(
-        @Schema(description = "미션 목록. 상시 미션이 먼저 오고, includeDaily=true 일 때만 데일리 미션이 뒤따른다.")
+        @Schema(description = "미션 목록. 상시 미션이 먼저 오고 데일리 미션이 뒤따른다.")
         List<Mission> missions,
 
-        @Schema(description = "오늘의 데일리 미션 요약. includeDaily=true 일 때만 채워진다.")
+        @Schema(description = "오늘의 데일리 미션 요약.")
         DailySummary daily
 ) {
 
@@ -37,6 +37,11 @@ public record MissionListResponse(
 
             @Schema(description = "미션 설명. 없을 수 있다.", example = "데일리 미션 알림을 받으면 드려요")
             String description,
+
+            @Schema(description = "미션 종류. 데일리 미션에만 채워지고 상시 미션은 null 이다 — 상시 미션은 "
+                    + "프로모션 기반이라 이 분류를 갖지 않는다. 화면이 종류마다 다르게 그려야 하므로 "
+                    + "code 문자열로 추측하지 말고 이 값을 쓴다.", example = "TAP_COUNT")
+            MissionType missionType,
 
             @Schema(description = "주기", example = "ONE_TIME")
             PeriodType periodType,
@@ -96,6 +101,21 @@ public record MissionListResponse(
 
         @Schema(description = "지급 완료")
         REWARDED
+    }
+
+    @Schema(description = "미션 종류")
+    public enum MissionType {
+        @Schema(description = "출석. 앱에 들어오면 달성된다")
+        ATTENDANCE,
+
+        @Schema(description = "클릭 횟수. 진행바로 그린다")
+        TAP_COUNT,
+
+        @Schema(description = "전일 대비 랭킹 상승")
+        RANK_UP,
+
+        @Schema(description = "데일리 미션 알림 동의. 누르면 토스 동의 시트를 띄운다")
+        NOTIFICATION_OPT_IN
     }
 
     @Schema(description = "미션 주기")
