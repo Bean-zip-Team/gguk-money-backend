@@ -7,6 +7,7 @@ import com.ggukmoney.beanzip.domain.mission.repository.MissionRewardRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
+import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -41,6 +43,8 @@ public class MissionRewardService {
     private final PointAccountService pointAccountService;
     private final PointLedgerService pointLedgerService;
     private final UserService userService;
+    private final MissionDefinitionCatalog missionDefinitionCatalog;
+    private final SystemRankingBoostPolicy internalAccountPolicy;
 
     /**
      * 해당 기간의 보상 행을 찾아 준다.
@@ -141,7 +145,7 @@ public class MissionRewardService {
 
         AppUser user = userService.getById(userId);
         reward.claim(now);
-        long credited = credit(user, reward);
+        long credited = credit(user, reward, internalUserIds(now));
         return new ClaimResult(1, credited, pointAccountService.getBalance(userId));
     }
 
@@ -150,6 +154,7 @@ public class MissionRewardService {
     public ClaimResult claimAll(UUID userId, Instant now) {
         List<MissionReward> claimables = missionRewardRepository.findClaimablesForUpdate(userId, now);
         AppUser user = userService.getById(userId);
+        Set<UUID> internalUserIds = internalUserIds(now);
 
         int claimedCount = 0;
         long claimedPointAmount = 0L;
@@ -160,7 +165,7 @@ public class MissionRewardService {
                 continue;
             }
             reward.claim(now);
-            claimedPointAmount += credit(user, reward);
+            claimedPointAmount += credit(user, reward, internalUserIds);
             claimedCount++;
         }
         return new ClaimResult(claimedCount, claimedPointAmount, pointAccountService.getBalance(userId));
@@ -179,7 +184,14 @@ public class MissionRewardService {
         return new ExpiryResult(expiredCount, expiredPointAmount);
     }
 
-    private long credit(AppUser user, MissionReward reward) {
+    private long credit(AppUser user, MissionReward reward, Set<UUID> internalUserIds) {
+        if (internalUserIds.contains(user.getId()) && isRankUp(reward)) {
+            // 사내 계정은 부스트로 하루에 수십 등을 올라 랭킹 상승 미션을 매일 달성한다. 주간 상금과
+            // 같은 규칙으로, 수령은 정상 처리하되 포인트만 넣지 않는다.
+            log.warn("MISSION_REWARD_UNPAID reason=INTERNAL_ACCOUNT userId={} missionCode={} periodKey={} amount={}",
+                    user.getId(), reward.getMissionCode(), reward.getPeriodKey(), reward.getRewardPointAmount());
+            return reward.getRewardPointAmount();
+        }
         PointAccount account = pointAccountService.credit(user.getId(), reward.getRewardPointAmount());
         pointLedgerService.recordCredit(
                 account,
@@ -191,6 +203,24 @@ public class MissionRewardService {
         log.info("MISSION_REWARD_CLAIMED userId={} missionCode={} periodKey={} amount={}",
                 user.getId(), reward.getMissionCode(), reward.getPeriodKey(), reward.getRewardPointAmount());
         return reward.getRewardPointAmount();
+    }
+
+    /**
+     * 부스트가 쓰는 사내 계정 목록을 그대로 본다. 목록이 두 곳이면 한쪽에서만 빠져 돈이 나간다.
+     *
+     * <p>설정이 없으면 아무도 사내 계정으로 보지 않는다. 그때는 부스트도 돌지 않으므로 인위적으로
+     * 오른 순위가 없다.
+     */
+    private Set<UUID> internalUserIds(Instant now) {
+        return internalAccountPolicy.load(now)
+                .map(SystemRankingBoostPolicy.Snapshot::internalUserIds)
+                .orElse(Set.of());
+    }
+
+    private boolean isRankUp(MissionReward reward) {
+        return missionDefinitionCatalog.findByCode(reward.getMissionCode())
+                .map(definition -> definition.missionType() == MissionDefinition.MissionType.RANK_UP)
+                .orElse(false);
     }
 
     /**
