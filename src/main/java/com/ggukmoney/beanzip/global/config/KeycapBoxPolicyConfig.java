@@ -112,7 +112,8 @@ public class KeycapBoxPolicyConfig {
         if (KEY_OPEN_CYCLE_DURATION_SECONDS.equals(key)) {
             return value > 0;
         }
-        if (KEY_FREE_OPEN_LIMIT.equals(key) || KEY_AD_OPEN_LIMIT.equals(key)) {
+        if (KEY_FREE_OPEN_LIMIT.equals(key) || KEY_AD_OPEN_LIMIT.equals(key)
+                || KEY_BULK_OPEN_LIMIT.equals(key)) {
             return value >= 0;
         }
         return false;
