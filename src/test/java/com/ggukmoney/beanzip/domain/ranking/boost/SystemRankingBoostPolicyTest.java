@@ -52,11 +52,15 @@ class SystemRankingBoostPolicyTest {
     }
 
     @Test
-    void productionGateAllowsActiveSeasonUntilTwoHoursBeforeClose() {
+    void productionGateSkipsSundaySoAnOvertakenLeaderHasADayToWinItBack() {
         var gate = new SystemRankingBoostRolloutGate();
         var season = com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason.activeWeekly(LocalDate.of(2026, 9, 14),
                 Instant.parse("2026-09-13T15:00:00Z"), Instant.parse("2026-09-20T15:00:00Z"));
         assertThat(gate.permits(now, season)).isTrue();
+        // 토요일 21:55 KST 는 마지막 부스트 슬롯이다. 일요일 18:00~21:55 KST 는 전부 막힌다.
+        assertThat(gate.permits(Instant.parse("2026-09-19T12:55:00Z"), season)).isTrue();
+        assertThat(gate.permits(Instant.parse("2026-09-20T09:00:00Z"), season)).isFalse();
+        assertThat(gate.permits(Instant.parse("2026-09-20T12:55:00Z"), season)).isFalse();
         assertThat(SystemRankingBoostRolloutGate.outsideCloseWindow(season,
                 Instant.parse("2026-09-20T12:59:59Z"), Duration.ofHours(2))).isTrue();
         assertThat(SystemRankingBoostRolloutGate.outsideCloseWindow(season,
