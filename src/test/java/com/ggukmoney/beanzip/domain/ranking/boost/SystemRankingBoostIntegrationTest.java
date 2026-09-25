@@ -228,7 +228,7 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
     }
 
     @Test
-    void alreadyAheadSkipsAndGlobalRealLeaderOutsideFirstPlaceDoesNotTriggerSpecialNotification() {
+    void alreadyAheadSkipsAndAnotherInternalAboveTheRealLeaderStopsFurtherBoosts() {
         agree(leader);
         entries.saveAndFlush(RankingEntry.createFor(season, staff, 2000L, null, NOW));
         assertThat(service.advance(NOW).orElseThrow().getSkipReason()).isEqualTo("SELECTED_ALREADY_AHEAD");
@@ -236,11 +236,11 @@ class SystemRankingBoostIntegrationTest extends FullStackIntegrationTestSupport 
         AppUser lowStaff = users.saveAndFlush(AppUser.createActive("low staff", null));
         configAt = NOW.minusSeconds(30); policy(true, List.of(staff.getId(), lowStaff.getId()), 1000);
         service.plan(NOW);
+        // The real leader already sits below one internal account. Boosting another would stack
+        // internal accounts above every real user while the leader is idle, until they fill the podium.
         RankingBoostRun run = service.advance(NOW).orElseThrow();
-        assertThat(run.getSelectedUserId()).isEqualTo(lowStaff.getId());
-        assertThat(run.getLeaderRankBefore()).isEqualTo(2);
-        assertThat(run.getLeaderRankAfter()).isEqualTo(3);
-        assertThat(run.getNotificationDeliveryId()).isNull();
+        assertThat(run.getSkipReason()).isEqualTo("REAL_LEADER_NOT_FIRST");
+        assertThat(entries.findBySeasonAndUserId(season, lowStaff.getId())).isEmpty();
         assertThat(deliveries.count()).isZero();
     }
 
