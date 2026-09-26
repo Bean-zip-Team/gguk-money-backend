@@ -1,11 +1,13 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
 import com.ggukmoney.beanzip.domain.mission.dto.response.MissionRewardListResponse;
+import com.ggukmoney.beanzip.domain.mission.entity.MissionDefinition;
 import com.ggukmoney.beanzip.domain.mission.entity.MissionReward;
 import com.ggukmoney.beanzip.domain.mission.repository.MissionRewardRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
+import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,9 +44,12 @@ class MissionRewardServiceTest {
     private final PointAccountService pointAccountService = mock(PointAccountService.class);
     private final PointLedgerService pointLedgerService = mock(PointLedgerService.class);
     private final UserService userService = mock(UserService.class);
+    private final MissionDefinitionCatalog missionDefinitionCatalog = mock(MissionDefinitionCatalog.class);
+    private final SystemRankingBoostPolicy internalAccountPolicy = mock(SystemRankingBoostPolicy.class);
 
     private final MissionRewardService service = new MissionRewardService(
-            missionRewardRepository, pointAccountService, pointLedgerService, userService);
+            missionRewardRepository, pointAccountService, pointLedgerService, userService,
+            missionDefinitionCatalog, internalAccountPolicy);
 
     private final UUID userId = UUID.randomUUID();
     private final PointAccount account = mock(PointAccount.class);
@@ -55,6 +61,73 @@ class MissionRewardServiceTest {
         lenient().when(userService.getById(userId)).thenReturn(user);
         lenient().when(pointAccountService.credit(eq(userId), anyLong())).thenReturn(account);
         lenient().when(pointAccountService.getBalance(userId)).thenReturn(1380L);
+        lenient().when(missionDefinitionCatalog.findByCode("RANK_UP_5"))
+                .thenReturn(Optional.of(definition("RANK_UP_5", MissionDefinition.MissionType.RANK_UP)));
+        lenient().when(missionDefinitionCatalog.findByCode("ATTENDANCE"))
+                .thenReturn(Optional.of(definition("ATTENDANCE", MissionDefinition.MissionType.ATTENDANCE)));
+    }
+
+    @Test
+    void doesNotPayAnInternalAccountForARankUpItsBoostCouldHaveMade() {
+        internalAccounts(Set.of(userId));
+        MissionReward reward = claimableReward("RANK_UP_5", "2026-09-21", 100, MIDNIGHT);
+        when(missionRewardRepository.findByUserIdAndPublicIdForUpdate(userId, reward.getPublicId()))
+                .thenReturn(Optional.of(reward));
+
+        MissionRewardService.ClaimResult result = service.claim(userId, reward.getPublicId(), NOW);
+
+        // 부스트로 하루에 수십 등을 오르므로 사내 계정은 이 미션을 매일 달성한다. 화면에서는 정상 수령처럼
+        // 보이게 두고(주간 상금과 같은 규칙) 포인트만 넣지 않는다.
+        assertThat(reward.isClaimed()).isTrue();
+        assertThat(result.claimedPointAmount()).isEqualTo(100L);
+        verify(pointAccountService, never()).credit(any(), anyLong());
+        verify(pointLedgerService, never()).recordCredit(any(), any(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    void stillPaysAnInternalAccountForMissionsTheBoostCannotTouch() {
+        internalAccounts(Set.of(userId));
+        MissionReward reward = claimableReward("ATTENDANCE", "2026-09-21", 100, MIDNIGHT);
+        when(missionRewardRepository.findByUserIdAndPublicIdForUpdate(userId, reward.getPublicId()))
+                .thenReturn(Optional.of(reward));
+
+        service.claim(userId, reward.getPublicId(), NOW);
+
+        verify(pointAccountService).credit(userId, 100L);
+    }
+
+    @Test
+    void paysARealUserForTheRankUp() {
+        internalAccounts(Set.of(UUID.randomUUID()));
+        MissionReward reward = claimableReward("RANK_UP_5", "2026-09-21", 100, MIDNIGHT);
+        when(missionRewardRepository.findByUserIdAndPublicIdForUpdate(userId, reward.getPublicId()))
+                .thenReturn(Optional.of(reward));
+
+        service.claim(userId, reward.getPublicId(), NOW);
+
+        verify(pointAccountService).credit(userId, 100L);
+    }
+
+    @Test
+    void claimAllAlsoWithholdsTheRankUpFromAnInternalAccount() {
+        internalAccounts(Set.of(userId));
+        MissionReward rankUp = claimableReward("RANK_UP_5", "2026-09-21", 100, MIDNIGHT);
+        MissionReward attendance = claimableReward("ATTENDANCE", "2026-09-21", 100, MIDNIGHT);
+        when(missionRewardRepository.findClaimablesForUpdate(userId, NOW)).thenReturn(List.of(rankUp, attendance));
+
+        service.claimAll(userId, NOW);
+
+        verify(pointAccountService).credit(userId, 100L);
+        assertThat(rankUp.isClaimed()).isTrue();
+    }
+
+    private void internalAccounts(Set<UUID> ids) {
+        when(internalAccountPolicy.load(NOW))
+                .thenReturn(Optional.of(new SystemRankingBoostPolicy.Snapshot(false, ids, 1000L, 200, 500)));
+    }
+
+    private static MissionDefinitionView definition(String code, MissionDefinition.MissionType type) {
+        return new MissionDefinitionView(code, type, MissionDefinition.PeriodType.DAILY, code, code, 1L, 100L, 0);
     }
 
     @Test

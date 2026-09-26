@@ -100,9 +100,12 @@ public class SystemRankingBoostTransactionService {
                 RankingEntry.createFor(season, selected, 0L, null, now));
         long previous = entry.getScore();
         if (previous > leader.get().score()) return skipped(run, "SELECTED_ALREADY_AHEAD");
+        // The leader excludes internal accounts, so anyone ranked ahead of it is internal.
+        // Boosting again would stack internal accounts above an idle leader until they take the podium.
+        long rankBefore = entries.countParticipantsAhead(season, leader.get().score(), leader.get().userId().toString()) + 1;
+        if (rankBefore > 1) return skipped(run, "REAL_LEADER_NOT_FIRST");
         int increment = random.increment(snapshot.minIncrement(), snapshot.maxIncrement());
         long target = Math.addExact(leader.get().score(), increment);
-        long rankBefore = entries.countParticipantsAhead(season, leader.get().score(), leader.get().userId().toString()) + 1;
         long real = entry.getRealScore();
         long boostBefore = entry.getRankingBoostScore();
         String previousRegion = entry.getRegionCode();
