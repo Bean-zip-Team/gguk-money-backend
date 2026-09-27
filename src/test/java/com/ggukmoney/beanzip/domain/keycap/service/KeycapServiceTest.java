@@ -10,6 +10,7 @@ import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
+import com.ggukmoney.beanzip.global.config.OnboardingRewardConfig;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -32,7 +33,9 @@ class KeycapServiceTest {
     private final KeycapRepository keycapRepository = mock(KeycapRepository.class);
     private final UserKeycapRepository userKeycapRepository = mock(UserKeycapRepository.class);
     private final KeycapMapper keycapMapper = Mappers.getMapper(KeycapMapper.class);
-    private final KeycapService keycapService = new KeycapService(keycapRepository, userKeycapRepository, keycapMapper);
+    private final OnboardingRewardConfig onboardingRewardConfig = mock(OnboardingRewardConfig.class);
+    private final KeycapService keycapService =
+            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig);
 
     @Test
     void getsActiveKeycapCatalogInRepositoryOrder() {
@@ -113,6 +116,67 @@ class KeycapServiceTest {
     }
 
     @Test
+    void mapsEachUsersEquippedKeycapAndGivesTheOnboardingKeycapToUsersWithoutOne() {
+        UUID equippedUserId = UUID.randomUUID();
+        UUID neverClaimedUserId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        UUID defaultKeycapId = UUID.randomUUID();
+        UserKeycap equipped = userKeycap(equippedUserId, keycapId, "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true);
+        when(userKeycapRepository.findEquippedWithKeycapByUserIds(List.of(equippedUserId, neverClaimedUserId)))
+                .thenReturn(List.of(equipped));
+        onboardingKeycap("main");
+        when(keycapRepository.findByCode("main"))
+                .thenReturn(Optional.of(keycap(defaultKeycapId, "main", "Main", Keycap.Grade.COMMON, 10, 1, true, 1)));
+
+        java.util.Map<UUID, EquippedKeycapResponse> result =
+                keycapService.getEquippedKeycaps(List.of(equippedUserId, neverClaimedUserId));
+
+        assertThat(result.get(equippedUserId).keycapId()).isEqualTo(keycapId);
+        assertThat(result.get(equippedUserId).code()).isEqualTo("BASIC_001");
+        // 온보딩 보상을 받지 않은 유저다. 받았다면 자동으로 장착됐을 키캡을 보여 준다.
+        assertThat(result.get(neverClaimedUserId).keycapId()).isEqualTo(defaultKeycapId);
+        assertThat(result.get(neverClaimedUserId).code()).isEqualTo("main");
+    }
+
+    @Test
+    void skipsTheDefaultLookupWhenEveryoneHasAKeycapEquipped() {
+        UUID userId = UUID.randomUUID();
+        when(userKeycapRepository.findEquippedWithKeycapByUserIds(List.of(userId))).thenReturn(List.of(
+                userKeycap(userId, UUID.randomUUID(), "BASIC_001", "Basic", 10, UserKeycap.Status.COMPLETED, true)));
+
+        assertThat(keycapService.getEquippedKeycaps(List.of(userId))).containsOnlyKeys(userId);
+        verify(onboardingRewardConfig, never()).resolve();
+    }
+
+    @Test
+    void leavesTheKeycapOutRatherThanFailingTheRankingWhenTheDefaultIsUnavailable() {
+        UUID neverClaimedUserId = UUID.randomUUID();
+        when(userKeycapRepository.findEquippedWithKeycapByUserIds(List.of(neverClaimedUserId))).thenReturn(List.of());
+        when(onboardingRewardConfig.resolve())
+                .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "ONBOARDING_REWARD_NOT_AVAILABLE"));
+
+        // 온보딩 설정이 깨졌다고 랭킹 화면 전체가 409 로 막히면 안 된다. 그림 하나만 비운다.
+        assertThat(keycapService.getEquippedKeycaps(List.of(neverClaimedUserId))).isEmpty();
+    }
+
+    @Test
+    void leavesTheKeycapOutWhenTheDefaultKeycapIsRetired() {
+        UUID neverClaimedUserId = UUID.randomUUID();
+        when(userKeycapRepository.findEquippedWithKeycapByUserIds(List.of(neverClaimedUserId))).thenReturn(List.of());
+        onboardingKeycap("main");
+        when(keycapRepository.findByCode("main"))
+                .thenReturn(Optional.of(keycap(UUID.randomUUID(), "main", "Main", Keycap.Grade.COMMON, 10, 1, false, 1)));
+
+        assertThat(keycapService.getEquippedKeycaps(List.of(neverClaimedUserId))).isEmpty();
+    }
+
+    @Test
+    void asksNothingForAnEmptyRanking() {
+        assertThat(keycapService.getEquippedKeycaps(List.of())).isEmpty();
+        verify(userKeycapRepository, never()).findEquippedWithKeycapByUserIds(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void equipsCompletedKeycapAndUnequipsPreviousKeycap() {
         UUID userId = UUID.randomUUID();
         UUID targetKeycapId = UUID.randomUUID();
@@ -176,6 +240,11 @@ class KeycapServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
                 .isEqualTo("USER_KEYCAP_NOT_FOUND");
+    }
+
+    private void onboardingKeycap(String code) {
+        when(onboardingRewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
+                code, "COMMON", 70, java.time.Duration.ofMinutes(15)));
     }
 
     private static UserKeycap userKeycap(

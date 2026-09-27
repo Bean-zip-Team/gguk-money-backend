@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.time.Instant;
@@ -18,6 +19,15 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
     Optional<UserKeycap> findByPublicId(UUID publicId);
 
     Optional<UserKeycap> findByUserIdAndEquippedTrue(UUID userId);
+
+    @Query("""
+            select userKeycap
+            from UserKeycap userKeycap
+            join fetch userKeycap.keycap keycap
+            where userKeycap.user.id in :userIds
+              and userKeycap.equipped = true
+            """)
+    List<UserKeycap> findEquippedWithKeycapByUserIds(@Param("userIds") Collection<UUID> userIds);
 
     long countByUserIdAndStatus(UUID userId, UserKeycap.Status status);
 
