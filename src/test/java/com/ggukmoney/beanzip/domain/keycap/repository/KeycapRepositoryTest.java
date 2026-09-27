@@ -4,6 +4,8 @@ import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -26,6 +28,35 @@ class KeycapRepositoryTest {
 
     @Autowired
     private AppUserRepository appUserRepository;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Test
+    void findsEachRequestedUsersEquippedKeycapWithTheKeycapAlreadyLoaded() {
+        AppUser switched = appUserRepository.save(AppUser.createActive("switched", null));
+        AppUser single = appUserRepository.save(AppUser.createActive("single", null));
+        AppUser neverClaimed = appUserRepository.save(AppUser.createActive("never-claimed", null));
+        AppUser notListed = appUserRepository.save(AppUser.createActive("not-listed", null));
+        Keycap first = keycapRepository.save(keycap("BASIC_001", "First", true, 1));
+        Keycap second = keycapRepository.save(keycap("BASIC_002", "Second", true, 2));
+        userKeycapRepository.save(userKeycap(switched, first, 10, UserKeycap.Status.COMPLETED, false));
+        userKeycapRepository.save(userKeycap(switched, second, 10, UserKeycap.Status.COMPLETED, true));
+        userKeycapRepository.save(userKeycap(single, first, 10, UserKeycap.Status.COMPLETED, true));
+        userKeycapRepository.save(userKeycap(notListed, first, 10, UserKeycap.Status.COMPLETED, true));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<UserKeycap> result = userKeycapRepository.findEquippedWithKeycapByUserIds(
+                List.of(switched.getId(), single.getId(), neverClaimed.getId()));
+
+        assertThat(result).extracting(userKeycap -> userKeycap.getUser().getId(), userKeycap -> userKeycap.getKeycap().getCode())
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(switched.getId(), "BASIC_002"),
+                        org.assertj.core.groups.Tuple.tuple(single.getId(), "BASIC_001"));
+        // 랭킹 목록 수십 명의 이미지를 채우는 동안 키캡을 한 명씩 다시 읽지 않아야 한다.
+        assertThat(result).allSatisfy(userKeycap -> assertThat(Hibernate.isInitialized(userKeycap.getKeycap())).isTrue());
+    }
 
     @Test
     void findsOnlyActiveKeycapsOrderedBySortOrderAndCode() {
