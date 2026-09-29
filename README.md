@@ -4,8 +4,13 @@
 
 ## 배포
 
-`develop` 기준으로 GitHub Actions의 **Deploy develop** 워크플로를 수동 실행한다.
-nginx upstream 뒤에서 8080/8081을 교대로 띄우는 blue-green 방식이라 **중단이 없다.**
+| 환경 | 브랜치 | 워크플로 | 방식 |
+| -- | -- | -- | -- |
+| 운영 | `main` | **Deploy prod** (수동 실행, `main` 외 브랜치는 거부) | blue-green, 무중단 |
+| 알파 | `develop` | **Deploy alpha** (`develop` push 시 자동, 수동 실행 가능) | 재시작, 수십 초 중단 |
+
+운영 배포는 `develop` → `main` PR 을 머지한 뒤 실행한다.
+운영은 nginx upstream 뒤에서 8080/8081을 교대로 띄우는 blue-green 방식이라 **중단이 없다.**
 
 ```bash
 ./switch.sh --status      # 현재 활성 포트
