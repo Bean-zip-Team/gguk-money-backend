@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
+import com.ggukmoney.beanzip.domain.mission.service.DailyMissionNudgeService;
 import com.ggukmoney.beanzip.domain.notification.client.TossSmartMessageClient;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
@@ -18,14 +19,17 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.lang.reflect.Method;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,8 +45,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyInt;
 
 class NotificationDeliveryServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-07-25T12:00:00Z");
+    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final DailyMissionNudgeService.NudgeCriteria CRITERIA =
+            new DailyMissionNudgeService.NudgeCriteria("2026-07-25", List.of("ATTENDANCE"));
 
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
     private final NotificationPreferenceRepository preferenceRepository = mock(NotificationPreferenceRepository.class);
@@ -57,11 +67,13 @@ class NotificationDeliveryServiceTest {
             "clickmoney-asfasf",
             "TPL_BOOSTER",
             "TPL_DAILY",
+            "TPL_MISSION",
             "TPL_UNUSED",
             "clickmoney-box"
     );
     private final TossSmartMessageClient smartMessageClient = mock(TossSmartMessageClient.class);
     private final NotificationBatchReadService batchReadService = mock(NotificationBatchReadService.class);
+    private final DailyMissionNudgeService dailyMissionNudgeService = mock(DailyMissionNudgeService.class);
     private final NotificationDeliveryService service = new NotificationDeliveryService(
             persistenceService,
             preferenceRepository,
@@ -72,7 +84,9 @@ class NotificationDeliveryServiceTest {
             keycapBoxPolicyConfig,
             templateProperties,
             smartMessageClient,
-            batchReadService
+            batchReadService,
+            dailyMissionNudgeService,
+            CLOCK
     );
 
     @Test
@@ -83,6 +97,7 @@ class NotificationDeliveryServiceTest {
                 "evaluateRankChange",
                 "sendMorningNotifications",
                 "sendEveningNotifications",
+                "sendDailyMissionNotifications",
                 "sendKeycapBoxOpenAvailableNotifications"
         )) {
             Method method = java.util.Arrays.stream(NotificationDeliveryService.class.getMethods())
@@ -100,13 +115,13 @@ class NotificationDeliveryServiceTest {
         void agreedUserCreatesPendingThenCallsTossOutsideTransaction() {
             UUID userId = UUID.randomUUID();
             WeeklyRewardAvailableEvent event = new WeeklyRewardAvailableEvent(userId, "2026-W30", Instant.parse("2026-07-25T00:00:00Z"));
-            NotificationDelivery pending = pending(userId, NotificationType.WEEKLY_REWARD_AVAILABLE, "weekly");
-            stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
+            NotificationDelivery pending = pending(userId, NotificationType.RANK_CHANGE, "weekly");
+            stubAgreed(userId, NotificationType.RANK_CHANGE);
             when(persistenceService.createPending(
                     userId,
-                    NotificationType.WEEKLY_REWARD_AVAILABLE,
-                    "WEEKLY_REWARD_AVAILABLE:" + userId + ":2026-W30",
-                    "TPL_WEEKLY",
+                    NotificationType.RANK_CHANGE,
+                    "RANK_CHANGE:WEEKLY_REWARD_AVAILABLE:" + userId + ":2026-W30",
+                    "clickmoney-asfasf",
                     "{\"rewardCycleKey\":\"2026-W30\",\"availableAt\":\"2026-07-25T00:00:00Z\"}"
             )).thenReturn(Optional.of(pending));
 
@@ -127,11 +142,13 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", "TPL_BOOSTER", null, null, null),
+                    new NotificationTemplateProperties(null, null, "TPL_BOOSTER", null, null, null, null),
                     smartMessageClient,
-                    batchReadService
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
             );
-            stubAgreed(userId, NotificationType.WEEKLY_REWARD_AVAILABLE);
+            stubAgreed(userId, NotificationType.RANK_CHANGE);
 
             assertThat(unconfiguredService.handleWeeklyRewardAvailable(event)).isEmpty();
 
@@ -142,6 +159,224 @@ class NotificationDeliveryServiceTest {
 
     @Nested
     class RankChange {
+
+        @Test
+        void weeklyResetUsesExistingRankChangeCampaignAndRechecksConsentBeforeSending() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-send");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-reset", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(delivery.getId(), "content-reset", "{\"ok\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(preferenceRepository).findWeeklyResetEligibility(userId);
+            verify(smartMessageClient).sendMessage("toss-user-reset", "clickmoney-asfasf", "{}");
+            verify(persistenceService).markSent(delivery.getId(), "content-reset", "{\"ok\":true}");
+            verify(authIdentityRepository, never()).findByUserIdAndProvider(any(), any());
+        }
+
+        @Test
+        void weeklyResetConsentRevocationFailsWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-revoked");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId)).thenReturn(Optional.empty());
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of());
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetRechecksEligibilityImmediatelyBeforeEachRecipient() {
+            UUID firstUserId = UUID.randomUUID();
+            UUID revokedUserId = UUID.randomUUID();
+            NotificationDelivery first = weeklyResetPending(firstUserId, "reset-consent-first");
+            NotificationDelivery revoked = weeklyResetPending(revokedUserId, "reset-consent-revoked");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(first, revoked));
+            when(preferenceRepository.findWeeklyResetEligibility(firstUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(preferenceRepository.findWeeklyResetEligibility(revokedUserId)).thenReturn(Optional.empty());
+            when(batchReadService.loadProviderUserIds(List.of(firstUserId, revokedUserId))).thenReturn(Map.of(
+                    firstUserId, "toss-user-first",
+                    revokedUserId, "toss-user-revoked"
+            ));
+            when(persistenceService.claimWeeklyResetAttempt(first.getId(), NOW)).thenReturn(Optional.of(first));
+            when(smartMessageClient.sendMessage("toss-user-first", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-first", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(first.getId(), "content-first", "{\"ok\":true}"))
+                    .thenReturn(first);
+            when(persistenceService.markWeeklyResetFailed(
+                    revoked.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null))
+                    .thenReturn(revoked);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(smartMessageClient, never()).sendMessage(
+                    "toss-user-revoked", "clickmoney-asfasf", "{}");
+            verify(persistenceService).markWeeklyResetFailed(
+                    revoked.getId(), "CONSENT_REVOKED", "RANK_CHANGE consent is no longer enabled", null);
+        }
+
+        @Test
+        void weeklyResetInactiveUserFailsWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-inactive-user");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "WITHDRAWN")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-inactive"));
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "USER_NOT_ACTIVE", "User is no longer active", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "USER_NOT_ACTIVE", "User is no longer active", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetDispatchDoesNotExceedRollingMinuteRateLimit() {
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(100L);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService, never()).findDueWeeklyResetDeliveries(any(), anyInt());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void weeklyResetRecordsTheActualTimeOfEachProviderAttempt() {
+            UUID firstUserId = UUID.randomUUID();
+            UUID secondUserId = UUID.randomUUID();
+            NotificationDelivery first = weeklyResetPending(firstUserId, "reset-first-attempt-time");
+            NotificationDelivery second = weeklyResetPending(secondUserId, "reset-second-attempt-time");
+            Instant firstAttemptAt = NOW.plusSeconds(20);
+            Instant secondAttemptAt = NOW.plusSeconds(40);
+            Clock changingClock = mock(Clock.class);
+            when(changingClock.instant()).thenReturn(NOW).thenReturn(firstAttemptAt).thenReturn(secondAttemptAt);
+            NotificationDeliveryService timedService = serviceWithClock(changingClock);
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(first, second));
+            when(preferenceRepository.findWeeklyResetEligibility(firstUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(preferenceRepository.findWeeklyResetEligibility(secondUserId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(firstUserId, secondUserId))).thenReturn(Map.of(
+                    firstUserId, "toss-user-first",
+                    secondUserId, "toss-user-second"
+            ));
+            when(persistenceService.claimWeeklyResetAttempt(first.getId(), firstAttemptAt))
+                    .thenReturn(Optional.of(first));
+            when(persistenceService.claimWeeklyResetAttempt(second.getId(), secondAttemptAt))
+                    .thenReturn(Optional.of(second));
+            when(smartMessageClient.sendMessage("toss-user-first", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-first", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(smartMessageClient.sendMessage("toss-user-second", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            true, "content-second", null, null, false, "SUCCESS", "{\"ok\":true}"));
+            when(persistenceService.markSent(first.getId(), "content-first", "{\"ok\":true}"))
+                    .thenReturn(first);
+            when(persistenceService.markSent(second.getId(), "content-second", "{\"ok\":true}"))
+                    .thenReturn(second);
+
+            assertThat(timedService.dispatchWeeklyResetDue(100)).isEqualTo(2);
+
+            verify(persistenceService).claimWeeklyResetAttempt(first.getId(), firstAttemptAt);
+            verify(persistenceService).claimWeeklyResetAttempt(second.getId(), secondAttemptAt);
+        }
+
+        @Test
+        void retryableWeeklyResetProviderFailureIsRecordedWithProviderResponse() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-retry");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            false, null, "RATE_LIMITED", "temporary", true, "FAIL", "{\"error\":true}"));
+            when(persistenceService.markWeeklyResetRetryWaiting(
+                    delivery.getId(), NOW, "RATE_LIMITED", "temporary", "{\"error\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(persistenceService).markWeeklyResetRetryWaiting(
+                    delivery.getId(), NOW, "RATE_LIMITED", "temporary", "{\"error\":true}");
+        }
+
+        @Test
+        void missingTossIdentityFailsPermanentlyWithoutProviderCall() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-missing-key");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of());
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "TOSS_USER_KEY_MISSING", "Toss auth identity was not found", null))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isZero();
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "TOSS_USER_KEY_MISSING", "Toss auth identity was not found", null);
+            verify(persistenceService, never()).claimWeeklyResetAttempt(any(), any());
+            verify(smartMessageClient, never()).sendMessage(anyString(), anyString(), anyString());
+        }
+
+        @Test
+        void permanentWeeklyResetProviderFailureIsTerminal() {
+            UUID userId = UUID.randomUUID();
+            NotificationDelivery delivery = weeklyResetPending(userId, "reset-permanent-failure");
+            when(persistenceService.countWeeklyResetAttemptsSince(NOW.minus(Duration.ofMinutes(1)))).thenReturn(0L);
+            when(persistenceService.findDueWeeklyResetDeliveries(NOW, 100)).thenReturn(List.of(delivery));
+            when(preferenceRepository.findWeeklyResetEligibility(userId))
+                    .thenReturn(Optional.of(weeklyResetEligibility(true, "AGREED", "ACTIVE")));
+            when(batchReadService.loadProviderUserIds(List.of(userId))).thenReturn(Map.of(userId, "toss-user-reset"));
+            when(persistenceService.claimWeeklyResetAttempt(delivery.getId(), NOW)).thenReturn(Optional.of(delivery));
+            when(smartMessageClient.sendMessage("toss-user-reset", "clickmoney-asfasf", "{}"))
+                    .thenReturn(new TossSmartMessageClient.SendResult(
+                            false, null, "INVALID_REQUEST", "invalid", false, "FAIL", "{\"error\":true}"));
+            when(persistenceService.markWeeklyResetFailed(
+                    delivery.getId(), "INVALID_REQUEST", "invalid", "{\"error\":true}"))
+                    .thenReturn(delivery);
+
+            assertThat(service.dispatchWeeklyResetDue(100)).isEqualTo(1);
+
+            verify(persistenceService).markWeeklyResetFailed(
+                    delivery.getId(), "INVALID_REQUEST", "invalid", "{\"error\":true}");
+            verify(persistenceService, never()).markWeeklyResetRetryWaiting(any(), any(), any(), any(), any());
+        }
 
         @Test
         void onlyPreparedPendingDeliveryCallsTossOutsideTransaction() {
@@ -450,6 +685,126 @@ class NotificationDeliveryServiceTest {
     }
 
     @Nested
+    class DailyMission {
+
+        private final LocalDate today = LocalDate.parse("2026-07-25");
+
+        @Test
+        void sendsOnlyToUsersTheNudgeServicePicked() {
+            UUID nudgedUserId = UUID.randomUUID();
+            UUID doneUserId = UUID.randomUUID();
+            NotificationDelivery pending = pending(nudgedUserId, NotificationType.DAILY_MISSION, "mission-nudge");
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(List.of(
+                    sendableCandidate(1L, nudgedUserId),
+                    sendableCandidate(2L, doneUserId)
+            ));
+            when(dailyMissionNudgeService.criteriaOf(today)).thenReturn(CRITERIA);
+            when(dailyMissionNudgeService.usersNeedingNudge(
+                    CRITERIA, List.of(nudgedUserId, doneUserId), CLOCK.instant()
+            )).thenReturn(Set.of(nudgedUserId));
+            when(batchReadService.loadProviderUserIds(List.of(nudgedUserId, doneUserId)))
+                    .thenReturn(Map.of(nudgedUserId, "toss-user-1", doneUserId, "toss-user-1"));
+            when(persistenceService.createPending(
+                    nudgedUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + nudgedUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenReturn(Optional.of(pending));
+            stubSuccessfulToss(nudgedUserId, pending);
+
+            assertThat(service.sendDailyMissionNotifications(today)).containsExactly(pending);
+
+            // 오늘 미션을 다 받아 간 유저에게는 보내지 않는다. 할 일이 없는데 오는 알림이기 때문이다.
+            verify(persistenceService, never()).createPending(
+                    doneUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + doneUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            );
+        }
+
+        @Test
+        void oneFailingUserDoesNotStopTheRestOfThePage() {
+            UUID failingUserId = UUID.randomUUID();
+            UUID nextUserId = UUID.randomUUID();
+            NotificationDelivery pending = pending(nextUserId, NotificationType.DAILY_MISSION, "mission-next");
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(List.of(
+                    sendableCandidate(1L, failingUserId),
+                    sendableCandidate(2L, nextUserId)
+            ));
+            when(dailyMissionNudgeService.criteriaOf(today)).thenReturn(CRITERIA);
+            when(dailyMissionNudgeService.usersNeedingNudge(
+                    CRITERIA, List.of(failingUserId, nextUserId), CLOCK.instant()
+            )).thenReturn(Set.of(failingUserId, nextUserId));
+            when(batchReadService.loadProviderUserIds(List.of(failingUserId, nextUserId)))
+                    .thenReturn(Map.of(failingUserId, "toss-user-1", nextUserId, "toss-user-1"));
+            when(persistenceService.createPending(
+                    failingUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + failingUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenThrow(new IllegalStateException("boom"));
+            when(persistenceService.createPending(
+                    nextUserId,
+                    NotificationType.DAILY_MISSION,
+                    "DAILY_MISSION:" + nextUserId + ":20260725",
+                    "TPL_MISSION",
+                    "{}"
+            )).thenReturn(Optional.of(pending));
+            stubSuccessfulToss(nextUserId, pending);
+
+            assertThat(service.sendDailyMissionNotifications(today)).containsExactly(pending);
+        }
+
+        // 커서가 전진하지 않으면 첫 페이지를 영원히 다시 읽는다. 제한이 없으면 실패가 아니라 멈춤으로 나타난다.
+        @Test
+        @Timeout(10)
+        void walksEveryKeysetPageOfCandidates() {
+            List<NotificationPreferenceRepository.SendableCandidate> firstPage = candidates(1, 100);
+            List<NotificationPreferenceRepository.SendableCandidate> secondPage = candidates(101, 101);
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 0L)).thenReturn(firstPage);
+            when(batchReadService.findCandidates(NotificationType.DAILY_MISSION, 100L)).thenReturn(secondPage);
+            when(dailyMissionNudgeService.usersNeedingNudge(any(), any(), any())).thenReturn(Set.of());
+            when(batchReadService.loadProviderUserIds(any())).thenReturn(Map.of());
+
+            assertThat(service.sendDailyMissionNotifications(today)).isEmpty();
+
+            verify(batchReadService).findCandidates(NotificationType.DAILY_MISSION, 100L);
+            verify(persistenceService, never()).createPending(any(), any(), anyString(), any(), anyString());
+        }
+
+        @Test
+        void unconfiguredCampaignDoesNotQueryCandidates() {
+            NotificationDeliveryService unconfiguredService = new NotificationDeliveryService(
+                    persistenceService,
+                    preferenceRepository,
+                    authIdentityRepository,
+                    boosterGrantRepository,
+                    tapPolicyConfig,
+                    keycapBoxAccountRepository,
+                    keycapBoxPolicyConfig,
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
+                    smartMessageClient,
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
+            );
+
+            assertThat(unconfiguredService.sendDailyMissionNotifications(today)).isEmpty();
+
+            verify(batchReadService, never()).findCandidates(
+                    org.mockito.ArgumentMatchers.eq(NotificationType.DAILY_MISSION),
+                    org.mockito.ArgumentMatchers.anyLong()
+            );
+            verify(dailyMissionNudgeService, never()).criteriaOf(any());
+            verify(dailyMissionNudgeService, never()).usersNeedingNudge(any(), any(), any());
+        }
+    }
+
+    @Nested
     class KeycapBoxOpenAvailable {
 
         @Test
@@ -462,9 +817,11 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null),
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
                     smartMessageClient,
-                    batchReadService
+                    batchReadService,
+                    dailyMissionNudgeService,
+                    CLOCK
             );
 
             assertThat(unconfiguredService.sendKeycapBoxOpenAvailableNotifications(
@@ -596,10 +953,57 @@ class NotificationDeliveryServiceTest {
             case RANK_CHANGE -> "clickmoney-asfasf";
             case BOOSTER_RECHARGED -> "TPL_BOOSTER";
             case DAILY_REMINDER -> "TPL_DAILY";
+            case DAILY_MISSION -> "TPL_MISSION";
             case BOOSTER_UNUSED -> "TPL_UNUSED";
             case KEYCAP_BOX_OPEN_AVAILABLE -> "clickmoney-box";
         }, Instant.now());
         ReflectionTestUtils.setField(delivery, "id", Math.abs(dedupeKey.hashCode()) + 1L);
         return delivery;
+    }
+
+    private NotificationDelivery weeklyResetPending(UUID userId, String dedupeKey) {
+        NotificationDelivery delivery = pending(userId, NotificationType.RANK_CHANGE, dedupeKey);
+        delivery.attachWeeklyResetBatch(301L);
+        return delivery;
+    }
+
+    private NotificationPreferenceRepository.WeeklyResetEligibility weeklyResetEligibility(
+            boolean enabled,
+            String agreementStatus,
+            String userStatus
+    ) {
+        return new NotificationPreferenceRepository.WeeklyResetEligibility() {
+            @Override
+            public Boolean getEnabled() {
+                return enabled;
+            }
+
+            @Override
+            public String getAgreementStatus() {
+                return agreementStatus;
+            }
+
+            @Override
+            public String getUserStatus() {
+                return userStatus;
+            }
+        };
+    }
+
+    private NotificationDeliveryService serviceWithClock(Clock clock) {
+        return new NotificationDeliveryService(
+                persistenceService,
+                preferenceRepository,
+                authIdentityRepository,
+                boosterGrantRepository,
+                tapPolicyConfig,
+                keycapBoxAccountRepository,
+                keycapBoxPolicyConfig,
+                templateProperties,
+                smartMessageClient,
+                batchReadService,
+                dailyMissionNudgeService,
+                clock
+        );
     }
 }

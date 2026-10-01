@@ -14,19 +14,21 @@ class NotificationTemplatePropertiesTest {
                 "clickmoney-asfasf",
                 null,
                 null,
+                "clickmoney-daily-mission",
                 null,
                 "clickmoney-box"
         );
 
         assertThat(properties.campaignCode(NotificationType.RANK_CHANGE)).isEqualTo("clickmoney-asfasf");
         assertThat(properties.campaignCode(NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)).isEqualTo("clickmoney-box");
+        assertThat(properties.campaignCode(NotificationType.DAILY_MISSION)).isEqualTo("clickmoney-daily-mission");
         assertThat(properties.campaignCode(NotificationType.BOOSTER_RECHARGED)).isNull();
         assertThat(properties.isConfigured(NotificationType.RANK_CHANGE)).isTrue();
     }
 
     @Test
     void unsetCampaignIsNotConfigured() {
-        NotificationTemplateProperties properties = new NotificationTemplateProperties(null, null, null, null, null, null);
+        NotificationTemplateProperties properties = new NotificationTemplateProperties(null, null, null, null, null, null, null);
 
         assertThat(properties.campaignCode(NotificationType.WEEKLY_REWARD_AVAILABLE)).isNull();
         assertThat(properties.isConfigured(NotificationType.WEEKLY_REWARD_AVAILABLE)).isFalse();

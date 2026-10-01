@@ -3,6 +3,9 @@ package com.ggukmoney.beanzip.domain.ranking.service;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingHistoryItemResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingHistoryResponse;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingReward;
+import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardRepository;
+import com.ggukmoney.beanzip.domain.ranking.reward.dto.MyWeeklyRankingRewardResponse.RewardStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -10,7 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +29,8 @@ public class RankingHistoryService {
 
     private final RankingEntryRepository entryRepository;
     private final RankingHistoryCursorCodec cursorCodec;
+    private final WeeklyRankingRewardRepository rewardRepository;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
     public RankingHistoryResponse getHistory(UUID userId, String cursor, Integer size) {
@@ -35,12 +45,21 @@ public class RankingHistoryService {
 
         boolean hasNext = fetched.size() > pageSize;
         List<RankingEntryRepository.RankingHistoryRow> page = hasNext ? fetched.subList(0, pageSize) : fetched;
+        Map<Long, WeeklyRankingReward> rewardsBySeasonId = page.isEmpty()
+                ? Map.of()
+                : rewardRepository
+                        .findByUserIdAndSeasonIdIn(
+                                userId, page.stream().map(RankingEntryRepository.RankingHistoryRow::seasonId).toList())
+                        .stream()
+                        .collect(Collectors.toMap(reward -> reward.getSeason().getId(), Function.identity()));
+        Instant now = clock.instant();
         List<RankingHistoryItemResponse> content = page.stream()
-                .map(this::toResponse)
+                .map(row -> toResponse(row, rewardsBySeasonId.get(row.seasonId()), now))
                 .toList();
         String nextCursor = hasNext ? encodeNextCursor(page.get(page.size() - 1)) : null;
 
-        return new RankingHistoryResponse(content, nextCursor, hasNext);
+        return new RankingHistoryResponse(
+                content, nextCursor, hasNext, rewardRepository.sumClaimedPointAmountByUserId(userId));
     }
 
     private int validatePageSize(Integer size) {
@@ -53,14 +72,36 @@ public class RankingHistoryService {
         return size;
     }
 
-    private RankingHistoryItemResponse toResponse(RankingEntryRepository.RankingHistoryRow row) {
+    private RankingHistoryItemResponse toResponse(
+            RankingEntryRepository.RankingHistoryRow row,
+            WeeklyRankingReward reward,
+            Instant now
+    ) {
         return new RankingHistoryItemResponse(
                 row.seasonCode(),
                 row.startedAt(),
                 row.endsAt(),
                 row.finalRank(),
-                row.finalScore()
+                row.finalScore(),
+                reward == null ? null : reward.getPublicId(),
+                rewardStatus(reward, now),
+                reward == null ? null : reward.getPointAmount(),
+                reward == null ? null : reward.getExpiresAt(),
+                reward == null ? null : reward.getClaimedAt()
         );
+    }
+
+    private RewardStatus rewardStatus(WeeklyRankingReward reward, Instant now) {
+        if (reward == null) {
+            return RewardStatus.NONE;
+        }
+        if (reward.getStatus() == WeeklyRankingReward.Status.CLAIMED) {
+            return RewardStatus.CLAIMED;
+        }
+        if (reward.getStatus() == WeeklyRankingReward.Status.EXPIRED || reward.isExpired(now)) {
+            return RewardStatus.EXPIRED;
+        }
+        return RewardStatus.PENDING;
     }
 
     private String encodeNextCursor(RankingEntryRepository.RankingHistoryRow row) {

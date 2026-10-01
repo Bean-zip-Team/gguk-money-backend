@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.ranking.dto.response;
 
+import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.UUID;
@@ -25,7 +26,9 @@ public record RankingItemResponse(
         @Schema(description = "예상 보상 순위. 보상권 밖이면 null", example = "1")
         Integer rewardRank,
         @Schema(description = "예상 보상 포인트. 보상권 밖이면 null", example = "10000")
-        Long rewardPointAmount
+        Long rewardPointAmount,
+        @Schema(description = "장착 키캡. 프로필 사진 자리에 쓴다. 장착한 키캡이 없으면 온보딩 기본 키캡")
+        EquippedKeycapResponse equippedKeycap
 ) {
 
     public RankingItemResponse(
@@ -38,6 +41,6 @@ public record RankingItemResponse(
             long score,
             boolean isMe
     ) {
-        this(rank, previousRank, rankChange, userId, nickname, profileImageUrl, score, isMe, null, null);
+        this(rank, previousRank, rankChange, userId, nickname, profileImageUrl, score, isMe, null, null, null);
     }
 }

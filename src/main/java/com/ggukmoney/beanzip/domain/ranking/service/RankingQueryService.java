@@ -1,6 +1,8 @@
 package com.ggukmoney.beanzip.domain.ranking.service;
 
 import com.ggukmoney.beanzip.domain.ranking.dto.response.CurrentRankingResponse;
+import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapService;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.MyRankingResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingItemResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingSeasonResponse;
@@ -11,6 +13,9 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.ProvisionalReward;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.global.util.NameMasker;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -45,6 +50,8 @@ public class RankingQueryService {
     private final RankingEntryRepository entryRepository;
     private final RankingRedisRepository redisRepository;
     private final WeeklyRankingRewardPreviewService rewardPreviewService;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
+    private final KeycapService keycapService;
     private final RankingProperties properties;
     private final Clock clock;
     private final ZoneId businessZoneId;
@@ -178,12 +185,16 @@ public class RankingQueryService {
         Optional<RankingSeason> previousSeason =
                 Optional.ofNullable(seasonService.findPreviousClosedWeeklySeason(season)).orElse(Optional.empty());
         Map<UUID, Long> previousRanks = previousRanks(previousSeason, rankedParticipants, me);
+        // 프로필 사진 대신 장착 키캡을 보여 준다(BEA-316). 캐시에 담지 않으므로 키캡을 바꾸면 바로 반영된다.
+        Map<UUID, EquippedKeycapResponse> keycaps = keycapService.getEquippedKeycaps(
+                rankedParticipants.stream().map(participant -> participant.row().userId()).toList());
         List<RankingItemResponse> items = rankedParticipants.stream()
                 .map(participant -> toItem(
                         participant,
                         previousRanks.get(participant.row().userId()),
                         me,
-                        rewardPreview.rewardsByUser().get(participant.row().userId())))
+                        rewardPreview.rewardsByUser().get(participant.row().userId()),
+                        keycaps.get(participant.row().userId())))
                 .toList();
         Long previousMyRank = previousRanks.get(me);
         ProvisionalReward myReward = rewardPreview.rewardsByUser().get(me);
@@ -198,7 +209,10 @@ public class RankingQueryService {
                         Math.max(firstScore - myScore, 0L),
                         myReward == null ? null : myReward.rewardRank(),
                         myReward == null ? null : myReward.pointAmount(),
-                        rewardPreview.scoreGapToReward()
+                        rewardPreview.scoreGapToReward(),
+                        notificationPreferenceRepository.findByUserIdAndType(me, NotificationType.RANK_CHANGE)
+                                .map(NotificationPreference::isSendable)
+                                .orElse(false)
                 ),
                 totalParticipantCount,
                 rewardPreview.tiers()
@@ -267,7 +281,8 @@ public class RankingQueryService {
             RankedParticipant participant,
             Long previousRank,
             UUID me,
-            ProvisionalReward reward
+            ProvisionalReward reward,
+            EquippedKeycapResponse equippedKeycap
     ) {
         long rank = participant.rank();
         RankingEntryRepository.RankingParticipantRow row = participant.row();
@@ -281,7 +296,8 @@ public class RankingQueryService {
                 participant.score(),
                 row.userId().equals(me),
                 reward == null ? null : reward.rewardRank(),
-                reward == null ? null : reward.pointAmount()
+                reward == null ? null : reward.pointAmount(),
+                equippedKeycap
         );
     }
 

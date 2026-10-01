@@ -15,6 +15,7 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
+import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.hibernate.exception.ConstraintViolationException;
@@ -27,6 +28,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,7 +37,6 @@ import java.util.UUID;
 public class NotificationDeliveryPersistenceService {
 
     private static final String DEDUPE_CONSTRAINT_NAME = "uq_notification_delivery_dedupe_key";
-    private static final long TOP_TEN = 10L;
 
     private final NotificationDeliveryRepository deliveryRepository;
     private final NotificationPreferenceRepository preferenceRepository;
@@ -44,11 +45,9 @@ public class NotificationDeliveryPersistenceService {
     private final RankingEntryRepository rankingEntryRepository;
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
     private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
+    private final RankChangeNotificationPolicyConfig rankChangePolicyConfig;
     private final NotificationTemplateProperties templateProperties;
     private final Clock clock;
-
-    @Value("${app.smart-message.rank-change.minimum-difference:3}")
-    private int minimumRankChange = 3;
 
     private Duration rankChangeCooldown = Duration.ofHours(6);
 
@@ -320,8 +319,89 @@ public class NotificationDeliveryPersistenceService {
 
     private boolean shouldSend(long previousRank, long currentRank) {
         long rankDrop = currentRank - previousRank;
-        return rankDrop >= minimumRankChange
-                || (previousRank <= TOP_TEN && currentRank > TOP_TEN);
+        return rankDrop >= rankChangePolicyConfig.minimumDifference();
+    }
+
+    public boolean isWeeklyResetCampaignConfigured() {
+        return templateProperties.isConfigured(NotificationType.RANK_CHANGE);
+    }
+
+    @Transactional
+    public int enqueueWeeklyReset(UUID userId, Long batchId, Long seasonId) {
+        String campaignCode = templateProperties.campaignCode(NotificationType.RANK_CHANGE);
+        if (!StringUtils.hasText(campaignCode)) {
+            return 0;
+        }
+        return deliveryRepository.insertWeeklyResetPendingIfAbsent(
+                UUID.randomUUID(),
+                userId,
+                batchId,
+                seasonId,
+                "RANK_CHANGE:WEEKLY_RESET:%d:%s".formatted(seasonId, userId),
+                campaignCode,
+                clock.instant()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationDelivery> findDueWeeklyResetDeliveries(Instant now, int pageSize) {
+        return deliveryRepository.findDueWeeklyResetDeliveries(
+                now, org.springframework.data.domain.PageRequest.of(0, pageSize));
+    }
+
+    @Transactional(readOnly = true)
+    public long countWeeklyResetAttemptsSince(Instant since) {
+        return deliveryRepository.countWeeklyResetAttemptsSince(since);
+    }
+
+    @Transactional
+    public Optional<NotificationDelivery> claimWeeklyResetAttempt(Long deliveryId, Instant now) {
+        NotificationDelivery delivery = getById(deliveryId);
+        if (delivery.getWeeklyResetBatchId() == null
+                || (delivery.getStatus() != NotificationDeliveryStatus.PENDING
+                && delivery.getStatus() != NotificationDeliveryStatus.RETRY_WAITING)
+                || (delivery.getNextAttemptAt() != null && delivery.getNextAttemptAt().isAfter(now))) {
+            return Optional.empty();
+        }
+        if (delivery.getAttemptCount() >= 3) {
+            delivery.markFailed("MAX_ATTEMPTS_EXCEEDED", "Weekly reset notification exhausted retries", null);
+            return Optional.empty();
+        }
+        delivery.startWeeklyResetAttempt(now, now.plus(retryDelayForAttempt(delivery.getAttemptCount() + 1)));
+        return Optional.of(delivery);
+    }
+
+    @Transactional
+    public NotificationDelivery markWeeklyResetRetryWaiting(
+            Long deliveryId, Instant now, String failureCode, String failureReason, String providerResponseJson
+    ) {
+        NotificationDelivery delivery = getById(deliveryId);
+        if (delivery.getAttemptCount() >= 3) {
+            delivery.markFailed(failureCode, failureReason, providerResponseJson);
+            return delivery;
+        }
+        delivery.scheduleWeeklyResetRetry(
+                failureCode,
+                failureReason,
+                providerResponseJson,
+                now.plus(retryDelayForAttempt(delivery.getAttemptCount()))
+        );
+        return delivery;
+    }
+
+    @Transactional
+    public NotificationDelivery markWeeklyResetFailed(
+            Long deliveryId, String failureCode, String failureReason, String providerResponseJson
+    ) {
+        NotificationDelivery delivery = getById(deliveryId);
+        delivery.markFailed(failureCode, failureReason, providerResponseJson);
+        return delivery;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasOpenWeeklyResetDeliveries(Long batchId) {
+        return deliveryRepository.existsByWeeklyResetBatchIdAndStatusIn(batchId, List.of(
+                NotificationDeliveryStatus.PENDING, NotificationDeliveryStatus.RETRY_WAITING));
     }
 
     private boolean isRankChangeCooldownActive(UUID userId, Instant now) {
@@ -344,6 +424,10 @@ public class NotificationDeliveryPersistenceService {
             cause = cause.getCause();
         }
         return false;
+    }
+
+    private Duration retryDelayForAttempt(int attempt) {
+        return attempt <= 1 ? Duration.ofMinutes(1) : Duration.ofMinutes(5);
     }
 
     private NotificationDelivery getById(Long deliveryId) {

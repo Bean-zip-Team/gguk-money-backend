@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeasonStatus;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingType;
 import com.ggukmoney.beanzip.domain.ranking.event.RankingWeeklySeasonActivatedEvent;
+import com.ggukmoney.beanzip.domain.ranking.event.WeeklyRankingSeasonClosedEvent;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonLockRepository;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingSeasonRepository;
@@ -177,6 +178,7 @@ public class RankingSeasonService {
                 .orElseThrow(() -> new IllegalStateException("ranking season not found seasonId=" + season.getId()));
         rewardSnapshotService.snapshot(refreshed, closedAt);
         refreshed.close(closedAt);
+        eventPublisher.publishEvent(new WeeklyRankingSeasonClosedEvent(refreshed.getId()));
     }
 
     private RankingSeason createActiveAllTimeSeasonInNewTransaction() {

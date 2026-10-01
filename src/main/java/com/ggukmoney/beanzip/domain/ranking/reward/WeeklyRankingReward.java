@@ -77,6 +77,9 @@ public class WeeklyRankingReward {
     @Column(name = "claimed_at")
     private Instant claimedAt;
 
+    @Column(name = "viewed_at")
+    private Instant viewedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -84,8 +87,9 @@ public class WeeklyRankingReward {
     private Instant updatedAt;
 
     public enum Status {
-        OPENED,
-        CLAIMED
+        PENDING,
+        CLAIMED,
+        EXPIRED
     }
 
     public static WeeklyRankingReward open(
@@ -110,7 +114,7 @@ public class WeeklyRankingReward {
         reward.rewardRank = rewardRank;
         reward.finalScore = finalScore;
         reward.pointAmount = pointAmount;
-        reward.status = Status.OPENED;
+        reward.status = Status.PENDING;
         reward.expiresAt = expiresAt;
         return reward;
     }
@@ -120,14 +124,29 @@ public class WeeklyRankingReward {
     }
 
     public void claim(Instant now) {
-        if (status != Status.OPENED) {
-            throw new IllegalStateException("only opened weekly ranking rewards can be claimed");
+        if (status != Status.PENDING) {
+            throw new IllegalStateException("only pending weekly ranking rewards can be claimed");
         }
         if (isExpired(now)) {
+            status = Status.EXPIRED;
             throw new IllegalStateException("weekly ranking reward is expired");
         }
         status = Status.CLAIMED;
         claimedAt = now;
+    }
+
+    public boolean expire(Instant now) {
+        if (status != Status.PENDING || expiresAt.isAfter(now)) {
+            return false;
+        }
+        status = Status.EXPIRED;
+        return true;
+    }
+
+    public void markViewed(Instant now) {
+        if (viewedAt == null) {
+            viewedAt = now;
+        }
     }
 
     @PrePersist
@@ -150,8 +169,8 @@ public class WeeklyRankingReward {
     }
 
     private void validateState() {
-        if (status == Status.OPENED && claimedAt != null) {
-            throw new IllegalStateException("opened reward cannot have claimedAt");
+        if ((status == Status.PENDING || status == Status.EXPIRED) && claimedAt != null) {
+            throw new IllegalStateException("unclaimed reward cannot have claimedAt");
         }
         if (status == Status.CLAIMED && claimedAt == null) {
             throw new IllegalStateException("claimed reward requires claimedAt");

@@ -91,12 +91,36 @@ class KeycapBoxPolicyConfigTest {
                 "3",
                 Instant.EPOCH
         )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
+                "10",
+                Instant.EPOCH
+        )));
 
         config.refresh();
 
         assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(30));
         assertThat(config.freeOpenLimit()).isEqualTo(1);
         assertThat(config.adOpenLimit()).isEqualTo(3);
+        // 검증 분기가 빠지면 어떤 값이든 거부되어 기본값 30 으로 폴백한다 (BEA-280 에서 실제로 그랬다).
+        assertThat(config.bulkOpenLimit()).isEqualTo(10);
+    }
+
+    @Test
+    void usesDefaultWhenBulkOpenLimitIsInvalidOnInitialLoad() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
+                "-1",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.bulkOpenLimit()).isEqualTo(30);
     }
 
     @Test

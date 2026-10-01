@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.ranking.service;
 
+import com.ggukmoney.beanzip.domain.keycap.dto.response.EquippedKeycapResponse;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapService;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.CurrentRankingResponse;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingItemResponse;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
@@ -8,6 +10,9 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.redis.RankingRedisRepository;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPreviewService.Preview;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,11 +41,14 @@ class RankingQueryServiceTest {
     private final RankingEntryRepository entryRepository = mock(RankingEntryRepository.class);
     private final RankingRedisRepository redisRepository = mock(RankingRedisRepository.class);
     private final WeeklyRankingRewardPreviewService rewardPreviewService = mock(WeeklyRankingRewardPreviewService.class);
+    private final NotificationPreferenceRepository notificationPreferenceRepository = mock(NotificationPreferenceRepository.class);
+    private final KeycapService keycapService = mock(KeycapService.class);
     private final RankingProperties properties = new RankingProperties();
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
     private final RankingQueryService service = new RankingQueryService(
-            seasonService, entryRepository, redisRepository, rewardPreviewService, properties, clock, businessZoneId
+            seasonService, entryRepository, redisRepository, rewardPreviewService,
+            notificationPreferenceRepository, keycapService, properties, clock, businessZoneId
     );
 
     RankingQueryServiceTest() {
@@ -105,6 +113,30 @@ class RankingQueryServiceTest {
     }
 
     @Test
+    void showsEachListedUsersKeycapInPlaceOfAProfilePicture() {
+        UUID me = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID first = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff");
+        UUID second = UUID.fromString("77777777-7777-7777-7777-777777777777");
+        RankingSeason season = activeSeason();
+        when(seasonService.getActiveWeeklySeason()).thenReturn(season);
+        when(redisRepository.findReadyMeta(season.getId(), properties.schemaVersion(), properties.maxStaleness(), clock.instant()))
+                .thenReturn(Optional.empty());
+        when(entryRepository.findTopParticipants(season, 50))
+                .thenReturn(List.of(row(first, "first", 200L), row(second, "second", 100L)));
+        when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.empty());
+        when(entryRepository.countParticipants(season)).thenReturn(2L);
+        EquippedKeycapResponse moon = new EquippedKeycapResponse(UUID.randomUUID(), "moon", "달 키캡", "https://cdn/moonKeycap.webp");
+        EquippedKeycapResponse main = new EquippedKeycapResponse(UUID.randomUUID(), "main", "메인 키캡", "https://cdn/mainKeycap.webp");
+        when(keycapService.getEquippedKeycaps(List.of(first, second))).thenReturn(java.util.Map.of(first, moon, second, main));
+
+        CurrentRankingResponse response = service.getCurrentRanking(me, null);
+
+        assertThat(response.items()).extracting(RankingItemResponse::equippedKeycap).containsExactly(moon, main);
+        // 목록 인원과 상관없이 한 번에 읽는다. 한 명씩 읽으면 랭킹 한 번에 수십 번의 조회가 나간다.
+        verify(keycapService).getEquippedKeycaps(List.of(first, second));
+    }
+
+    @Test
     void usesPostgreSqlFallbackWhenRedisMetaIsMissing() {
         UUID me = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID first = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff");
@@ -116,6 +148,10 @@ class RankingQueryServiceTest {
         when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.of(row(me, "me", 100L)));
         when(entryRepository.countParticipants(season)).thenReturn(2L);
         when(entryRepository.countParticipantsAhead(season, 100L, me.toString())).thenReturn(1L);
+        NotificationPreference preference = NotificationPreference.defaultOf(me, NotificationType.RANK_CHANGE);
+        preference.applyAgreement("newAgreement");
+        when(notificationPreferenceRepository.findByUserIdAndType(me, NotificationType.RANK_CHANGE))
+                .thenReturn(Optional.of(preference));
 
         CurrentRankingResponse response = service.getCurrentRanking(me, null);
 
@@ -124,6 +160,7 @@ class RankingQueryServiceTest {
         assertThat(response.myRank().rank()).isEqualTo(2L);
         assertThat(response.myRank().score()).isEqualTo(100L);
         assertThat(response.myRank().scoreGapToFirst()).isEqualTo(100L);
+        assertThat(response.myRank().rankChangeNotificationEnabled()).isTrue();
         assertThat(response.totalParticipantCount()).isEqualTo(2L);
         verify(redisRepository, never()).findTopMembers(season.getId(), 50);
     }

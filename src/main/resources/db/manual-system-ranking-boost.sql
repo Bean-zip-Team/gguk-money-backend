@@ -1,5 +1,5 @@
 -- BEA-308: review runtime DB identity/schema, then apply BEFORE deploying this entity mapping.
--- No activation: BEA-296 rollout gate remains closed in code, regardless of enabled=true.
+-- Seed remains disabled. Activate only after deploying BEA-315 and verifying this migration.
 -- Additive migration; no real tap table/data is modified. Run in a short maintenance window.
 BEGIN;
 
@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS ix_ranking_boost_run_season_user ON ranking_boost_run
 -- Seed only if no operator-managed policy exists. 1000 is an example, not a code constant.
 INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
 SELECT gen_random_uuid(), 'ranking.systemBoost.policy',
-       '{"enabled":false,"internalUserIds":[],"minimumLeaderScore":1000,"minIncrement":200,"maxIncrement":500}'::jsonb,
+       '{"enabled":false,"internalUserIds":["3368d399-1ea6-4609-b999-db853f6d494a","7dc0edad-f5ed-41a9-b828-4167c6646569","06b310bf-ea66-425f-ac6d-5ed0edcd3d3e","4b179019-3cd6-46c8-ad52-36517831f662","c115f184-fbaf-4ec0-9fe0-66734c985b57","98d72dd1-f642-4332-85b7-8261ca828a5c"],"minimumLeaderScore":1000,"minIncrement":200,"maxIncrement":500}'::jsonb,
        now(), now(), now()
 WHERE NOT EXISTS (SELECT 1 FROM app_config WHERE config_key = 'ranking.systemBoost.policy');
 

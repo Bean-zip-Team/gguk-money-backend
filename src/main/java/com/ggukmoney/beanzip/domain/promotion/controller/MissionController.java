@@ -1,7 +1,7 @@
 package com.ggukmoney.beanzip.domain.promotion.controller;
 
+import com.ggukmoney.beanzip.domain.mission.service.MissionFeedService;
 import com.ggukmoney.beanzip.domain.promotion.dto.response.MissionListResponse;
-import com.ggukmoney.beanzip.domain.promotion.service.MissionQueryService;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
 import com.ggukmoney.beanzip.global.config.OpenApiConfig;
@@ -33,11 +33,12 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class MissionController {
 
-    private final MissionQueryService missionQueryService;
+    private final MissionFeedService missionFeedService;
 
     @Operation(summary = "미션 목록 조회",
-            description = "진행 중인 미션과 내 진행도, 달성·지급 상태를 조회합니다. "
-                    + "꺼진 미션은 목록에서 빠지지만, 이미 받은 미션은 계속 노출됩니다.")
+            description = "상시 미션과 오늘의 데일리 미션을 한 목록으로 조회합니다. "
+                    + "꺼진 미션은 목록에서 빠지지만, 이미 받은 미션은 계속 노출됩니다. "
+                    + "오늘 판정할 수 없는 데일리 미션도 빠집니다: 주간 시즌이 초기화되는 월요일의 랭킹 미션이 여기 해당합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -46,7 +47,7 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionListResponse>> getMissions(
             @Parameter(hidden = true) HttpServletRequest httpServletRequest
     ) {
-        return ResponseEntity.ok(ApiResponse.success(missionQueryService.missionsOf(
+        return ResponseEntity.ok(ApiResponse.success(missionFeedService.feedOf(
                 AuthRequestAttributes.getRequiredUserId(httpServletRequest)
         )));
     }

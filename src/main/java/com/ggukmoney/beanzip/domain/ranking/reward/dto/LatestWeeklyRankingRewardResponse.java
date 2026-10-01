@@ -10,7 +10,8 @@ import java.util.UUID;
 public record LatestWeeklyRankingRewardResponse(
         Season season,
         List<Winner> winners,
-        MyWeeklyRankingRewardResponse myReward
+        MyWeeklyRankingRewardResponse myReward,
+        boolean hasUnreadWinner
 ) {
 
     @Schema(description = "종료된 주간 랭킹 시즌")

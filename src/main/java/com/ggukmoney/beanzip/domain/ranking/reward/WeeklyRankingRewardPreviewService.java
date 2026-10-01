@@ -1,6 +1,5 @@
 package com.ggukmoney.beanzip.domain.ranking.reward;
 
-import com.ggukmoney.beanzip.domain.ranking.boost.RankingBoostRewardExclusions;
 import com.ggukmoney.beanzip.domain.ranking.dto.response.RankingRewardTierResponse;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
 import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
@@ -22,7 +21,6 @@ import java.util.UUID;
 public class WeeklyRankingRewardPreviewService {
 
     private final WeeklyRankingRewardPolicy policy;
-    private final RankingBoostRewardExclusions exclusions;
     private final RankingEntryRepository entryRepository;
 
     public Preview preview(RankingSeason season, UUID userId, long myScore, java.time.Instant now) {
@@ -31,16 +29,11 @@ public class WeeklyRankingRewardPreviewService {
             return Preview.unavailable();
         }
         WeeklyRankingRewardPolicy.Snapshot policySnapshot = loadedPolicy.get();
-        Optional<Set<UUID>> loadedExclusions = exclusions.excludedUserIds(season.getId(), now);
-        if (loadedExclusions.isEmpty()) {
-            return Preview.unavailable();
-        }
-        Set<UUID> excludedUserIds = loadedExclusions.get();
         List<RankingRewardTierResponse> tiers = policySnapshot.rewards().entrySet().stream()
                 .map(entry -> new RankingRewardTierResponse(entry.getKey(), entry.getValue()))
                 .toList();
         List<RankingEntryRepository.RankingCurrentRewardCandidateRow> candidates = entryRepository.findCurrentRewardCandidates(
-                season.getId(), excludedUserIds, policySnapshot.maxRewardRank());
+                season.getId(), Set.of(), policySnapshot.maxRewardRank());
 
         Map<UUID, ProvisionalReward> rewardsByUser = new HashMap<>();
         for (int index = 0; index < candidates.size(); index++) {
@@ -50,10 +43,8 @@ public class WeeklyRankingRewardPreviewService {
                     rewardRank, policySnapshot.pointAmount(rewardRank)));
         }
 
-        Long scoreGap = excludedUserIds.contains(userId)
-                ? null
-                : scoreGap(candidates, rewardsByUser.containsKey(userId), userId, myScore,
-                        policySnapshot.maxRewardRank());
+        Long scoreGap = scoreGap(candidates, rewardsByUser.containsKey(userId), userId, myScore,
+                policySnapshot.maxRewardRank());
         return new Preview(tiers, rewardsByUser, scoreGap, candidates);
     }
 

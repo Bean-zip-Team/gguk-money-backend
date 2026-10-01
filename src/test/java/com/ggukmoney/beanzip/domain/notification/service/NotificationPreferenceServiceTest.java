@@ -28,6 +28,7 @@ class NotificationPreferenceServiceTest {
             null,
             null,
             null,
+            null,
             "clickmoney-box"
     );
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
@@ -42,6 +43,7 @@ class NotificationPreferenceServiceTest {
                         NotificationType.RANK_CHANGE,
                         NotificationType.BOOSTER_RECHARGED,
                         NotificationType.DAILY_REMINDER,
+                        NotificationType.DAILY_MISSION,
                         NotificationType.BOOSTER_UNUSED,
                         NotificationType.KEYCAP_BOX_OPEN_AVAILABLE
                 );

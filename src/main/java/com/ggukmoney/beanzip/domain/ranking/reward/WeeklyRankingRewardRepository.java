@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 public interface WeeklyRankingRewardRepository extends JpaRepository<WeeklyRankingReward, Long> {
 
@@ -39,4 +40,26 @@ public interface WeeklyRankingRewardRepository extends JpaRepository<WeeklyRanki
     boolean existsBySeasonId(Long seasonId);
 
     long countBySeasonId(Long seasonId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT reward
+            FROM WeeklyRankingReward reward
+            WHERE reward.status = com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingReward$Status.PENDING
+              AND reward.expiresAt <= :now
+            ORDER BY reward.id ASC
+            """)
+    List<WeeklyRankingReward> findExpiredPendingForUpdate(@Param("now") Instant now);
+
+    List<WeeklyRankingReward> findByUserIdAndSeasonIdIn(UUID userId, List<Long> seasonIds);
+
+    @Query("""
+            SELECT COALESCE(SUM(reward.pointAmount), 0)
+            FROM WeeklyRankingReward reward
+            WHERE reward.user.id = :userId
+              AND reward.status = com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingReward$Status.CLAIMED
+            """)
+    long sumClaimedPointAmountByUserId(@Param("userId") UUID userId);
+
+    void deleteBySeasonId(Long seasonId);
 }

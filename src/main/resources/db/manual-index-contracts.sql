@@ -35,3 +35,11 @@ CREATE INDEX CONCURRENTLY ix_promotion_grant_due
 ON promotion_grant (next_attempt_at, created_at)
 WHERE status IN ('PENDING', 'PROCESSING')
   AND hold_reason IS NULL;
+
+-- 포인트 이중 적립을 막는 마지막 방어선. JPA 의 @Index(unique = true) 로만 선언돼 있는데
+-- ddl-auto=validate 는 인덱스를 만들지도 검증하지도 않으므로, 운영 DB 에 실재하는지 확인하고
+-- 없으면 이 문장으로 만든다. 미션 보상 수령(BEA-299)도 이 제약에 기대고 있다.
+--   SELECT indexname FROM pg_indexes WHERE tablename = 'point_ledger';
+CREATE UNIQUE INDEX CONCURRENTLY uq_point_ledger_user_idempotency
+ON point_ledger (user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL;

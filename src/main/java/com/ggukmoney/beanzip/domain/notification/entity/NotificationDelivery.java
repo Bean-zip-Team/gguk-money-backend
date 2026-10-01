@@ -53,6 +53,18 @@ public class NotificationDelivery {
     @Column(name = "context_json", nullable = false, columnDefinition = "text")
     private String contextJson;
 
+    @Column(name = "weekly_reset_batch_id")
+    private Long weeklyResetBatchId;
+
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+
+    @Column(name = "next_attempt_at")
+    private Instant nextAttemptAt;
+
+    @Column(name = "last_attempt_at")
+    private Instant lastAttemptAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private NotificationDeliveryStatus status;
@@ -92,6 +104,8 @@ public class NotificationDelivery {
         delivery.dedupeKey = dedupeKey;
         delivery.templateSetCode = templateSetCode;
         delivery.contextJson = contextJson;
+        delivery.status = NotificationDeliveryStatus.PENDING;
+        delivery.attemptCount = 0;
         delivery.requestedAt = requestedAt;
         return delivery;
     }
@@ -106,6 +120,7 @@ public class NotificationDelivery {
         this.failureCode = null;
         this.failureReason = null;
         this.providerResponseJson = providerResponseJson;
+        this.nextAttemptAt = null;
     }
 
     public void markFailed(String failureCode, String failureReason, String providerResponseJson) {
@@ -113,6 +128,7 @@ public class NotificationDelivery {
         this.failureCode = failureCode;
         this.failureReason = failureReason;
         this.providerResponseJson = providerResponseJson;
+        this.nextAttemptAt = null;
     }
 
     public void markRetryWaiting(String failureCode, String failureReason, String providerResponseJson) {
@@ -120,6 +136,37 @@ public class NotificationDelivery {
         this.failureCode = failureCode;
         this.failureReason = failureReason;
         this.providerResponseJson = providerResponseJson;
+    }
+
+    public void attachWeeklyResetBatch(Long batchId) {
+        if (batchId == null || batchId <= 0 || this.weeklyResetBatchId != null) {
+            throw new IllegalStateException("weekly reset batch can only be assigned once");
+        }
+        this.weeklyResetBatchId = batchId;
+    }
+
+    public void startWeeklyResetAttempt(Instant attemptAt, Instant retryLeaseUntil) {
+        if (weeklyResetBatchId == null || attemptAt == null || retryLeaseUntil == null
+                || attemptCount >= 3
+                || (status != NotificationDeliveryStatus.PENDING && status != NotificationDeliveryStatus.RETRY_WAITING)) {
+            throw new IllegalStateException("weekly reset delivery is not due for an attempt");
+        }
+        attemptCount++;
+        lastAttemptAt = attemptAt;
+        status = NotificationDeliveryStatus.PENDING;
+        nextAttemptAt = retryLeaseUntil;
+    }
+
+    public void scheduleWeeklyResetRetry(String failureCode, String failureReason, String providerResponseJson,
+                                         Instant retryAt) {
+        if (weeklyResetBatchId == null || attemptCount >= 3 || retryAt == null) {
+            throw new IllegalStateException("weekly reset delivery has exhausted retry attempts");
+        }
+        status = NotificationDeliveryStatus.RETRY_WAITING;
+        this.failureCode = failureCode;
+        this.failureReason = failureReason;
+        this.providerResponseJson = providerResponseJson;
+        nextAttemptAt = retryAt;
     }
 
     @PrePersist

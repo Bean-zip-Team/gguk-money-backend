@@ -9,22 +9,26 @@ import java.util.UUID;
 public record MyWeeklyRankingRewardResponse(
         @Schema(description = "보상 ID")
         UUID rewardId,
-        @Schema(description = "보상 순위", example = "1")
-        int rewardRank,
-        @Schema(description = "수령 포인트", example = "10000")
-        long pointAmount,
-        @Schema(description = "수령 상태", example = "CLAIMABLE")
-        ClaimStatus claimStatus,
+        @Schema(description = "보상 순위", example = "1", nullable = true)
+        Integer rewardRank,
+        @Schema(description = "수령 포인트", example = "10000", nullable = true)
+        Long pointAmount,
+        @Schema(description = "보상 상태", example = "PENDING")
+        RewardStatus claimStatus,
         @Schema(description = "수령 만료 시각")
         Instant expiresAt,
         @Schema(description = "수령 시각. 미수령이면 null")
         Instant claimedAt
 ) {
 
-    public enum ClaimStatus {
+    public enum RewardStatus {
+        NONE,
+        PENDING,
         CLAIMED,
-        EXPIRED,
-        CONSENT_REQUIRED,
-        CLAIMABLE
+        EXPIRED
+    }
+
+    public static MyWeeklyRankingRewardResponse none() {
+        return new MyWeeklyRankingRewardResponse(null, null, null, RewardStatus.NONE, null, null);
     }
 }
