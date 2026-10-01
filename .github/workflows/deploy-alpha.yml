@@ -1,0 +1,77 @@
+name: Deploy alpha
+
+# develop 에 머지되면 알파 서버에 자동 배포한다. 수동 실행으로 다른 브랜치도 올려볼 수 있다.
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-alpha
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_HOST: 15.164.111.216
+  DEPLOY_USER: eunchang
+  REMOTE_BASE: /opt/ttalkkak
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "26"
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant Gradle permission
+        run: chmod +x gradlew
+
+      # 테스트는 Ggukmoney Backend CI 워크플로가 담당하므로 여기서는 패키징만 한다.
+      - name: Build jar
+        run: ./gradlew --no-daemon clean bootJar
+
+      - name: Resolve jar
+        id: jar
+        run: |
+          JAR=$(ls build/libs/*.jar | grep -v -- '-plain' | head -1)
+          [ -n "$JAR" ] || { echo "실행 가능한 jar 를 찾지 못했습니다."; exit 1; }
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH
+        env:
+          ALPHA_SSH_KEY: ${{ secrets.ALPHA_SSH_KEY }}
+          ALPHA_KNOWN_HOSTS: ${{ secrets.ALPHA_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ALPHA_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$ALPHA_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload jar and script
+        run: |
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes \
+            "${{ steps.jar.outputs.path }}" "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/incoming.jar"
+          scp -i ~/.ssh/id_deploy -o BatchMode=yes \
+            scripts/deploy-alpha.sh "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_BASE/"
+
+      - name: Run deploy-alpha.sh
+        run: |
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash $REMOTE_BASE/deploy-alpha.sh ${{ github.sha }}"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

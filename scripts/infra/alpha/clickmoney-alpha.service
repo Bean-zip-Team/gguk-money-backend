@@ -1,0 +1,38 @@
+# /etc/systemd/system/clickmoney-alpha.service
+#
+# 알파 서버(15.164.111.216) 전용 유닛. 메모리가 1 GiB 라 JVM 을 둘 띄울 수 없으므로
+# blue-green 없이 이 유닛 하나를 재시작한다. nginx(80) 가 127.0.0.1:8080 으로 프록시한다.
+#
+# 설치:
+#   sudo cp scripts/infra/alpha/clickmoney-alpha.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable clickmoney-alpha
+#
+# 프로필은 여기서 고정한다. 설정 파일을 운영에서 복사해 오다 빠뜨려도 alpha 로 뜬다.
+
+[Unit]
+Description=Clickmoney Spring Boot API (alpha)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eunchang
+WorkingDirectory=/opt/ttalkkak
+
+ExecStart=/usr/bin/java \
+  -Xms256m -Xmx512m \
+  -XX:MaxMetaspaceSize=192m \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/opt/ttalkkak/logs \
+  -jar /opt/ttalkkak/current/app.jar \
+  --spring.config.additional-location=file:/opt/ttalkkak/config/ \
+  --spring.profiles.active=alpha \
+  --server.port=8080
+
+Restart=on-failure
+RestartSec=10
+SuccessExitStatus=143
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

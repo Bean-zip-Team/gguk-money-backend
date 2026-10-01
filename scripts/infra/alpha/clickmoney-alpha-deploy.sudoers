@@ -1,0 +1,7 @@
+# /etc/sudoers.d/clickmoney-alpha-deploy  (0440 root:root)
+#
+# CI 배포 키가 비밀번호 없이 알파 앱을 재시작할 수 있도록 이 유닛에 대한 명령만 허용한다.
+# 설치 전 문법 검사:
+#   sudo visudo -c -f scripts/infra/alpha/clickmoney-alpha-deploy.sudoers
+
+eunchang ALL=(root) NOPASSWD: /usr/bin/systemctl restart clickmoney-alpha, /usr/bin/systemctl stop clickmoney-alpha, /usr/bin/systemctl start clickmoney-alpha, /usr/bin/systemctl status clickmoney-alpha, /usr/bin/journalctl -u clickmoney-alpha *
