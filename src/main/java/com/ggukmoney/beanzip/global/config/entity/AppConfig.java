@@ -44,6 +44,13 @@ public class AppConfig {
     @Column(name = "effective_at", nullable = false)
     private Instant effectiveAt;
 
+    /** 운영 화면(/ops/config)에서 바꿀 때만 채운다. SQL·시더로 넣은 행은 비어 있다. */
+    @Column(name = "changed_by", length = 50)
+    private String changedBy;
+
+    @Column(name = "change_reason", length = 200)
+    private String changeReason;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -55,6 +62,13 @@ public class AppConfig {
         config.configKey = configKey;
         config.configValue = configValue;
         config.effectiveAt = effectiveAt;
+        return config;
+    }
+
+    public static AppConfig change(String configKey, String configValue, Instant effectiveAt, String changedBy, String changeReason) {
+        AppConfig config = createFor(configKey, configValue, effectiveAt);
+        config.changedBy = changedBy;
+        config.changeReason = changeReason;
         return config;
     }
 

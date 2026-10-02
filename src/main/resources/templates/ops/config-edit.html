@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{ops/fragments :: head(${current.key})}"></head>
+<body>
+<header th:replace="~{ops/fragments :: header}"></header>
+<main>
+    <h2 th:text="${current.key}">key</h2>
+    <div class="box">
+        <div class="muted">지금 값 · <span th:text="${current.effectiveAt}">at</span> KST</div>
+        <pre th:text="${current.value}">value</pre>
+    </div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div class="box" th:if="${rule == null}">이 키는 검증 규칙이 없어 화면에서 바꿀 수 없습니다. SQL 로 바꾸세요.</div>
+
+    <form th:if="${rule != null}" method="post" th:action="@{/ops/config/{key}(key=${current.key})}" th:attr="data-env=${env}"
+          onsubmit="return confirm(this.dataset.env + ' 환경에 바로 반영됩니다. 저장할까요?')">
+        <input type="hidden" name="basedOn" th:value="${current.publicId}">
+        <label for="value">새 값</label>
+        <textarea id="value" name="value" required th:text="${value != null ? value : current.value}"></textarea>
+        <div class="muted">규칙: <span th:text="${rule.hint}">hint</span>. 문자열은 따옴표 없이 적어도 됩니다.</div>
+        <label for="changedBy">변경자</label>
+        <input id="changedBy" name="changedBy" maxlength="50" required th:value="${changedBy}">
+        <label for="reason">변경 사유</label>
+        <input id="reason" name="reason" maxlength="200" required th:value="${reason}">
+        <p><button class="primary" type="submit">저장</button></p>
+    </form>
+
+    <h3>최근 이력</h3>
+    <div class="scroll">
+        <table>
+            <thead><tr><th>적용 시각 (KST)</th><th>값</th><th>변경자</th><th>사유</th></tr></thead>
+            <tbody>
+            <tr th:each="row : ${history}">
+                <td class="muted" th:text="${row.effectiveAt}">at</td>
+                <td class="value" th:text="${row.value}">value</td>
+                <td class="muted" th:text="${row.changedBy}">by</td>
+                <td class="muted" th:text="${row.changeReason}">reason</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+</body>
+</html>

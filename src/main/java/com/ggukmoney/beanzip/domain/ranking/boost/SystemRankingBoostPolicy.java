@@ -21,17 +21,22 @@ public class SystemRankingBoostPolicy {
         try {
             String raw = loader.load(Set.of(KEY), now).get(KEY);
             if (raw == null) return Optional.empty();
-            var tree = mapper.readTree(raw);
-            if (!tree.isObject() || !tree.path("enabled").isBoolean() || !tree.path("internalUserIds").isArray()
-                    || !tree.path("minimumLeaderScore").isIntegralNumber()
-                    || !tree.path("minIncrement").isIntegralNumber() || !tree.path("maxIncrement").isIntegralNumber()) {
-                throw new IllegalArgumentException("incomplete or incorrectly typed boost policy");
-            }
-            return Optional.of(mapper.readValue(raw, Snapshot.class));
+            return Optional.of(parse(mapper, raw));
         } catch (RuntimeException exception) {
             log.error("System ranking boost policy unavailable; execution disabled", exception);
             return Optional.empty();
         }
+    }
+
+    /** 운영 화면(/ops/config)도 저장 전에 이 규칙으로 검사한다. 잘못되면 예외를 던진다. */
+    public static Snapshot parse(ObjectMapper mapper, String raw) {
+        var tree = mapper.readTree(raw);
+        if (!tree.isObject() || !tree.path("enabled").isBoolean() || !tree.path("internalUserIds").isArray()
+                || !tree.path("minimumLeaderScore").isIntegralNumber()
+                || !tree.path("minIncrement").isIntegralNumber() || !tree.path("maxIncrement").isIntegralNumber()) {
+            throw new IllegalArgumentException("incomplete or incorrectly typed boost policy");
+        }
+        return mapper.readValue(raw, Snapshot.class);
     }
 
     public String serialize(Snapshot snapshot) {

@@ -31,6 +31,8 @@ public interface AppConfigRepository extends JpaRepository<AppConfig, Long> {
 
     boolean existsByConfigKey(String configKey);
 
+    List<AppConfig> findTop10ByConfigKeyOrderByEffectiveAtDescIdDesc(String configKey);
+
     @Query("select distinct c.configKey from AppConfig c")
     List<String> findDistinctConfigKeys();
 }
