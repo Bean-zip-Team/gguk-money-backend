@@ -30,35 +30,39 @@ public class WeeklyRankingRewardPolicy {
             if (raw == null) {
                 return Optional.empty();
             }
-
-            JsonNode root = objectMapper.readTree(raw);
-            JsonNode rewardNode = root.path("rewards");
-            if (!root.isObject() || !root.path("enabled").isBoolean() || !rewardNode.isObject()) {
-                throw new IllegalArgumentException("invalid weekly ranking reward policy shape");
-            }
-
-            TreeMap<Integer, Long> rewards = new TreeMap<>();
-            rewardNode.properties().forEach(entry -> {
-                int rank = Integer.parseInt(entry.getKey());
-                JsonNode amountNode = entry.getValue();
-                if (!amountNode.isIntegralNumber() || !amountNode.canConvertToLong()) {
-                    throw new IllegalArgumentException("weekly ranking reward amount must fit a long integer");
-                }
-                long amount = amountNode.longValue();
-                if (rank <= 0 || amount <= 0) {
-                    throw new IllegalArgumentException("weekly ranking reward ranks and amounts must be positive");
-                }
-                rewards.put(rank, amount);
-            });
-
-            if (rewards.isEmpty() || rewards.firstKey() != 1 || rewards.lastKey() != rewards.size()) {
-                throw new IllegalArgumentException("weekly ranking reward ranks must be contiguous from 1");
-            }
-            return Optional.of(new Snapshot(root.path("enabled").booleanValue(), rewards));
+            return Optional.of(parse(objectMapper, raw));
         } catch (Exception exception) {
             log.error("Weekly ranking reward policy unavailable", exception);
             return Optional.empty();
         }
+    }
+
+    /** 운영 화면(/ops/config)도 저장 전에 이 규칙으로 검사한다. 잘못되면 예외를 던진다. */
+    public static Snapshot parse(ObjectMapper objectMapper, String raw) {
+        JsonNode root = objectMapper.readTree(raw);
+        JsonNode rewardNode = root.path("rewards");
+        if (!root.isObject() || !root.path("enabled").isBoolean() || !rewardNode.isObject()) {
+            throw new IllegalArgumentException("invalid weekly ranking reward policy shape");
+        }
+
+        TreeMap<Integer, Long> rewards = new TreeMap<>();
+        rewardNode.properties().forEach(entry -> {
+            int rank = Integer.parseInt(entry.getKey());
+            JsonNode amountNode = entry.getValue();
+            if (!amountNode.isIntegralNumber() || !amountNode.canConvertToLong()) {
+                throw new IllegalArgumentException("weekly ranking reward amount must fit a long integer");
+            }
+            long amount = amountNode.longValue();
+            if (rank <= 0 || amount <= 0) {
+                throw new IllegalArgumentException("weekly ranking reward ranks and amounts must be positive");
+            }
+            rewards.put(rank, amount);
+        });
+
+        if (rewards.isEmpty() || rewards.firstKey() != 1 || rewards.lastKey() != rewards.size()) {
+            throw new IllegalArgumentException("weekly ranking reward ranks must be contiguous from 1");
+        }
+        return new Snapshot(root.path("enabled").booleanValue(), rewards);
     }
 
     public record Snapshot(boolean enabled, NavigableMap<Integer, Long> rewards) {
