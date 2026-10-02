@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{ops/fragments :: head('설정 파일')}"></head>
+<body>
+<div th:replace="~{ops/fragments :: topbar}"></div>
+<div class="workspace">
+    <aside th:replace="~{ops/fragments :: sidebar('settings')}"></aside>
+    <main class="content">
+        <div class="content-heading">
+            <div class="breadcrumb">꾹머니 설정 / 설정 파일</div>
+            <h1>설정 파일 (읽기 전용)</h1>
+            <p>이 서버의 application.properties 값이에요. 서버마다 다르고 이 화면에서는 바꿀 수 없어요.
+                비밀 값은 (비밀)로만 보여요. 바꾸려면 서버의 설정 파일을 고친 뒤 재시작해야 해요.</p>
+        </div>
+
+        <section class="panel" th:each="section : ${sections}">
+            <h2 th:text="${section.key}">분류</h2>
+            <div class="table-scroll">
+                <table>
+                    <colgroup><col style="width:38%"><col style="width:34%"><col style="width:28%"></colgroup>
+                    <thead><tr><th>키</th><th>값</th><th>비고</th></tr></thead>
+                    <tbody>
+                    <tr th:each="entry : ${section.value}">
+                        <td class="key"><code th:text="${entry.key}">key</code></td>
+                        <td class="value" th:text="${entry.value}">value</td>
+                        <td th:text="${entry.note}">note</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+</body>
+</html>

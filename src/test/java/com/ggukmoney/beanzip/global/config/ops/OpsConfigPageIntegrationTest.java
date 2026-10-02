@@ -145,6 +145,41 @@ class OpsConfigPageIntegrationTest extends FullStackIntegrationTestSupport {
     }
 
     @Test
+    void listGroupsKeysWithTheirMeaningAndSummarizesJsonPolicies() throws Exception {
+        Cookie session = login();
+        jdbcTemplate.update("""
+                INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
+                VALUES (gen_random_uuid(), 'ranking.weeklyReward.policy',
+                        '{"enabled":true,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb, now(), now(), now()),
+                       (gen_random_uuid(), 'keycapBox.freeTicket.cap', '8'::jsonb, now(), now(), now())
+                """);
+
+        mockMvc.perform(get("/ops/config").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("탭 적립")))
+                .andExpect(content().string(containsString("하루 최대 적립 포인트")))
+                .andExpect(content().string(containsString("켜짐 · 1위 10,000 / 2위 5,000 / 3위 2,500")))
+                .andExpect(content().string(containsString("30분")))
+                .andExpect(content().string(containsString("코드에서 쓰지 않는 키")));
+    }
+
+    @Test
+    void settingsPageListsPropertiesWithoutEverPrintingSecrets() throws Exception {
+        Cookie session = login();
+
+        mockMvc.perform(get("/ops/settings").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("spring.datasource.url")))
+                .andExpect(content().string(containsString("app.auth.jwt.secret")))
+                .andExpect(content().string(containsString("(비밀)")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("integration-test-secret-at-least-32-bytes-long"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString(CONFIG_TOKEN))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString(READ_TOKEN))));
+
+        mockMvc.perform(get("/ops/settings")).andExpect(redirectedUrl("/ops/login"));
+    }
+
+    @Test
     void apiRoutesStillRequireAJwt() throws Exception {
         mockMvc.perform(get("/api/tap/today")).andExpect(status().isUnauthorized());
     }

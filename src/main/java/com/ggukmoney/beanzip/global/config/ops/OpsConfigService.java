@@ -14,7 +14,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -54,10 +53,6 @@ public class OpsConfigService {
     @Transactional(readOnly = true)
     public List<AppConfig> history(String key) {
         return repository.findTop10ByConfigKeyOrderByEffectiveAtDescIdDesc(key);
-    }
-
-    public Optional<PolicyValueRules.Rule> rule(String key) {
-        return rules.find(key);
     }
 
     /**

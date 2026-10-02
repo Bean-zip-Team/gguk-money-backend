@@ -2,14 +2,15 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
 <head th:replace="~{ops/fragments :: head('로그인')}"></head>
 <body>
-<main style="max-width:360px">
-    <h1>app_config <span class="env" th:classappend="${env}" th:text="${env}">ENV</span></h1>
-    <p class="muted">운영자 토큰(app.ops.token)으로 로그인합니다.</p>
-    <div class="error" th:if="${error}" th:text="${error}">error</div>
-    <form method="post" th:action="@{/ops/login}">
-        <label for="token">토큰</label>
-        <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
-        <p><button class="primary" type="submit">로그인</button></p>
+<main class="gate-page">
+    <form class="gate" method="post" th:action="@{/ops/login}">
+        <span class="brand-symbol"><span></span><span></span></span>
+        <h1>꾹머니 설정 <span class="env" th:classappend="${env}" th:text="${env}">ENV</span></h1>
+        <p>설정 수정용 토큰으로 로그인해요.</p>
+        <div class="notice error" th:if="${error}" th:text="${error}">error</div>
+        <input class="field" id="token" name="token" type="password" placeholder="토큰" aria-label="토큰"
+               autocomplete="current-password" required autofocus>
+        <button class="primary-button" type="submit">로그인</button>
     </form>
 </main>
 </body>
