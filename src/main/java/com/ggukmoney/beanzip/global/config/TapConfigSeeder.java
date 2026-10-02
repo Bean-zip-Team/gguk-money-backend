@@ -2,9 +2,9 @@ package com.ggukmoney.beanzip.global.config;
 
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
@@ -16,12 +16,25 @@ import java.util.Optional;
 import java.util.Set;
 
 @Component
-@RequiredArgsConstructor
 public class TapConfigSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TapConfigSeeder.class);
 
     private final AppConfigRepository appConfigRepository;
+    /**
+     * 정책의 기준은 DB(app_config)다. 알파는 값을 바꿔 가며 시험하고, 운영은 결정된 값을 쿼리로 넣어
+     * 바로 반영한다. 그래서 기본은 false: 없는 키만 코드 기본값으로 채우고, 사람이 바꾼 값은 배포해도
+     * 되돌리지 않는다. true 면 예전처럼 코드 기본값으로 되돌린다("코드 배포 = 정책 배포").
+     */
+    private final boolean revertOverrides;
+
+    public TapConfigSeeder(
+            AppConfigRepository appConfigRepository,
+            @Value("${app.policy.revert-overrides:false}") boolean revertOverrides
+    ) {
+        this.appConfigRepository = appConfigRepository;
+        this.revertOverrides = revertOverrides;
+    }
 
     /** 코드가 관리하는 정책 키 접두사. 이 접두사를 쓰면서 코드에 없는 키는 폐기된 잔재로 본다. */
     private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "onboarding.");
@@ -63,18 +76,17 @@ public class TapConfigSeeder implements CommandLineRunner {
     }
 
     /**
-     * Keeps AppConfig in sync with the code's DEFAULT_VALUES: if a key has never been
-     * seeded, or its latest effective value differs from the code default, a new
-     * versioned row is inserted so that "code deploy" == "policy rollout". Existing
-     * history is never mutated (append-only), so an operator who intentionally
-     * overrides a value in AppConfig will have it reverted on the next deploy that
-     * still carries the old code default for that key.
+     * Seeds keys that have never been written with the code's DEFAULT_VALUES. Only when
+     * revertOverrides is on does it also insert a new versioned row for a key whose
+     * latest value differs from the code default ("code deploy" == "policy rollout"). Existing
+     * history is never mutated (append-only).
      */
     private void syncDefaults(Map<String, String> defaultValues, Instant now) {
         defaultValues.forEach((key, codeValue) -> {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
-            if (latest.isEmpty() || !latest.get().getConfigValue().equals(codeValue)) {
+            boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
+            if (latest.isEmpty() || (overridden && revertOverrides)) {
                 appConfigRepository.save(AppConfig.createFor(key, codeValue, now));
             }
         });

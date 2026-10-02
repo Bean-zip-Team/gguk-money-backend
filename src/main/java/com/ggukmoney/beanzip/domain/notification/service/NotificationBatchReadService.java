@@ -17,7 +17,7 @@ import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.domain.tap.repository.UserTapDailyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -52,14 +52,8 @@ public class NotificationBatchReadService {
     private final RankingRedisRepository rankingRedisRepository;
     private final RankingEntryRepository rankingEntryRepository;
     private final RankingProperties rankingProperties;
+    private final RankChangeNotificationPolicyConfig rankChangePolicyConfig;
     private final Clock clock;
-
-    private Duration rankChangeCooldown = Duration.ofHours(6);
-
-    @Value("${app.smart-message.rank-change.cooldown:6h}")
-    void setRankChangeCooldown(Duration rankChangeCooldown) {
-        this.rankChangeCooldown = rankChangeCooldown;
-    }
 
     public List<NotificationPreferenceRepository.SendableCandidate> findCandidates(
             NotificationType type,
@@ -132,6 +126,7 @@ public class NotificationBatchReadService {
         Map<UUID, NotificationRankState> states = new LinkedHashMap<>();
         rankStateRepository.findByUserIdInAndSeasonId(ids, season.getId())
                 .forEach(state -> states.put(state.getUserId(), state));
+        Duration rankChangeCooldown = rankChangePolicyConfig.cooldown();
         Set<UUID> cooldownUsers = rankChangeCooldown.isZero()
                 ? Set.of()
                 : new LinkedHashSet<>(deliveryRepository.findUserIdsWithRecentDelivery(

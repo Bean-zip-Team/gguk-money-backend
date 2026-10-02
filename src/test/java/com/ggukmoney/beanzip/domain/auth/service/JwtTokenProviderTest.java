@@ -5,6 +5,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
@@ -25,6 +26,41 @@ public class JwtTokenProviderTest {
             "ggukmoney",
             clock
     );
+
+    @Test
+    void tokenLifetimesAreConfigurable() {
+        JwtTokenProvider shortLived = new JwtTokenProvider(
+                new ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", clock,
+                Duration.ofMinutes(1), Duration.ofMinutes(10));
+
+        Instant accessExpiresAt = shortLived.parseToken(
+                shortLived.createAccessToken(UUID.randomUUID(), UUID.randomUUID(), "a")).expiresAt();
+        Instant refreshExpiresAt = shortLived.parseToken(
+                shortLived.createRefreshToken(UUID.randomUUID(), UUID.randomUUID(), "r")).expiresAt();
+
+        assertThat(accessExpiresAt).isEqualTo(clock.instant().plus(Duration.ofMinutes(1)));
+        assertThat(refreshExpiresAt).isEqualTo(clock.instant().plus(Duration.ofMinutes(10)));
+        assertThat(shortLived.accessTokenTtl()).isEqualTo(Duration.ofMinutes(1));
+    }
+
+    @Test
+    void defaultLifetimesStayFifteenMinutesAndThirtyDays() {
+        Instant accessExpiresAt = jwtTokenProvider.parseToken(
+                jwtTokenProvider.createAccessToken(UUID.randomUUID(), UUID.randomUUID(), "a")).expiresAt();
+        Instant refreshExpiresAt = jwtTokenProvider.parseToken(
+                jwtTokenProvider.createRefreshToken(UUID.randomUUID(), UUID.randomUUID(), "r")).expiresAt();
+
+        assertThat(accessExpiresAt).isEqualTo(clock.instant().plus(Duration.ofMinutes(15)));
+        assertThat(refreshExpiresAt).isEqualTo(clock.instant().plus(Duration.ofDays(30)));
+    }
+
+    @Test
+    void rejectsNonPositiveLifetimes() {
+        assertThatThrownBy(() -> new JwtTokenProvider(
+                new ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", clock,
+                Duration.ZERO, Duration.ofDays(30)))
+                .isInstanceOf(IllegalStateException.class);
+    }
 
     @Test
     void createsAccessTokenWithGgukmoneyClaims() {

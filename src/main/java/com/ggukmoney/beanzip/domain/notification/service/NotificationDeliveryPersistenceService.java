@@ -17,7 +17,6 @@ import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -48,16 +47,6 @@ public class NotificationDeliveryPersistenceService {
     private final RankChangeNotificationPolicyConfig rankChangePolicyConfig;
     private final NotificationTemplateProperties templateProperties;
     private final Clock clock;
-
-    private Duration rankChangeCooldown = Duration.ofHours(6);
-
-    @Value("${app.smart-message.rank-change.cooldown:6h}")
-    void setRankChangeCooldown(Duration rankChangeCooldown) {
-        if (rankChangeCooldown.isNegative()) {
-            throw new IllegalStateException("app.smart-message.rank-change.cooldown must not be negative");
-        }
-        this.rankChangeCooldown = rankChangeCooldown;
-    }
 
     @Transactional
     public Optional<NotificationDelivery> createPending(
@@ -405,6 +394,7 @@ public class NotificationDeliveryPersistenceService {
     }
 
     private boolean isRankChangeCooldownActive(UUID userId, Instant now) {
+        Duration rankChangeCooldown = rankChangePolicyConfig.cooldown();
         return !rankChangeCooldown.isZero()
                 && deliveryRepository.existsByUserIdAndTypeAndStatusAndRequestedAtAfter(
                         userId,

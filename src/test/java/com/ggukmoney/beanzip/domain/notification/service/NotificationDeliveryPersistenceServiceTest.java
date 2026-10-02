@@ -103,7 +103,7 @@ class NotificationDeliveryPersistenceServiceTest {
     @Test
     void topTenExitAloneDoesNotOverrideConfiguredThreeRankThreshold() {
         when(appConfigRepository.findLatestEffectiveByConfigKeys(
-                org.mockito.ArgumentMatchers.eq(java.util.Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)),
+                org.mockito.ArgumentMatchers.eq(RankChangeNotificationPolicyConfig.KEYS),
                 org.mockito.ArgumentMatchers.any(Instant.class)
         )).thenReturn(java.util.List.of(AppConfig.createFor(
                 RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "3", Instant.EPOCH)));
@@ -360,7 +360,7 @@ class NotificationDeliveryPersistenceServiceTest {
                 userId,
                 NotificationType.RANK_CHANGE,
                 NotificationDeliveryStatus.SENT,
-                Instant.parse("2026-07-25T04:00:00Z")
+                Instant.parse("2026-07-25T07:00:00Z")
         )).thenReturn(true);
 
         assertThat(service.prepareRankChange(userId)).isEmpty();
@@ -379,7 +379,12 @@ class NotificationDeliveryPersistenceServiceTest {
 
     @Test
     void zeroRankNotificationCooldownAllowsImmediateRepeatedRankChanges() {
-        ReflectionTestUtils.setField(service, "rankChangeCooldown", java.time.Duration.ZERO);
+        when(appConfigRepository.findLatestEffectiveByConfigKeys(
+                org.mockito.ArgumentMatchers.eq(RankChangeNotificationPolicyConfig.KEYS),
+                org.mockito.ArgumentMatchers.any(Instant.class)
+        )).thenReturn(java.util.List.of(AppConfig.createFor(
+                RankChangeNotificationPolicyConfig.KEY_COOLDOWN_MINUTES, "0", Instant.EPOCH)));
+        rankChangePolicyConfig.refresh();
         UUID userId = UUID.randomUUID();
         RankingSeason season = weeklySeason(1L);
         NotificationRankState state = NotificationRankState.record(userId, season.getId(), 5L, Instant.parse("2026-07-25T09:00:00Z"));

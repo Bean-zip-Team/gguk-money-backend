@@ -28,6 +28,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.ggukmoney.beanzip.global.config.AppConfigBatchLoader;
+import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
+import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,6 +65,7 @@ class NotificationBatchReadServiceTest {
             rankingRedisRepository,
             rankingEntryRepository,
             rankingProperties,
+            new RankChangeNotificationPolicyConfig(new AppConfigBatchLoader(mock(AppConfigRepository.class))),
             Clock.fixed(NOW, ZoneOffset.UTC)
     );
 

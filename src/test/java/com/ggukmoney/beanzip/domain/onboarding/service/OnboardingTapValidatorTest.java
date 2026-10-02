@@ -14,13 +14,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OnboardingTapValidatorTest {
 
-    private final OnboardingTapValidator validator = new OnboardingTapValidator();
+    private final OnboardingTapValidator validator = new OnboardingTapValidator(() -> 45);
 
     @Test
     void acceptsExactlyFortyFiveSequentialNonDecreasingTapEvents() {
         int acceptedTapCount = validator.validateCompleted(request(events(45)));
 
         assertThat(acceptedTapCount).isEqualTo(45);
+    }
+
+    @Test
+    void requiredTapCountFollowsThePolicy() {
+        OnboardingTapValidator threeTaps = new OnboardingTapValidator(() -> 3);
+
+        assertThat(threeTaps.validateCompleted(request(events(3)))).isEqualTo(3);
+        assertThatThrownBy(() -> threeTaps.validateCompleted(request(events(45))))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("ONBOARDING_TAP_NOT_COMPLETED");
     }
 
     @Test
