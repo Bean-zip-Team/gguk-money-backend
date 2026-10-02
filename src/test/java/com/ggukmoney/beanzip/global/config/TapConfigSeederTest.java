@@ -23,7 +23,7 @@ class TapConfigSeederTest {
     private final AppConfigRepository repository = mock(AppConfigRepository.class);
 
     @Test
-    void revertsAnOverriddenValueToTheCodeDefaultByDefault() {
+    void revertsAnOverriddenValueWhenRevertIsOn() {
         overridden();
 
         new TapConfigSeeder(repository, true).run();
@@ -32,7 +32,7 @@ class TapConfigSeederTest {
     }
 
     @Test
-    void keepsAnOverriddenValueWhenRevertIsOff() {
+    void keepsAnOverriddenValueWhenRevertIsOff_theDefault() {
         overridden();
 
         new TapConfigSeeder(repository, false).run();
