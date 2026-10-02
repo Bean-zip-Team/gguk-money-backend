@@ -36,7 +36,8 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
+        // API 만 다른 출처(앱인토스 웹뷰 등)에 연다. 운영 화면(/ops)은 같은 출처에서만 쓴다.
+        registry.addMapping("/api/**")
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods(
                         HttpMethod.GET.name(),
