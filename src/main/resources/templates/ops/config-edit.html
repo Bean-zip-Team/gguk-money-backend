@@ -2,46 +2,66 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
 <head th:replace="~{ops/fragments :: head(${current.key})}"></head>
 <body>
-<header th:replace="~{ops/fragments :: header}"></header>
-<main>
-    <h2 th:text="${current.key}">key</h2>
-    <div class="box">
-        <div class="muted">지금 값 · <span th:text="${current.effectiveAt}">at</span> KST</div>
-        <pre th:text="${current.value}">value</pre>
-    </div>
+<div th:replace="~{ops/fragments :: topbar}"></div>
+<div class="workspace">
+    <aside th:replace="~{ops/fragments :: sidebar('config')}"></aside>
+    <main class="content">
+        <div class="content-heading">
+            <div class="breadcrumb">꾹머니 설정 / 정책 / <span th:text="${rule != null} ? ${rule.group} : '코드에서 쓰지 않는 키'">분류</span></div>
+            <h1 th:text="${current.description}">의미</h1>
+            <p><code th:text="${current.key}">key</code></p>
+        </div>
 
-    <div class="error" th:if="${error}" th:text="${error}">error</div>
+        <div class="notice error" th:if="${error}" th:text="${error}">error</div>
+        <div class="notice info" th:if="${rule == null}">이 키는 검증 규칙이 없어 화면에서 바꿀 수 없어요. SQL 로 바꿔 주세요.</div>
 
-    <div class="box" th:if="${rule == null}">이 키는 검증 규칙이 없어 화면에서 바꿀 수 없습니다. SQL 로 바꾸세요.</div>
+        <section class="panel">
+            <h2>지금 값</h2>
+            <div class="panel-body">
+                <div class="current">
+                    <strong th:text="${current.display}">value</strong>
+                    <code th:if="${current.display != current.value}" th:text="${current.value}">raw</code>
+                    <small>적용 <span th:text="${current.effectiveAt}">at</span> KST
+                        <span th:if="${current.changedBy}"> · <span th:text="${current.changedBy}">by</span></span></small>
+                </div>
 
-    <form th:if="${rule != null}" method="post" th:action="@{/ops/config/{key}(key=${current.key})}"
-          th:attr="data-env=${env},data-current=${current.value}"
-          onsubmit="return confirm(this.dataset.env + ' 환경에 바로 반영됩니다.\n\n지금: ' + this.dataset.current + '\n새 값: ' + this.elements.value.value + '\n\n저장할까요?')">
-        <input type="hidden" name="basedOn" th:value="${current.publicId}">
-        <label for="value">새 값</label>
-        <textarea id="value" name="value" required th:text="${value != null ? value : current.value}"></textarea>
-        <div class="muted">규칙: <span th:text="${rule.hint}">hint</span>. 문자열은 따옴표 없이 적어도 됩니다.</div>
-        <label for="changedBy">변경자</label>
-        <input id="changedBy" name="changedBy" maxlength="50" required th:value="${changedBy}">
-        <label for="reason">변경 사유</label>
-        <input id="reason" name="reason" maxlength="200" required th:value="${reason}">
-        <p><button class="primary" type="submit">저장</button></p>
-    </form>
+                <form th:if="${rule != null}" method="post" th:action="@{/ops/config/{key}(key=${current.key})}"
+                      th:attr="data-env=${env},data-current=${current.value}"
+                      onsubmit="return confirm(this.dataset.env + ' 환경에 바로 반영됩니다.\n\n지금: ' + this.dataset.current + '\n새 값: ' + this.elements.value.value + '\n\n저장할까요?')">
+                    <input type="hidden" name="basedOn" th:value="${current.publicId}">
+                    <label class="field-label" for="value">새 값</label>
+                    <textarea class="field" id="value" name="value" required th:text="${value != null ? value : current.value}"></textarea>
+                    <p class="field-help">규칙: <span th:text="${rule.hint}">hint</span>. 문자열은 따옴표 없이 적어도 돼요.</p>
+                    <label class="field-label" for="changedBy">변경자</label>
+                    <input class="field" id="changedBy" name="changedBy" maxlength="50" required th:value="${changedBy}">
+                    <label class="field-label" for="reason">변경 사유</label>
+                    <input class="field" id="reason" name="reason" maxlength="200" required th:value="${reason}">
+                    <div class="form-actions">
+                        <button class="primary-button" type="submit">저장</button>
+                        <a class="secondary-button" th:href="@{/ops/config}">목록으로</a>
+                    </div>
+                </form>
+            </div>
+        </section>
 
-    <h3>최근 이력</h3>
-    <div class="scroll">
-        <table>
-            <thead><tr><th>적용 시각 (KST)</th><th>값</th><th>변경자</th><th>사유</th></tr></thead>
-            <tbody>
-            <tr th:each="row : ${history}">
-                <td class="muted" th:text="${row.effectiveAt}">at</td>
-                <td class="value" th:text="${row.value}">value</td>
-                <td class="muted" th:text="${row.changedBy}">by</td>
-                <td class="muted" th:text="${row.changeReason}">reason</td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
-</main>
+        <section class="panel">
+            <h2>최근 이력</h2>
+            <div class="table-scroll">
+                <table>
+                    <colgroup><col style="width:20%"><col style="width:40%"><col style="width:14%"><col style="width:26%"></colgroup>
+                    <thead><tr><th>적용 시각 (KST)</th><th>값</th><th>변경자</th><th>사유</th></tr></thead>
+                    <tbody>
+                    <tr th:each="row : ${history}">
+                        <td class="meta" th:text="${row.effectiveAt}">at</td>
+                        <td class="value" th:text="${row.display}">value</td>
+                        <td th:text="${row.changedBy}">by</td>
+                        <td th:text="${row.changeReason}">reason</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
 </body>
 </html>

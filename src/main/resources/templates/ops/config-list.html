@@ -1,25 +1,40 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
-<head th:replace="~{ops/fragments :: head('설정 목록')}"></head>
+<head th:replace="~{ops/fragments :: head('정책')}"></head>
 <body>
-<header th:replace="~{ops/fragments :: header}"></header>
-<main>
-    <p class="muted">DB 에 저장된 최신 값입니다. 바꾸면 새 행이 추가되고, 대부분 1분 안에 반영됩니다.
-        "SQL 전용" 키는 검증 규칙이 없어 화면에서 바꿀 수 없습니다.</p>
-    <div class="scroll">
-        <table>
-            <thead><tr><th>키</th><th>값</th><th>적용 시각 (KST)</th><th>변경자</th><th>수정</th></tr></thead>
-            <tbody>
-            <tr th:each="row : ${rows}">
-                <td><a th:href="@{/ops/config/{key}(key=${row.key})}" th:text="${row.key}">key</a></td>
-                <td class="value" th:text="${row.value}">value</td>
-                <td class="muted" th:text="${row.effectiveAt}">at</td>
-                <td class="muted" th:text="${row.changedBy}">by</td>
-                <td class="muted" th:text="${row.editable} ? '화면' : 'SQL 전용'">editable</td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
-</main>
+<div th:replace="~{ops/fragments :: topbar}"></div>
+<div class="workspace">
+    <aside th:replace="~{ops/fragments :: sidebar('config')}"></aside>
+    <main class="content">
+        <div class="content-heading">
+            <div class="breadcrumb">꾹머니 설정 / 정책</div>
+            <h1>정책 값</h1>
+            <p>DB(app_config)에 저장된 최신 값이에요. 바꾸면 새 행이 추가되어 이력이 남고, 대부분 1분 안에 반영돼요.</p>
+        </div>
+
+        <section class="panel" th:each="section : ${sections}" th:id="${section.group.id}">
+            <h2 th:text="${section.group.name}">분류</h2>
+            <div class="table-scroll">
+                <table>
+                    <colgroup><col style="width:27%"><col style="width:17%"><col style="width:34%"><col style="width:14%"><col style="width:8%"></colgroup>
+                    <thead><tr><th>키</th><th>값</th><th>의미</th><th>마지막 변경</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="row : ${section.rows}" th:classappend="${row.editable} ? '' : 'unused'">
+                        <td class="key"><code th:text="${row.key}">key</code></td>
+                        <td class="value" th:text="${row.display}">value</td>
+                        <td th:text="${row.description}">description</td>
+                        <td class="meta"><span th:text="${row.effectiveAt}">at</span><br><span th:text="${row.changedBy}">by</span></td>
+                        <td class="action">
+                            <a th:if="${row.editable}" class="secondary-button small-button"
+                               th:href="@{/ops/config/{key}(key=${row.key})}">수정</a>
+                            <span th:unless="${row.editable}" class="tag">SQL 전용</span>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
 </body>
 </html>
