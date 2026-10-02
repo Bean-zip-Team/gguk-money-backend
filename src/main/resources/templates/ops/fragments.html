@@ -1,40 +1,145 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<!-- 디자인 리소스 관리자 웹(static-asset-admin)과 같은 디자인 언어를 쓴다. -->
 <head th:fragment="head(title)">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title th:text="${title} + ' · ' + ${env}">config</title>
+    <title th:text="${title} + ' · 꾹머니 설정 · ' + ${env}">꾹머니 설정</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css">
     <style>
-        :root { --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --bg:#fff; --soft:#f6f8fa; --alpha:#1a7f37; --prod:#cf222e; }
+        :root {
+            --background: #f4f6f8; --surface: #fff; --text: #191f28; --subtext: #6b7684; --muted: #8b95a1;
+            --line: #e5e8eb; --soft: #f2f4f6; --blue: #3182f6; --blue-hover: #1b64da; --blue-soft: #e8f3ff;
+            --red: #f04452; --red-soft: #fff0f1; --green: #03b26c; --green-soft: #e5f8ef;
+            color: var(--text); background: var(--background);
+            font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
         * { box-sizing: border-box; }
-        body { margin:0; font:14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; color:var(--fg); background:var(--bg); }
-        header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
-        header a { color:inherit; text-decoration:none; font-weight:600; }
-        .env { padding:2px 10px; border-radius:999px; color:#fff; font-weight:700; font-size:12px; }
-        .env.ALPHA { background:var(--alpha); } .env.PRODUCTION { background:var(--prod); }
-        header form { margin-left:auto; }
-        main { max-width:960px; margin:0 auto; padding:16px; }
-        table { width:100%; border-collapse:collapse; }
-        th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
-        th { color:var(--muted); font-weight:600; font-size:12px; }
-        td.value, pre { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; word-break:break-all; white-space:pre-wrap; margin:0; }
-        .muted { color:var(--muted); font-size:12px; }
-        label { display:block; margin:12px 0 4px; font-weight:600; }
-        input, textarea { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font:inherit; }
-        textarea { font-family:ui-monospace, Menlo, monospace; min-height:80px; }
-        button { padding:8px 16px; border:1px solid var(--line); border-radius:6px; background:var(--soft); font:inherit; cursor:pointer; }
-        button.primary { background:var(--fg); color:#fff; border-color:var(--fg); }
-        .error { padding:8px 12px; border-radius:6px; background:#ffebe9; color:var(--prod); margin:12px 0; }
-        .box { padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--soft); margin:12px 0; }
-        .scroll { overflow-x:auto; }
+        body { min-width: 320px; margin: 0; -webkit-font-smoothing: antialiased; }
+        a { color: inherit; text-decoration: none; }
+        button, input, textarea { font: inherit; }
+        button { cursor: pointer; }
+        :focus-visible { outline: 3px solid rgb(49 130 246 / 25%); outline-offset: 2px; }
+        code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+        .env-bar { height: 4px; } .env-bar.ALPHA { background: var(--green); } .env-bar.PRODUCTION { background: var(--red); }
+        .topbar {
+            position: sticky; z-index: 5; top: 0; display: flex; align-items: center; gap: 14px; height: 68px; padding: 0 28px;
+            border-bottom: 1px solid var(--line); background: rgb(255 255 255 / 92%); backdrop-filter: blur(14px);
+        }
+        .brand { display: inline-flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 750; letter-spacing: -.03em; }
+        .brand-symbol { position: relative; display: block; width: 27px; height: 27px; overflow: hidden; border-radius: 9px; background: var(--blue); transform: rotate(-3deg); }
+        .brand-symbol span { position: absolute; bottom: 5px; display: block; width: 9px; height: 15px; border-radius: 5px 5px 2px 2px; background: #fff; }
+        .brand-symbol span:first-child { left: 5px; transform: rotate(-7deg); }
+        .brand-symbol span:last-child { right: 5px; opacity: .82; transform: rotate(7deg); }
+        .env { border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 750; letter-spacing: .02em; }
+        .env.ALPHA { color: var(--green); background: var(--green-soft); } .env.PRODUCTION { color: var(--red); background: var(--red-soft); }
+        .topbar form { margin-left: auto; }
+
+        .primary-button, .secondary-button {
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 42px; border: 0;
+            border-radius: 12px; padding: 0 16px; font-size: 14px; font-weight: 700; white-space: nowrap; transition: .16s ease;
+        }
+        .primary-button { color: #fff; background: var(--blue); box-shadow: 0 4px 12px rgb(49 130 246 / 18%); }
+        .primary-button:hover { background: var(--blue-hover); transform: translateY(-1px); }
+        .secondary-button { color: #4e5968; background: var(--soft); }
+        .secondary-button:hover { background: var(--line); }
+        .small-button { height: 32px; border-radius: 9px; padding: 0 11px; font-size: 12px; }
+
+        .workspace { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: calc(100vh - 72px); }
+        .sidebar { position: sticky; top: 72px; align-self: start; height: calc(100vh - 72px); padding: 26px 16px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
+        .sidebar-heading { padding: 0 12px 10px; color: var(--subtext); font-size: 12px; font-weight: 650; }
+        .nav-item { display: flex; align-items: center; height: 38px; border-radius: 9px; padding: 0 12px; color: #4e5968; font-size: 14px; }
+        .nav-item:hover { color: var(--text); background: var(--soft); }
+        .nav-item.active { color: #1769d1; background: var(--blue-soft); font-weight: 700; }
+        .nav-divider { height: 1px; margin: 14px 8px; background: var(--soft); }
+        .sidebar-note { margin: 22px 12px 0; color: var(--muted); font-size: 12px; line-height: 1.6; word-break: keep-all; }
+
+        .content { min-width: 0; padding: 36px clamp(20px, 4vw, 56px) 72px; }
+        .content-heading { max-width: 1180px; margin: 0 auto 22px; }
+        .breadcrumb { margin-bottom: 8px; color: var(--blue); font-size: 13px; font-weight: 650; }
+        .content-heading h1 { margin: 0; font-size: 26px; font-weight: 750; letter-spacing: -.045em; }
+        .content-heading p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; word-break: keep-all; }
+
+        .panel { max-width: 1180px; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); scroll-margin-top: 90px; }
+        .panel > h2 { margin: 0; padding: 18px 20px 6px; font-size: 17px; font-weight: 750; letter-spacing: -.03em; }
+        .panel-body { padding: 18px 20px 20px; }
+        .table-scroll { overflow-x: auto; padding: 0 8px 8px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+        th { padding: 10px 12px; color: var(--muted); font-size: 12px; font-weight: 650; text-align: left; white-space: nowrap; }
+        td { padding: 12px; border-top: 1px solid var(--soft); vertical-align: middle; overflow-wrap: anywhere; }
+        td.key code { color: var(--subtext); word-break: break-all; }
+        td.value { font-weight: 650; word-break: break-all; }
+        td.meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+        td.action { text-align: right; white-space: nowrap; }
+        .tag { display: inline-block; border-radius: 7px; padding: 4px 8px; color: var(--muted); background: var(--soft); font-size: 11px; font-weight: 700; }
+        tr.unused td { color: var(--muted); }
+
+        .current { border-radius: 12px; padding: 16px; background: var(--soft); }
+        .current strong { display: block; font-size: 18px; letter-spacing: -.02em; word-break: break-all; }
+        .current code { display: block; margin-top: 8px; color: var(--subtext); white-space: pre-wrap; word-break: break-all; }
+        .current small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+        .field-label { display: block; margin: 18px 0 8px; font-size: 13px; font-weight: 700; }
+        .field { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; color: var(--text); background: #fff; }
+        .field:focus { border-color: #78aef8; outline: 0; box-shadow: 0 0 0 3px rgb(49 130 246 / 10%); }
+        textarea.field { min-height: 92px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+        .field-help { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+        .form-actions { display: flex; gap: 10px; margin-top: 22px; }
+        .notice { max-width: 1180px; margin: 0 auto 18px; border-radius: 12px; padding: 13px 16px; font-size: 13px; font-weight: 600; }
+        .notice.error { color: var(--red); background: var(--red-soft); }
+        .notice.info { color: var(--subtext); background: var(--soft); }
+
+        .gate-page { display: grid; min-height: 100vh; place-items: center; padding: 20px; background: var(--background); }
+        .gate { display: grid; width: min(390px, 100%); border: 1px solid var(--line); border-radius: 22px; padding: 36px; background: var(--surface); box-shadow: 0 18px 50px rgb(30 43 58 / 8%); }
+        .gate .brand-symbol { width: 42px; height: 42px; margin-bottom: 22px; border-radius: 13px; }
+        .gate .brand-symbol span { bottom: 8px; width: 13px; height: 23px; }
+        .gate .brand-symbol span:first-child { left: 8px; } .gate .brand-symbol span:last-child { right: 8px; }
+        .gate h1 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 24px; letter-spacing: -.045em; }
+        .gate p { margin: 8px 0 22px; color: var(--muted); font-size: 14px; }
+        .gate .field { height: 48px; }
+        .gate .primary-button { width: 100%; margin-top: 12px; }
+        .gate .notice { margin: 0 0 14px; }
+
+        @media (max-width: 760px) {
+            .topbar { height: 60px; padding: 0 16px; }
+            .workspace { display: block; }
+            .sidebar { position: static; height: auto; padding: 14px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
+            .sidebar nav { display: flex; gap: 4px; overflow-x: auto; }
+            .nav-item { flex: 0 0 auto; }
+            .nav-divider, .sidebar-heading, .sidebar-note { display: none; }
+            .content { padding: 24px 14px 56px; }
+            .content-heading h1 { font-size: 22px; }
+            .table-scroll { padding: 0 4px 4px; }
+            /* 모바일: 표 대신 행을 카드처럼 세로로 쌓는다. */
+            table, tbody, tr, td { display: block; width: 100%; }
+            colgroup, thead { display: none; }
+            tr { padding: 12px 12px 14px; border-top: 1px solid var(--soft); }
+            td { padding: 2px 0; border: 0; }
+            td.value { margin-top: 4px; font-size: 15px; }
+            td.meta { display: none; }
+            td.action { margin-top: 8px; text-align: left; }
+        }
     </style>
 </head>
 <body>
-<header th:fragment="header">
-    <a th:href="@{/ops/config}">app_config</a>
-    <span class="env" th:classappend="${env}" th:text="${env}">ENV</span>
-    <form method="post" th:action="@{/ops/logout}"><button type="submit">로그아웃</button></form>
-</header>
+<div th:fragment="topbar">
+    <div class="env-bar" th:classappend="${env}"></div>
+    <header class="topbar">
+        <a class="brand" th:href="@{/ops/config}"><span class="brand-symbol"><span></span><span></span></span><span>꾹머니 설정</span></a>
+        <span class="env" th:classappend="${env}" th:text="${env}">ENV</span>
+        <form method="post" th:action="@{/ops/logout}"><button class="secondary-button small-button" type="submit">로그아웃</button></form>
+    </header>
+</div>
+
+<aside class="sidebar" th:fragment="sidebar(active)">
+    <div class="sidebar-heading">정책 (DB · 화면에서 수정)</div>
+    <nav>
+        <a class="nav-item" th:each="group : ${groups}" th:href="@{'/ops/config#' + ${group.id}}" th:text="${group.name}">분류</a>
+        <div class="nav-divider"></div>
+        <a class="nav-item" th:classappend="${active == 'settings'} ? 'active'" th:href="@{/ops/settings}">설정 파일 (읽기 전용)</a>
+    </nav>
+    <p class="sidebar-note">이 화면은 이 서버의 DB 만 바꿔요. 바꾼 값은 대부분 1분 안에 반영돼요.</p>
+</aside>
 </body>
 </html>
