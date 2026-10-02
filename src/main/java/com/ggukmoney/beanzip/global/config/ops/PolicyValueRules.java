@@ -46,6 +46,13 @@ public class PolicyValueRules {
         }
     }
 
+    /**
+     * 돈과 바로 이어지는 값의 상한. 로더는 받아들이지만 오타 한 번이면 크게 나간다(0.02 → 2 는 출금 100배).
+     * 더 큰 값이 정말 필요하면 SQL 로 넣는다.
+     */
+    static final long MAX_MONEY_AMOUNT = 10_000;
+    static final long MAX_WEEKLY_REWARD = 1_000_000;
+
     private final Map<String, Rule> rules = new HashMap<>();
 
     public PolicyValueRules(KeycapRepository keycapRepository, ObjectMapper mapper) {
@@ -76,7 +83,8 @@ public class PolicyValueRules {
 
         // 출금 · 상자
         integer(CashoutPolicyConfig.KEY_MINIMUM_POINT, 1);
-        decimal(CashoutPolicyConfig.KEY_POINT_TO_KRW_RATE, true);
+        rules.put(CashoutPolicyConfig.KEY_POINT_TO_KRW_RATE, new Rule(Kind.DECIMAL, "0보다 크고 1 이하인 숫자 (1P 당 원)",
+                raw -> { double value = finite(raw); return value > 0 && value <= 1; }));
         integer(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, 1);
         integer(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, 0);
         integer(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, 0);
@@ -88,7 +96,8 @@ public class PolicyValueRules {
         rules.put(OnboardingRewardConfig.KEY_BONUS_KEYCAP_GRADE, new Rule(Kind.TEXT,
                 "등급: " + Arrays.toString(Keycap.Grade.values()),
                 grade -> Arrays.stream(Keycap.Grade.values()).anyMatch(value -> value.name().equals(grade))));
-        integer(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, 0);
+        rules.put(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, new Rule(Kind.INTEGER, "0 이상 " + MAX_MONEY_AMOUNT + " 이하의 정수",
+                raw -> { int value = Integer.parseInt(raw); return value >= 0 && value <= MAX_MONEY_AMOUNT; }));
         integer(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS, 1);
         integer(OnboardingRewardConfig.KEY_REQUIRED_TAP_COUNT, 1);
 
@@ -102,8 +111,8 @@ public class PolicyValueRules {
         bool(PromotionPolicyConfig.KEY_TAP_ENABLED);
         integer(PromotionPolicyConfig.KEY_THRESHOLD, 1);
         integer(PromotionPolicyConfig.KEY_TAP_THRESHOLD, 1);
-        rules.put(PromotionPolicyConfig.KEY_AMOUNT, new Rule(Kind.INTEGER, "1 이상의 정수", raw -> Long.parseLong(raw) >= 1));
-        rules.put(PromotionPolicyConfig.KEY_TAP_AMOUNT, new Rule(Kind.INTEGER, "1 이상의 정수", raw -> Long.parseLong(raw) >= 1));
+        money(PromotionPolicyConfig.KEY_AMOUNT);
+        money(PromotionPolicyConfig.KEY_TAP_AMOUNT);
         instant(PromotionPolicyConfig.KEY_LAUNCH_AT);
         instant(PromotionPolicyConfig.KEY_TAP_LAUNCH_AT);
         rules.put(PromotionPolicyConfig.KEY_EXCLUDED_USER_IDS, new Rule(Kind.JSON, "유저 UUID 문자열 배열",
@@ -113,8 +122,10 @@ public class PolicyValueRules {
                 }));
 
         // 랭킹: 로더의 파서를 그대로 쓴다.
-        rules.put(WeeklyRankingRewardPolicy.KEY, new Rule(Kind.JSON, "{\"enabled\": bool, \"rewards\": {\"1\": 금액, ...}} — 순위는 1부터 연속",
-                raw -> WeeklyRankingRewardPolicy.parse(mapper, raw) != null));
+        rules.put(WeeklyRankingRewardPolicy.KEY, new Rule(Kind.JSON,
+                "{\"enabled\": bool, \"rewards\": {\"1\": 금액, ...}} — 순위는 1부터 연속, 금액은 " + MAX_WEEKLY_REWARD + " 이하",
+                raw -> WeeklyRankingRewardPolicy.parse(mapper, raw).rewards().values().stream()
+                        .allMatch(amount -> amount <= MAX_WEEKLY_REWARD)));
         rules.put(SystemRankingBoostPolicy.KEY, new Rule(Kind.JSON, "enabled, internalUserIds, minimumLeaderScore, minIncrement, maxIncrement",
                 raw -> SystemRankingBoostPolicy.parse(mapper, raw) != null));
     }
@@ -126,6 +137,11 @@ public class PolicyValueRules {
     private void integer(String key, int min) {
         // 로더는 Integer.parseInt 로 읽는다. int 범위를 넘으면 거부한다.
         rules.put(key, new Rule(Kind.INTEGER, min + " 이상의 정수", raw -> Integer.parseInt(raw) >= min));
+    }
+
+    private void money(String key) {
+        rules.put(key, new Rule(Kind.INTEGER, "1 이상 " + MAX_MONEY_AMOUNT + " 이하의 정수",
+                raw -> { long value = Long.parseLong(raw); return value >= 1 && value <= MAX_MONEY_AMOUNT; }));
     }
 
     private void decimal(String key, boolean positive) {

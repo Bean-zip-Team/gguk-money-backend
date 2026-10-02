@@ -74,6 +74,16 @@ class AppConfigValueValidatorTest {
     }
 
     @Test
+    void capsMoneyValuesAgainstFatFingerMistakes() {
+        assertRejected("cashout.pointToKrwRate", "0.02", "2");
+        assertRejected("promotion.keycapFive.amount", "500", "100000");
+        assertRejected("onboarding.reward.pointAmount", "70", "100000");
+        assertRejected("ranking.weeklyReward.policy", "{\"enabled\":true,\"rewards\":{\"1\":10000}}",
+                "{\"enabled\":true,\"rewards\":{\"1\":100000000}}");
+        assertThat(change("cashout.pointToKrwRate", "0.02", "1")).isEqualTo("1");
+    }
+
+    @Test
     void rejectsAnUnchangedValue() {
         assertRejected("tap.point.dailyCap", "150", "150");
         assertRejected("ranking.weeklyReward.policy", "{\"enabled\":true,\"rewards\":{\"1\":10000}}",

@@ -14,8 +14,9 @@
 
     <div class="box" th:if="${rule == null}">이 키는 검증 규칙이 없어 화면에서 바꿀 수 없습니다. SQL 로 바꾸세요.</div>
 
-    <form th:if="${rule != null}" method="post" th:action="@{/ops/config/{key}(key=${current.key})}" th:attr="data-env=${env}"
-          onsubmit="return confirm(this.dataset.env + ' 환경에 바로 반영됩니다. 저장할까요?')">
+    <form th:if="${rule != null}" method="post" th:action="@{/ops/config/{key}(key=${current.key})}"
+          th:attr="data-env=${env},data-current=${current.value}"
+          onsubmit="return confirm(this.dataset.env + ' 환경에 바로 반영됩니다.\n\n지금: ' + this.dataset.current + '\n새 값: ' + this.elements.value.value + '\n\n저장할까요?')">
         <input type="hidden" name="basedOn" th:value="${current.publicId}">
         <label for="value">새 값</label>
         <textarea id="value" name="value" required th:text="${value != null ? value : current.value}"></textarea>
