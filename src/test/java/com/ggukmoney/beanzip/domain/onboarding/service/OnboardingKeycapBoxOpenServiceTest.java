@@ -42,7 +42,7 @@ class OnboardingKeycapBoxOpenServiceTest {
     private final OnboardingRewardAttemptRepository attemptRepository = mock(OnboardingRewardAttemptRepository.class);
     private final KeycapRepository keycapRepository = mock(KeycapRepository.class);
     private final KeycapRewardSelector keycapRewardSelector = mock(KeycapRewardSelector.class);
-    private final OnboardingTapValidator tapValidator = new OnboardingTapValidator();
+    private final OnboardingTapValidator tapValidator = new OnboardingTapValidator(() -> 45);
     private final OnboardingKeycapBoxOpenRequestHasher requestHasher = new OnboardingKeycapBoxOpenRequestHasher();
     private final OnboardingRewardConfig rewardConfig = mock(OnboardingRewardConfig.class);
     private final OnboardingRewardAttemptMapper mapper = mock(OnboardingRewardAttemptMapper.class);
@@ -70,7 +70,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 "main",
                 "COMMON",
                 2,
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15), 45
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
         when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
@@ -108,7 +108,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 "main",
                 "COMMON",
                 2,
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15), 45
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
         when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
@@ -132,7 +132,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 "main",
                 "COMMON",
                 2,
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15), 45
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(mainKeycap));
         when(keycapRepository.findByGradeAndAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.Grade.COMMON, Keycap.AcquisitionType.BOX))
@@ -160,6 +160,21 @@ class OnboardingKeycapBoxOpenServiceTest {
         assertThat(response).isEqualTo(mapped);
         verify(attemptRepository, never()).save(any());
         verify(keycapRepository, never()).findByCode(any());
+    }
+
+    @Test
+    void replaysAnExistingAttemptEvenAfterTheRequiredTapCountChanged() {
+        OnboardingKeycapBoxOpenService afterPolicyChange = new OnboardingKeycapBoxOpenService(
+                attemptRepository, keycapRepository, keycapRewardSelector, new OnboardingTapValidator(() -> 30),
+                requestHasher, rewardConfig, mapper, new NoOpTransactionManager(), Clock.fixed(NOW, ZoneOffset.UTC));
+        UUID tapSessionId = UUID.randomUUID();
+        OnboardingKeycapBoxOpenRequest request = request(tapSessionId);
+        OnboardingRewardAttempt existing = existingAttempt(tapSessionId, requestHasher.hash(request), NOW.plusSeconds(60));
+        OnboardingKeycapBoxOpenResponse mapped = response(false);
+        when(attemptRepository.findByTapSessionIdWithRewardKeycap(tapSessionId)).thenReturn(Optional.of(existing));
+        when(mapper.mapToResponse(existing)).thenReturn(mapped);
+
+        assertThat(afterPolicyChange.open(request)).isEqualTo(mapped);
     }
 
     @Test
@@ -196,7 +211,7 @@ class OnboardingKeycapBoxOpenServiceTest {
                 "main",
                 "COMMON",
                 2,
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15), 45
         ));
         when(keycapRepository.findByCode("main")).thenReturn(Optional.of(keycap("main", false)));
 

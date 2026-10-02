@@ -26,8 +26,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthLoginTransactionService {
 
-    private static final int ONBOARDING_TAP_COUNT = 45;
-
     private final AuthIdentityRepository authIdentityRepository;
     private final UserService userService;
     private final PointAccountService pointAccountService;
@@ -70,10 +68,12 @@ public class AuthLoginTransactionService {
             keycapBoxAccountService.createFor(user);
             userTapProgressService.createFor(user, tapPolicyConfig);
             userTapSessionService.createFor(user, clock.instant(), tapPolicyConfig);
-            boolean onboardingRewardApplied = onboardingAttemptId != null
-                    && onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
+            int onboardingTapCount = onboardingAttemptId == null
+                    ? 0
+                    : onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
+            boolean onboardingRewardApplied = onboardingTapCount > 0;
             if (onboardingRewardApplied) {
-                seedTodayTapCountFromOnboarding(user);
+                seedTodayTapCountFromOnboarding(user, onboardingTapCount);
             }
             tossLoginConsentHistoryService.recordAgreements(user.getId(), agreedTerms, "LOGIN");
             return new LoginTransactionResult(user.getId(), true, onboardingRewardApplied);
@@ -94,11 +94,11 @@ public class AuthLoginTransactionService {
         return new LoginTransactionResult(loggedInUser.getId(), false, onboardingRewardApplied);
     }
 
-    private void seedTodayTapCountFromOnboarding(AppUser user) {
+    private void seedTodayTapCountFromOnboarding(AppUser user, int onboardingTapCount) {
         LocalDate today = LocalDate.ofInstant(clock.instant(), businessZoneId);
         UserTapDaily daily = userTapDailyService.getOrCreate(user, today);
-        daily.addValidTaps(ONBOARDING_TAP_COUNT);
-        daily.addTotalValidTaps(ONBOARDING_TAP_COUNT);
+        daily.addValidTaps(onboardingTapCount);
+        daily.addTotalValidTaps(onboardingTapCount);
         userTapDailyService.save(daily);
     }
 

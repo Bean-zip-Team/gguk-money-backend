@@ -37,13 +37,17 @@ public class OnboardingKeycapBoxOpenService {
     private final Clock clock;
 
     public OnboardingKeycapBoxOpenResponse open(OnboardingKeycapBoxOpenRequest request) {
-        int acceptedTapCount = tapValidator.validateCompleted(request);
+        if (request == null || request.tapEvents() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ONBOARDING_TAP_NOT_COMPLETED");
+        }
         String requestHash = requestHasher.hash(request);
 
+        // 재시도는 처음 열 때의 정책으로 이미 검증됐다. 그 사이 필수 탭 수가 바뀌어도 같은 응답을 돌려준다.
         Optional<OnboardingKeycapBoxOpenResponse> replay = findReplay(request, requestHash);
         if (replay.isPresent()) {
             return replay.get();
         }
+        int acceptedTapCount = tapValidator.validateCompleted(request);
 
         try {
             TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);

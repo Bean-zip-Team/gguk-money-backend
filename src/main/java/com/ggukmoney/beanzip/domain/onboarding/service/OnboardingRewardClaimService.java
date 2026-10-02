@@ -24,7 +24,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OnboardingRewardClaimService {
 
-    private static final int REQUIRED_ACCEPTED_TAP_COUNT = 45;
     private static final String POINT_REASON_ONBOARDING_REWARD = "ONBOARDING_REWARD";
 
     private final OnboardingRewardAttemptRepository attemptRepository;
@@ -33,8 +32,9 @@ public class OnboardingRewardClaimService {
     private final UserKeycapRepository userKeycapRepository;
     private final Clock clock;
 
+    /** 지급하고, 온보딩에서 인정된 탭 수를 돌려준다. 지급할 수 없으면 예외를 던진다. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public boolean claimForNewUser(AppUser user, UUID onboardingAttemptId) {
+    public int claimForNewUser(AppUser user, UUID onboardingAttemptId) {
         OnboardingRewardAttempt attempt = attemptRepository.findByPublicIdWithRewardKeycapForUpdate(onboardingAttemptId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ONBOARDING_ATTEMPT_NOT_FOUND"));
         Instant now = Instant.now(clock);
@@ -53,7 +53,7 @@ public class OnboardingRewardClaimService {
         grantKeycapIfMissing(user, attempt.getBonusRewardKeycap(), now, false);
         user.claimOnboardingReward(now);
         attempt.claim(user, now);
-        return true;
+        return attempt.getAcceptedTapCount();
     }
 
     private void grantKeycapIfMissing(AppUser user, Keycap keycap, Instant now, boolean equip) {
@@ -92,7 +92,8 @@ public class OnboardingRewardClaimService {
             throw new ResponseStatusException(HttpStatus.GONE, "ONBOARDING_ATTEMPT_EXPIRED");
         }
         if (attempt.getAcceptedTapCount() == null
-                || attempt.getAcceptedTapCount() != REQUIRED_ACCEPTED_TAP_COUNT
+                // 개봉 시점의 정책으로 검증된 값이다. 그 뒤 정책이 바뀌어도 진행 중인 시도는 살린다.
+                || attempt.getAcceptedTapCount() <= 0
                 || !isValidRewardKeycap(attempt.getRewardKeycap())
                 || !isValidRewardKeycap(attempt.getBonusRewardKeycap())
                 || attempt.getRewardPointAmount() == null

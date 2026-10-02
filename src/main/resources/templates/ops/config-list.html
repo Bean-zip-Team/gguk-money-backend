@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{ops/fragments :: head('설정 목록')}"></head>
+<body>
+<header th:replace="~{ops/fragments :: header}"></header>
+<main>
+    <p class="muted">DB 에 저장된 최신 값입니다. 바꾸면 새 행이 추가되고, 대부분 1분 안에 반영됩니다.
+        "SQL 전용" 키는 검증 규칙이 없어 화면에서 바꿀 수 없습니다.</p>
+    <div class="scroll">
+        <table>
+            <thead><tr><th>키</th><th>값</th><th>적용 시각 (KST)</th><th>변경자</th><th>수정</th></tr></thead>
+            <tbody>
+            <tr th:each="row : ${rows}">
+                <td><a th:href="@{/ops/config/{key}(key=${row.key})}" th:text="${row.key}">key</a></td>
+                <td class="value" th:text="${row.value}">value</td>
+                <td class="muted" th:text="${row.effectiveAt}">at</td>
+                <td class="muted" th:text="${row.changedBy}">by</td>
+                <td class="muted" th:text="${row.editable} ? '화면' : 'SQL 전용'">editable</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+</body>
+</html>

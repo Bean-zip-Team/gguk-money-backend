@@ -244,7 +244,7 @@ class KeycapServiceTest {
 
     private void onboardingKeycap(String code) {
         when(onboardingRewardConfig.resolve()).thenReturn(new OnboardingRewardConfig.OnboardingRewardPolicy(
-                code, "COMMON", 70, java.time.Duration.ofMinutes(15)));
+                code, "COMMON", 70, java.time.Duration.ofMinutes(15), 45));
     }
 
     private static UserKeycap userKeycap(

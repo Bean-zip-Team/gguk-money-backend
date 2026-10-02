@@ -42,6 +42,10 @@ class OnboardingRewardConfigTest {
                 org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS),
                 any(Instant.class)
         )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_ATTEMPT_TTL_SECONDS, "900", Instant.EPOCH)));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                org.mockito.ArgumentMatchers.eq(OnboardingRewardConfig.KEY_REQUIRED_TAP_COUNT),
+                any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(OnboardingRewardConfig.KEY_REQUIRED_TAP_COUNT, "3", Instant.EPOCH)));
 
         OnboardingRewardConfig.OnboardingRewardPolicy policy = config.resolve();
 
@@ -49,6 +53,13 @@ class OnboardingRewardConfigTest {
         assertThat(policy.bonusKeycapGrade()).isEqualTo("COMMON");
         assertThat(policy.rewardPointAmount()).isEqualTo(2);
         assertThat(policy.attemptTtl()).isEqualTo(Duration.ofMinutes(15));
+        assertThat(policy.requiredTapCount()).isEqualTo(3);
+    }
+
+    @Test
+    void defaultRequiredTapCountMatchesTheCurrentOnboardingFlow() {
+        assertThat(OnboardingRewardConfig.DEFAULT_VALUES)
+                .containsEntry(OnboardingRewardConfig.KEY_REQUIRED_TAP_COUNT, "45");
     }
 
     @Test
