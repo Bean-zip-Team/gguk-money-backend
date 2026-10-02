@@ -41,6 +41,15 @@ class OpsConfigPageIntegrationTest extends FullStackIntegrationTestSupport {
     }
 
     @Test
+    void browserFormPostWithAnOpaqueOriginIsNotTreatedAsCors() throws Exception {
+        // 브라우저는 리퍼러 정책에 따라 같은 출처 폼에도 Origin: null 을 붙일 수 있다.
+        mockMvc.perform(sameOrigin(post("/ops/login")).header("Origin", "null").param("token", CONFIG_TOKEN))
+                .andExpect(redirectedUrl("/ops/config"));
+        mockMvc.perform(get("/ops/login"))
+                .andExpect(header().string("Referrer-Policy", "same-origin"));
+    }
+
+    @Test
     void neitherAWrongTokenNorTheReadOnlyOpsTokenStartsASession() throws Exception {
         mockMvc.perform(sameOrigin(post("/ops/login")).param("token", "wrong"))
                 .andExpect(status().isUnauthorized())
