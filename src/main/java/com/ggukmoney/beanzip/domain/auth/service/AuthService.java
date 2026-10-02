@@ -45,7 +45,10 @@ public class AuthService {
     private static final String REFRESH_TYPE = "REFRESH";
     private static final String PREFIX = "ggukmoney:auth:";
 
-    private static final Duration ACCESS_REVOKE_TTL = Duration.ofMinutes(20);
+    // 전체 로그아웃 표시는 그 전에 발급된 access 토큰이 모두 만료될 때까지 남아야 한다.
+    // 유효 시간을 줄여 배포한 직후에도 이전 토큰(최대 기본값 15분)을 덮도록 기본값보다 짧게 잡지 않는다.
+    private static final Duration ACCESS_REVOKE_MARGIN = Duration.ofMinutes(5);
+    private static final Duration MIN_ACCESS_REVOKE_WINDOW = Duration.ofMinutes(15);
     private static final long REFRESH_CONFLICT_GRACE_MILLIS = 2_000L;
 
     private static final RedisScript<Long> ROTATE_REFRESH_SCRIPT =
@@ -502,6 +505,12 @@ public class AuthService {
         });
     }
 
+    private Duration accessRevokeTtl() {
+        Duration accessTtl = jwtTokenProvider.accessTokenTtl();
+        Duration window = accessTtl.compareTo(MIN_ACCESS_REVOKE_WINDOW) > 0 ? accessTtl : MIN_ACCESS_REVOKE_WINDOW;
+        return window.plus(ACCESS_REVOKE_MARGIN);
+    }
+
     public void addAccessDeny(String jti, Instant expiresAt) {
         String key = PREFIX + "deny:access:" + jti;
         redisService.set(key, "1", Duration.between(Instant.now(), expiresAt));
@@ -526,7 +535,7 @@ public class AuthService {
                     List.of(userSessionsKey, revokeUserKey(userId)),
                     String.valueOf(revokedAtMillis),
                     revokeMarker(revokedAtMillis, reason),
-                    String.valueOf(ACCESS_REVOKE_TTL.toMillis()),
+                    String.valueOf(accessRevokeTtl().toMillis()),
                     StringUtils.hasText(accessJti) ? accessJti : "",
                     accessExpiresAt == null ? "" : String.valueOf(accessExpiresAt.toEpochMilli())
             );

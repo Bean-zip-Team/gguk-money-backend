@@ -2,9 +2,9 @@ package com.ggukmoney.beanzip.global.config;
 
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
@@ -16,12 +16,24 @@ import java.util.Optional;
 import java.util.Set;
 
 @Component
-@RequiredArgsConstructor
 public class TapConfigSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TapConfigSeeder.class);
 
     private final AppConfigRepository appConfigRepository;
+    /**
+     * false 면 코드 기본값과 다른 값을 되돌리지 않고, 없는 키만 채운다. 알파처럼 사람이 정책 값을
+     * 바꿔 가며 시험하는 환경에서 끈다. develop 머지마다 자동 배포되므로 켜 두면 바꾼 값이 매번 사라진다.
+     */
+    private final boolean revertOverrides;
+
+    public TapConfigSeeder(
+            AppConfigRepository appConfigRepository,
+            @Value("${app.policy.revert-overrides:true}") boolean revertOverrides
+    ) {
+        this.appConfigRepository = appConfigRepository;
+        this.revertOverrides = revertOverrides;
+    }
 
     /** 코드가 관리하는 정책 키 접두사. 이 접두사를 쓰면서 코드에 없는 키는 폐기된 잔재로 본다. */
     private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "onboarding.");
@@ -65,7 +77,8 @@ public class TapConfigSeeder implements CommandLineRunner {
     /**
      * Keeps AppConfig in sync with the code's DEFAULT_VALUES: if a key has never been
      * seeded, or its latest effective value differs from the code default, a new
-     * versioned row is inserted so that "code deploy" == "policy rollout". Existing
+     * versioned row is inserted so that "code deploy" == "policy rollout" (only while
+     * revertOverrides is on; with it off, existing keys keep their value). Existing
      * history is never mutated (append-only), so an operator who intentionally
      * overrides a value in AppConfig will have it reverted on the next deploy that
      * still carries the old code default for that key.
@@ -74,7 +87,8 @@ public class TapConfigSeeder implements CommandLineRunner {
         defaultValues.forEach((key, codeValue) -> {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
-            if (latest.isEmpty() || !latest.get().getConfigValue().equals(codeValue)) {
+            boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
+            if (latest.isEmpty() || (overridden && revertOverrides)) {
                 appConfigRepository.save(AppConfig.createFor(key, codeValue, now));
             }
         });

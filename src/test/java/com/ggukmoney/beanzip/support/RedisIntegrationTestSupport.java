@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.support;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthService;
+import com.ggukmoney.beanzip.domain.auth.service.JwtTokenProvider;
 import com.ggukmoney.beanzip.domain.tap.service.TapBatchService;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.AfterEach;
@@ -43,7 +44,7 @@ public abstract class RedisIntegrationTestSupport {
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
         RedisService redisService = new RedisService(redisTemplate);
-        authService = new AuthService(null, redisService, null, null, null);
+        authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null);
         tapBatchService = new TapBatchService(
                 null, null, null, null, null, null, null, redisService, null, null,
                 null, null, null, null, null,

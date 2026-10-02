@@ -70,7 +70,7 @@ class AuthLoginTransactionServiceTest {
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
                 .thenReturn(Optional.empty());
         when(userService.createActive("Bean", "https://img")).thenReturn(user);
-        when(onboardingRewardClaimService.claimForNewUser(user, attemptId)).thenReturn(true);
+        when(onboardingRewardClaimService.claimForNewUser(user, attemptId)).thenReturn(30);
         LocalDate today = LocalDate.ofInstant(now, businessZoneId);
         UserTapDaily daily = UserTapDaily.createFor(user, today);
         when(userTapDailyService.getOrCreate(user, today)).thenReturn(daily);
@@ -93,8 +93,8 @@ class AuthLoginTransactionServiceTest {
         verify(userTapSessionService).createFor(user, now, tapPolicyConfig);
         verify(onboardingRewardClaimService).claimForNewUser(user, attemptId);
         verify(tossLoginConsentHistoryService).recordAgreements(userId, List.of("service_terms_v1", "privacy_v2"), "LOGIN");
-        assertThat(daily.getValidTapCount()).isEqualTo(45);
-        assertThat(daily.getTotalValidTapCount()).isEqualTo(45);
+        assertThat(daily.getValidTapCount()).isEqualTo(30);
+        assertThat(daily.getTotalValidTapCount()).isEqualTo(30);
         verify(userTapDailyService).save(daily);
     }
 

@@ -4,6 +4,7 @@ import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -26,9 +27,37 @@ class RankChangeNotificationPolicyConfigTest {
     }
 
     @Test
+    void cooldownDefaultsToTheCurrentProductionValue() {
+        assertThat(config.cooldown()).isEqualTo(Duration.ofHours(3));
+    }
+
+    @Test
+    void refreshesCooldownFromAppConfigMinutes() {
+        when(repository.findLatestEffectiveByConfigKeys(eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)))
+                .thenReturn(List.of(AppConfig.createFor(
+                        RankChangeNotificationPolicyConfig.KEY_COOLDOWN_MINUTES, "0", Instant.EPOCH)));
+
+        config.refresh();
+
+        assertThat(config.cooldown()).isEqualTo(Duration.ZERO);
+        assertThat(config.minimumDifference()).isEqualTo(1);
+    }
+
+    @Test
+    void negativeCooldownRetainsLastKnownGoodValue() {
+        when(repository.findLatestEffectiveByConfigKeys(eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)))
+                .thenReturn(List.of(AppConfig.createFor(
+                        RankChangeNotificationPolicyConfig.KEY_COOLDOWN_MINUTES, "-1", Instant.EPOCH)));
+
+        config.refresh();
+
+        assertThat(config.cooldown()).isEqualTo(Duration.ofHours(3));
+    }
+
+    @Test
     void refreshesFromTheLatestEffectiveAppConfigValue() {
         when(repository.findLatestEffectiveByConfigKeys(
-                eq(Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)), any(Instant.class)
+                eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)
         )).thenReturn(List.of(AppConfig.createFor(
                 RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "4", Instant.EPOCH)));
 
@@ -40,7 +69,7 @@ class RankChangeNotificationPolicyConfigTest {
     @Test
     void invalidRefreshRetainsLastKnownGoodValue() {
         when(repository.findLatestEffectiveByConfigKeys(
-                eq(Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)), any(Instant.class)
+                eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)
         )).thenReturn(List.of(AppConfig.createFor(
                         RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "4", Instant.EPOCH)))
                 .thenReturn(List.of(AppConfig.createFor(
@@ -55,7 +84,7 @@ class RankChangeNotificationPolicyConfigTest {
     @Test
     void missingRefreshRetainsLastKnownGoodValue() {
         when(repository.findLatestEffectiveByConfigKeys(
-                eq(Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)), any(Instant.class)
+                eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)
         )).thenReturn(List.of(AppConfig.createFor(
                         RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "4", Instant.EPOCH)))
                 .thenReturn(List.of());
@@ -69,7 +98,7 @@ class RankChangeNotificationPolicyConfigTest {
     @Test
     void malformedRefreshRetainsLastKnownGoodValue() {
         when(repository.findLatestEffectiveByConfigKeys(
-                eq(Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)), any(Instant.class)
+                eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)
         )).thenReturn(List.of(AppConfig.createFor(
                         RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "4", Instant.EPOCH)))
                 .thenReturn(List.of(AppConfig.createFor(
@@ -84,7 +113,7 @@ class RankChangeNotificationPolicyConfigTest {
     @Test
     void repositoryFailureRetainsLastKnownGoodValue() {
         when(repository.findLatestEffectiveByConfigKeys(
-                eq(Set.of(RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE)), any(Instant.class)
+                eq(RankChangeNotificationPolicyConfig.KEYS), any(Instant.class)
         )).thenReturn(List.of(AppConfig.createFor(
                 RankChangeNotificationPolicyConfig.KEY_MINIMUM_DIFFERENCE, "4", Instant.EPOCH)))
                 .thenThrow(new IllegalStateException("database unavailable"));

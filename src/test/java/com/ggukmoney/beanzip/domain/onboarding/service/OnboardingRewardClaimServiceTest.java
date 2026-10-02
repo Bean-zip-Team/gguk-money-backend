@@ -63,9 +63,9 @@ class OnboardingRewardClaimServiceTest {
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 18L)).thenReturn(Optional.empty());
         when(userKeycapRepository.save(any(UserKeycap.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        boolean applied = service.claimForNewUser(user, attemptId);
+        int claimedTapCount = service.claimForNewUser(user, attemptId);
 
-        assertThat(applied).isTrue();
+        assertThat(claimedTapCount).isEqualTo(45);
         assertThat(user.isOnboardingRewardClaimed()).isTrue();
         assertThat(user.getOnboardingCompletedAt()).isEqualTo(NOW);
         assertThat(attempt.getStatus()).isEqualTo(OnboardingRewardAttempt.Status.CLAIMED);
@@ -81,6 +81,35 @@ class OnboardingRewardClaimServiceTest {
         assertThat(savedMainKeycap.isEquipped()).isTrue();
         assertThat(savedBonusKeycap.getKeycap()).isEqualTo(bonusKeycap);
         assertThat(savedBonusKeycap.isEquipped()).isFalse();
+    }
+
+    @Test
+    void returnsTheTapCountTheAttemptWasOpenedWithEvenIfThePolicyChangedSince() {
+        UUID userId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", null), userId);
+        OnboardingRewardAttempt attempt = attempt(attemptId, keycap(17L, 3, true), keycap(18L, 3, true), 2, NOW.plusSeconds(60));
+        ReflectionTestUtils.setField(attempt, "acceptedTapCount", 30);
+        when(attemptRepository.findByPublicIdWithRewardKeycapForUpdate(attemptId)).thenReturn(Optional.of(attempt));
+        when(pointAccountService.credit(userId, 2)).thenReturn(PointAccount.createFor(user));
+        when(userKeycapRepository.save(any(UserKeycap.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.claimForNewUser(user, attemptId)).isEqualTo(30);
+    }
+
+    @Test
+    void rejectsAttemptWithoutAcceptedTaps() {
+        UUID attemptId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", null), UUID.randomUUID());
+        OnboardingRewardAttempt attempt = attempt(attemptId, keycap(17L, 3, true), keycap(18L, 3, true), 2, NOW.plusSeconds(60));
+        ReflectionTestUtils.setField(attempt, "acceptedTapCount", 0);
+        when(attemptRepository.findByPublicIdWithRewardKeycapForUpdate(attemptId)).thenReturn(Optional.of(attempt));
+
+        assertThatThrownBy(() -> service.claimForNewUser(user, attemptId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("ONBOARDING_REWARD_INVALID");
+        verify(pointAccountService, never()).credit(any(), anyLong());
     }
 
     @Test

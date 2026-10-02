@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -27,39 +28,68 @@ public class JwtTokenProvider {
 
     private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
-    private static final long ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-    private static final long REFRESH_TOKEN_TTL_SECONDS = 30L * 24 * 60 * 60;
+    private static final Duration DEFAULT_ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
+    private static final Duration DEFAULT_REFRESH_TOKEN_TTL = Duration.ofDays(30);
     private static final String FORMER_LOCAL_DEFAULT_SECRET = "local-dev-secret" + "-change-me";
 
     private final ObjectMapper objectMapper;
     private final String secret;
     private final String issuer;
     private final Clock clock;
+    private final Duration accessTokenTtl;
+    private final Duration refreshTokenTtl;
 
+    // 알파에서 만료·재발급을 짧게 시험할 수 있도록 유효 시간을 설정으로 연다. 기본값은 운영 값이다.
     @Autowired
     public JwtTokenProvider(
             ObjectMapper objectMapper,
             @Value("${app.auth.jwt.secret}") String secret,
-            @Value("${app.auth.jwt.issuer:ggukmoney}") String issuer
+            @Value("${app.auth.jwt.issuer:ggukmoney}") String issuer,
+            @Value("${app.auth.jwt.access-token-ttl:15m}") Duration accessTokenTtl,
+            @Value("${app.auth.jwt.refresh-token-ttl:30d}") Duration refreshTokenTtl
     ) {
-        this(objectMapper, secret, issuer, Clock.systemUTC());
+        this(objectMapper, secret, issuer, Clock.systemUTC(), accessTokenTtl, refreshTokenTtl);
     }
 
     public JwtTokenProvider(ObjectMapper objectMapper, String secret, String issuer, Clock clock) {
+        this(objectMapper, secret, issuer, clock, DEFAULT_ACCESS_TOKEN_TTL, DEFAULT_REFRESH_TOKEN_TTL);
+    }
+
+    public JwtTokenProvider(
+            ObjectMapper objectMapper,
+            String secret,
+            String issuer,
+            Clock clock,
+            Duration accessTokenTtl,
+            Duration refreshTokenTtl
+    ) {
         this.objectMapper = objectMapper;
         this.secret = validateSecret(secret);
         this.issuer = issuer;
         this.clock = clock;
+        this.accessTokenTtl = requirePositive(accessTokenTtl, "app.auth.jwt.access-token-ttl");
+        this.refreshTokenTtl = requirePositive(refreshTokenTtl, "app.auth.jwt.refresh-token-ttl");
+    }
+
+    private static Duration requirePositive(Duration ttl, String property) {
+        if (ttl == null || ttl.isZero() || ttl.isNegative()) {
+            throw new IllegalStateException(property + " must be positive");
+        }
+        return ttl;
+    }
+
+    public Duration accessTokenTtl() {
+        return accessTokenTtl;
     }
 
     public String createAccessToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plusSeconds(ACCESS_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "ACCESS", jti, issuedAt, issuedAt.plus(accessTokenTtl));
     }
 
     public String createRefreshToken(UUID userId, UUID sessionId, String jti) {
         Instant issuedAt = clock.instant();
-        return createToken(userId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plusSeconds(REFRESH_TOKEN_TTL_SECONDS));
+        return createToken(userId, sessionId, "REFRESH", jti, issuedAt, issuedAt.plus(refreshTokenTtl));
     }
 
     public JwtTokenClaims parseToken(String token) {
