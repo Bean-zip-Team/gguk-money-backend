@@ -29,7 +29,8 @@ public class OpsPageInterceptor implements HandlerInterceptor {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Frame-Options", "DENY");
         response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
-        response.setHeader("Referrer-Policy", "no-referrer");
+        // no-referrer 면 브라우저가 같은 출처 폼에도 Origin: null 을 붙여 CORS 검사에 걸린다.
+        response.setHeader("Referrer-Policy", "same-origin");
 
         boolean write = !"GET".equals(request.getMethod()) && !"HEAD".equals(request.getMethod());
         if (write && !"same-origin".equals(request.getHeader("Sec-Fetch-Site"))) {
