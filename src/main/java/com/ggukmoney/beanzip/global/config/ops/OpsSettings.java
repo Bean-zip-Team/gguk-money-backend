@@ -59,7 +59,7 @@ public class OpsSettings {
             plain("토스 연동", "spring.ssl.bundle.pem.toss-promotion.keystore.certificate", null, "mTLS 인증서 경로"),
 
             plain("프로모션 코드", "app.cashout.toss.promotion-code", null, "출금"),
-            plain("프로모션 코드", "app.promotion.toss.keycap-five-code", null, "키캡 5개 모으기"),
+            plain("프로모션 코드", "app.promotion.toss.keycap-five-code", null, "키캡 5종 모으기"),
             plain("프로모션 코드", "app.promotion.toss.tap-thousand-code", null, "1,000번 누르기"),
 
             plain("알림 캠페인 코드", "app.smart-message.templates.rank-change.campaign-code", null, "비어 있으면 발송 안 함"),
