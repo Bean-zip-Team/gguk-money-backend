@@ -32,7 +32,7 @@ public record MissionListResponse(
             @Schema(description = "미션 코드", example = "KEYCAP_FIVE_COMPLETE")
             String code,
 
-            @Schema(description = "미션 이름. 토스 혜택탭에 노출되는 이름과 같다.", example = "키캡 5개 모으기")
+            @Schema(description = "미션 이름. 토스 혜택탭에 노출되는 이름과 같다.", example = "키캡 5종 모으기")
             String name,
 
             @Schema(description = "미션 설명. 없을 수 있다.", example = "데일리 미션 알림을 받으면 드려요")

@@ -28,7 +28,7 @@ class MissionQueryServiceTest {
     @BeforeEach
     void stubTriggers() {
         lenient().when(keycapTrigger.promotionCode()).thenReturn("KEYCAP_FIVE_COMPLETE");
-        lenient().when(keycapTrigger.missionName()).thenReturn("키캡 5개 모으기");
+        lenient().when(keycapTrigger.missionName()).thenReturn("키캡 5종 모으기");
         lenient().when(keycapTrigger.amount()).thenReturn(500L);
         lenient().when(keycapTrigger.issuingEnabled()).thenReturn(true);
         lenient().when(keycapTrigger.progressOf(userId)).thenReturn(MissionProgress.of(2, 5));
@@ -56,7 +56,7 @@ class MissionQueryServiceTest {
         assertThat(missions).hasSize(2);
         MissionListResponse.Mission keycap = missions.getFirst();
         assertThat(keycap.code()).isEqualTo("KEYCAP_FIVE_COMPLETE");
-        assertThat(keycap.name()).isEqualTo("키캡 5개 모으기");
+        assertThat(keycap.name()).isEqualTo("키캡 5종 모으기");
         assertThat(keycap.rewardAmount()).isEqualTo(500L);
         assertThat(keycap.current()).isEqualTo(2L);
         assertThat(keycap.target()).isEqualTo(5L);
