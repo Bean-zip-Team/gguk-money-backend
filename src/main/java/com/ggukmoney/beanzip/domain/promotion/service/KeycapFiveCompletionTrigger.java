@@ -49,7 +49,7 @@ public class KeycapFiveCompletionTrigger implements PromotionTrigger {
 
     @Override
     public String missionName() {
-        return "키캡 5개 모으기";
+        return "키캡 5종 모으기";
     }
 
     @Override

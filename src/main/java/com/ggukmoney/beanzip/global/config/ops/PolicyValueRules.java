@@ -130,14 +130,14 @@ public class PolicyValueRules {
                 "1P 당 원 (0.02 = 1P 에 0.02원)", null);
 
         group = "프로모션";
-        bool(PromotionPolicyConfig.KEY_ENABLED, "키캡 5개 모으기: 달성자에게 지급 대상 만들기");
+        bool(PromotionPolicyConfig.KEY_ENABLED, "키캡 5종 모으기: 달성자에게 지급 대상 만들기");
         bool(PromotionPolicyConfig.KEY_TAP_ENABLED, "1,000번 누르기: 달성자에게 지급 대상 만들기");
         bool(PromotionPolicyConfig.KEY_EXECUTION_ENABLED, "토스 포인트 실제 지급 (두 프로모션 공용 킬스위치)");
-        instant(PromotionPolicyConfig.KEY_LAUNCH_AT, "키캡 5개 모으기: 이 시각 이후 달성분만 지급");
+        instant(PromotionPolicyConfig.KEY_LAUNCH_AT, "키캡 5종 모으기: 이 시각 이후 달성분만 지급");
         instant(PromotionPolicyConfig.KEY_TAP_LAUNCH_AT, "1,000번 누르기: 이 시각 이후 달성분만 지급");
-        integer(PromotionPolicyConfig.KEY_THRESHOLD, 1, "키캡 5개 모으기: 필요한 키캡 수");
+        integer(PromotionPolicyConfig.KEY_THRESHOLD, 1, "키캡 5종 모으기: 필요한 키캡 수");
         integer(PromotionPolicyConfig.KEY_TAP_THRESHOLD, 1, "1,000번 누르기: 필요한 탭 수");
-        money(PromotionPolicyConfig.KEY_AMOUNT, "키캡 5개 모으기: 지급 토스 포인트");
+        money(PromotionPolicyConfig.KEY_AMOUNT, "키캡 5종 모으기: 지급 토스 포인트");
         money(PromotionPolicyConfig.KEY_TAP_AMOUNT, "1,000번 누르기: 지급 토스 포인트");
         add(PromotionPolicyConfig.KEY_EXCLUDED_USER_IDS, Kind.JSON, "유저 UUID 문자열 배열",
                 raw -> {

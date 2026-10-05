@@ -48,6 +48,12 @@ class KeycapFiveCompletionTriggerTest {
     }
 
     @Test
+    void missionNameMatchesTheTossBenefitTabCard() {
+        // 혜택탭 카드는 신규 프로모션(01M3CE1…)의 「키캡 5종 모으기」다. 앱 미션 목록도 같은 이름이어야 한다.
+        assertThat(trigger.missionName()).isEqualTo("키캡 5종 모으기");
+    }
+
+    @Test
     @DisplayName("임계치 미만이면 자격이 없다")
     void belowThreshold() {
         assertThat(evaluateWithCompleted(4)).isEmpty();
