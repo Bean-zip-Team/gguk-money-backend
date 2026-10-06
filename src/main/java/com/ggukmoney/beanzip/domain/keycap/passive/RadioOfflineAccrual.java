@@ -5,22 +5,22 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Pure calculation for the previous equipment interval. The transaction adapter must lock the user,
- * credit the BEA-329 wallet and persist this checkpoint atomically. Preview callers persist nothing.
+ * Pure calculation for the previous equipment interval recorded in the checkpoint.
+ * The transaction adapter must lock the user, credit the BEA-329 wallet and persist
+ * the returned checkpoint with any new equipment atomically. Preview callers persist nothing.
  */
 public final class RadioOfflineAccrual {
-    public Result calculate(Checkpoint checkpoint, boolean radioEquippedDuringGap, Instant now, Policy policy) {
+    public Result calculate(Checkpoint checkpoint, Instant now, Policy policy) {
+        Objects.requireNonNull(checkpoint);
         Objects.requireNonNull(now);
         Objects.requireNonNull(policy);
-        if (checkpoint == null) {
-            return new Result(0, new Checkpoint(now, Duration.ZERO), false);
-        }
         if (now.isBefore(checkpoint.lastActivityAt())) {
             return new Result(0, checkpoint, false);
         }
         Duration activityGap = Duration.between(checkpoint.lastActivityAt(), now);
         Duration accrued = Duration.ZERO;
-        if (policy.enabled() && radioEquippedDuringGap && activityGap.compareTo(policy.idleThreshold()) >= 0) {
+        if (policy.enabled() && "radio".equals(checkpoint.equippedKeycapCode())
+                && activityGap.compareTo(policy.idleThreshold()) >= 0) {
             Instant start = checkpoint.lastActivityAt().isAfter(policy.enabledAt())
                     ? checkpoint.lastActivityAt() : policy.enabledAt();
             if (now.isAfter(start)) {
@@ -29,7 +29,7 @@ public final class RadioOfflineAccrual {
         }
         // Paused/disabled/online intervals preserve the incomplete period without granting a shard.
         if (accrued.isZero()) {
-            return new Result(0, new Checkpoint(now, checkpoint.remainder()), false);
+            return new Result(0, new Checkpoint(now, checkpoint.remainder(), checkpoint.equippedKeycapCode()), false);
         }
         Duration total = checkpoint.remainder().plus(accrued);
         Duration ceiling = policy.shardInterval().multipliedBy(policy.maxShards());
@@ -39,16 +39,20 @@ public final class RadioOfflineAccrual {
         }
         int shards = Math.toIntExact(total.dividedBy(policy.shardInterval()));
         Duration remainder = total.minus(policy.shardInterval().multipliedBy(shards));
-        return new Result(shards, new Checkpoint(now, remainder), capped);
+        return new Result(shards, new Checkpoint(now, remainder, checkpoint.equippedKeycapCode()), capped);
     }
 
-    public record Checkpoint(Instant lastActivityAt, Duration remainder) {
+    public record Checkpoint(Instant lastActivityAt, Duration remainder, String equippedKeycapCode) {
         public Checkpoint {
             Objects.requireNonNull(lastActivityAt);
             Objects.requireNonNull(remainder);
             if (remainder.isNegative()) {
                 throw new IllegalArgumentException("Offline remainder must not be negative");
             }
+        }
+
+        public static Checkpoint initial(Instant now, String equippedKeycapCode) {
+            return new Checkpoint(now, Duration.ZERO, equippedKeycapCode);
         }
     }
 
