@@ -1,11 +1,13 @@
 package com.ggukmoney.beanzip.domain.keycap.passive;
 
+import com.ggukmoney.beanzip.domain.keycap.KeycapCodes;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Pure calculation for the previous equipment interval recorded in the checkpoint.
+ * Pure automatic accrual calculation for all radio-equipped time recorded in the checkpoint.
  * The transaction adapter must lock the user, credit the BEA-329 wallet and persist
  * the returned checkpoint with any new equipment atomically. Preview callers persist nothing.
  */
@@ -17,17 +19,15 @@ public final class RadioOfflineAccrual {
         if (now.isBefore(checkpoint.lastActivityAt())) {
             return new Result(0, checkpoint, false);
         }
-        Duration activityGap = Duration.between(checkpoint.lastActivityAt(), now);
         Duration accrued = Duration.ZERO;
-        if (policy.enabled() && "radio".equals(checkpoint.equippedKeycapCode())
-                && activityGap.compareTo(policy.idleThreshold()) >= 0) {
+        if (policy.enabled() && KeycapCodes.RADIO.equals(checkpoint.equippedKeycapCode())) {
             Instant start = checkpoint.lastActivityAt().isAfter(policy.enabledAt())
                     ? checkpoint.lastActivityAt() : policy.enabledAt();
             if (now.isAfter(start)) {
                 accrued = Duration.between(start, now);
             }
         }
-        // Paused/disabled/online intervals preserve the incomplete period without granting a shard.
+        // Unequipped or disabled intervals preserve the incomplete period without granting a shard.
         if (accrued.isZero()) {
             return new Result(0, new Checkpoint(now, checkpoint.remainder(), checkpoint.equippedKeycapCode()), false);
         }
@@ -47,7 +47,7 @@ public final class RadioOfflineAccrual {
             Objects.requireNonNull(lastActivityAt);
             Objects.requireNonNull(remainder);
             if (remainder.isNegative()) {
-                throw new IllegalArgumentException("Offline remainder must not be negative");
+                throw new IllegalArgumentException("Accrual remainder must not be negative");
             }
         }
 
@@ -56,21 +56,18 @@ public final class RadioOfflineAccrual {
         }
     }
 
-    public record Policy(boolean enabled, Instant enabledAt, Duration idleThreshold, Duration shardInterval,
-                         int maxShards) {
+    public record Policy(boolean enabled, Instant enabledAt, Duration shardInterval, int maxShards) {
         public Policy {
             Objects.requireNonNull(enabledAt);
-            Objects.requireNonNull(idleThreshold);
             Objects.requireNonNull(shardInterval);
-            if (idleThreshold.isNegative() || idleThreshold.isZero() || shardInterval.isNegative()
-                    || shardInterval.isZero() || maxShards < 1) {
-                throw new IllegalArgumentException("Invalid offline accrual policy");
+            if (shardInterval.isNegative() || shardInterval.isZero() || maxShards < 1) {
+                throw new IllegalArgumentException("Invalid automatic accrual policy");
             }
             shardInterval.multipliedBy(maxShards); // Reject an unrepresentable ceiling before processing requests.
         }
 
         public static Policy defaults(boolean enabled, Instant enabledAt) {
-            return new Policy(enabled, enabledAt, Duration.ofMinutes(30), Duration.ofDays(1), 7);
+            return new Policy(enabled, enabledAt, Duration.ofDays(1), 7);
         }
     }
 

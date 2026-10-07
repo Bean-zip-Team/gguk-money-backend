@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.keycap.passive;
 
+import com.ggukmoney.beanzip.domain.keycap.KeycapCodes;
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap.Grade;
 
 import java.util.Map;
@@ -45,7 +46,7 @@ public final class KeycapPassivePolicy {
                         Map.entry("space", new Profile(EPIC, new Critical(0.22, 2), none, new Critical(0.22, 2))),
                         Map.entry("pudding", new Profile(LEGENDARY, new Critical(0.20, 2),
                                 new Critical(0.13, 2), new Critical(0.20, 2))),
-                        Map.entry("radio", new Profile(LEGENDARY, new Critical(0.28, 2), none, new Critical(0.28, 2)))
+                        Map.entry(KeycapCodes.RADIO, new Profile(LEGENDARY, new Critical(0.28, 2), none, new Critical(0.28, 2)))
                 ));
     }
 

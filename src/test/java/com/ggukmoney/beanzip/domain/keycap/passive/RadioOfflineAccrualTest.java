@@ -45,11 +45,13 @@ class RadioOfflineAccrualTest {
 
     @ParameterizedTest
     @CsvSource({
-        "1799,0,0,false", "1800,0,1800,false",
+        "1,0,1,false", "600,0,600,false", "1740,0,1740,false",
+        "1799,0,1799,false", "1800,0,1800,false",
         "86399,0,86399,false", "86400,1,0,false",
         "604800,7,0,true", "2592000,7,0,true"
     })
-    void respectsIdleDayAndCapBoundaries(long elapsedSeconds, int shards, long remainder, boolean capped) {
+    void accumulatesAllEquippedTimeAndRespectsDayAndCapBoundaries(
+            long elapsedSeconds, int shards, long remainder, boolean capped) {
         var result = calculator.calculate(state(START, Duration.ZERO), START.plusSeconds(elapsedSeconds), policy);
         assertThat(result.grantedShards()).isEqualTo(shards);
         assertThat(result.checkpoint().remainder()).isEqualTo(Duration.ofSeconds(remainder));
@@ -136,8 +138,8 @@ class RadioOfflineAccrualTest {
     }
 
     @Test
-    void idleClassificationUsesActivityGapAndAccrualUsesOnlyTheEnabledPortion() {
-        var now = START.plus(Duration.ofHours(2));
+    void shortActivityIntervalAccruesOnlyTheEnabledPortion() {
+        var now = START.plus(Duration.ofMinutes(20));
         var recentlyEnabled = RadioOfflineAccrual.Policy.defaults(true, now.minus(Duration.ofMinutes(10)));
         var result = calculator.calculate(state(START, Duration.ZERO), now, recentlyEnabled);
         assertThat(result.grantedShards()).isZero();
@@ -183,6 +185,49 @@ class RadioOfflineAccrualTest {
                 START.plus(Duration.ofDays(1)).plusMillis(500), policy);
         assertThat(second.grantedShards()).isEqualTo(1);
         assertThat(second.checkpoint().remainder()).isEqualTo(Duration.ofMillis(500));
+    }
+
+    @Test
+    void tenMinuteRequestsForOneDayPayOneShardLikeOneDailyRequest() {
+        var initial = RadioOfflineAccrual.Checkpoint.initial(START, "radio");
+        var checkpoint = initial;
+        int grantedShards = 0;
+        for (int request = 1; request <= 144; request++) {
+            var result = calculator.calculate(checkpoint, START.plusSeconds(request * 600L), policy);
+            assertThat(result.grantedShards()).isEqualTo(request == 144 ? 1 : 0);
+            assertThat(result.capped()).isFalse();
+            grantedShards += result.grantedShards();
+            checkpoint = result.checkpoint();
+        }
+        assertThat(grantedShards).isEqualTo(1);
+        assertThat(checkpoint.remainder()).isZero();
+        assertThat(checkpoint.lastActivityAt()).isEqualTo(START.plus(Duration.ofDays(1)));
+        assertThat(checkpoint.equippedKeycapCode()).isEqualTo("radio");
+
+        var once = calculator.calculate(initial, START.plus(Duration.ofDays(1)), policy);
+        assertThat(once.grantedShards()).isEqualTo(1);
+        assertThat(once.grantedShards()).isEqualTo(grantedShards);
+        assertThat(once.checkpoint()).isEqualTo(checkpoint);
+    }
+
+    @Test
+    void shortRequestCrossingADayBoundaryPaysAndKeepsTheFraction() {
+        var checkpoint = state(START, Duration.ofDays(1).minusMillis(500));
+        var result = calculator.calculate(checkpoint, START.plusSeconds(1), policy);
+        assertThat(result.grantedShards()).isEqualTo(1);
+        assertThat(result.checkpoint().remainder()).isEqualTo(Duration.ofMillis(500));
+        assertThat(result.capped()).isFalse();
+    }
+
+    @Test
+    void preservesSubsecondTimeAcrossFrequentRequests() {
+        var initial = RadioOfflineAccrual.Checkpoint.initial(START, "radio");
+        var first = calculator.calculate(initial, START.plusMillis(500), policy);
+        assertThat(first.grantedShards()).isZero();
+        assertThat(first.checkpoint().remainder()).isEqualTo(Duration.ofMillis(500));
+        var second = calculator.calculate(first.checkpoint(), START.plusSeconds(1), policy);
+        assertThat(second.grantedShards()).isZero();
+        assertThat(second.checkpoint().remainder()).isEqualTo(Duration.ofSeconds(1));
     }
 
     private RadioOfflineAccrual.Checkpoint state(Instant at, Duration remainder) {
