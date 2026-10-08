@@ -79,16 +79,16 @@ class KeycapRepositoryTest {
         Keycap second = keycapRepository.save(keycap("BASIC_002", "Second", true, 2));
         Keycap first = keycapRepository.save(keycap("BASIC_001", "First", true, 1));
 
-        userKeycapRepository.save(userKeycap(currentUser, second, 3, UserKeycap.Status.IN_PROGRESS, false));
+        userKeycapRepository.save(userKeycap(currentUser, second, 3, UserKeycap.Status.COMPLETED, false));
         userKeycapRepository.save(userKeycap(currentUser, first, 10, UserKeycap.Status.COMPLETED, true));
-        userKeycapRepository.save(userKeycap(otherUser, first, 7, UserKeycap.Status.IN_PROGRESS, false));
+        userKeycapRepository.save(userKeycap(otherUser, first, 7, UserKeycap.Status.COMPLETED, false));
 
         List<UserKeycap> result = userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(currentUser.getId());
 
         assertThat(result).hasSize(2);
         assertThat(result).extracting(userKeycap -> userKeycap.getKeycap().getCode())
                 .containsExactly("BASIC_001", "BASIC_002");
-        assertThat(result).extracting(UserKeycap::getShardCount)
+        assertThat(result).extracting(UserKeycap::getLevel)
                 .containsExactly(10, 3);
     }
 
@@ -128,46 +128,23 @@ class KeycapRepositoryTest {
         assertThat(result).isEmpty();
     }
 
-    @Test
-    void findsActiveIncompleteRewardCandidatesForCurrentUserOnly() {
-        AppUser currentUser = appUserRepository.save(AppUser.createActive("current-user", null));
-        AppUser otherUser = appUserRepository.save(AppUser.createActive("other-user", null));
-        Keycap notOwned = keycapRepository.save(keycap("NOT_OWNED", "Not Owned", true, 1));
-        Keycap inProgress = keycapRepository.save(keycap("IN_PROGRESS", "In Progress", true, 2));
-        Keycap completed = keycapRepository.save(keycap("COMPLETED", "Completed", true, 3));
-        Keycap inactive = keycapRepository.save(keycap("INACTIVE", "Inactive", false, 4));
-        Keycap completedByOtherUser = keycapRepository.save(keycap("OTHER_COMPLETED", "Other Completed", true, 5));
-        keycapRepository.flush();
-
-        userKeycapRepository.save(userKeycap(currentUser, inProgress, 3, UserKeycap.Status.IN_PROGRESS, false));
-        userKeycapRepository.save(userKeycap(currentUser, completed, 10, UserKeycap.Status.COMPLETED, false));
-        userKeycapRepository.save(userKeycap(currentUser, inactive, 3, UserKeycap.Status.IN_PROGRESS, false));
-        userKeycapRepository.save(userKeycap(otherUser, completedByOtherUser, 10, UserKeycap.Status.COMPLETED, false));
-
-        List<Keycap> result = keycapRepository.findIncompleteActiveRewardCandidates(currentUser.getId());
-
-        assertThat(result).extracting(Keycap::getCode)
-                .containsExactly("NOT_OWNED", "IN_PROGRESS", "OTHER_COMPLETED");
-    }
-
     /**
-     * BEA-285 완료 조건. 추첨기는 후보 목록만 보고 확률을 정하므로, 이벤트 키캡을 추가해도 후보 목록이
-     * 그대로면 상시 키캡의 확률도 그대로다. 이벤트 키캡은 같은 등급이면서 두 상시 키캡 사이 정렬 순서에
-     * 넣어, 필터가 빠지면 곧바로 결과에 끼어들게 했다.
+     * BEA-329 뽑기 후보이자 공개 도감 목록. 이미 보유한 키캡도 남고(중복은 레벨로 쌓인다), 시즌 키캡과
+     * 비활성 키캡은 빠진다. 시즌 키캡은 같은 등급으로 두 상시 키캡 사이에 넣어 필터가 빠지면 바로 드러나게 했다.
      */
     @Test
-    void rewardCandidatesStayTheSameWhenEventKeycapIsAdded() {
-        AppUser user = appUserRepository.save(AppUser.createActive("event-user", null));
-        keycapRepository.save(keycap("BOX_A", "Box A", true, 1));
+    void listsEveryActiveBoxKeycapIncludingOwnedOnesAsDrawCandidates() {
+        AppUser user = appUserRepository.save(AppUser.createActive("draw-user", null));
+        Keycap owned = keycapRepository.save(keycap("BOX_A", "Box A", true, 1));
+        keycapRepository.save(keycap("SONGPYEON", "Songpyeon", true, 2, Keycap.AcquisitionType.EVENT));
         keycapRepository.save(keycap("BOX_B", "Box B", true, 3));
+        keycapRepository.save(keycap("BOX_INACTIVE", "Box Inactive", false, 4));
         keycapRepository.flush();
-        List<String> before = codesOf(keycapRepository.findIncompleteActiveRewardCandidates(user.getId()));
+        userKeycapRepository.save(userKeycap(user, owned, 7, UserKeycap.Status.COMPLETED, false));
 
-        keycapRepository.saveAndFlush(keycap("SONGPYEON", "Songpyeon", true, 2, Keycap.AcquisitionType.EVENT));
-        List<String> after = codesOf(keycapRepository.findIncompleteActiveRewardCandidates(user.getId()));
+        List<Keycap> result = keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX);
 
-        assertThat(before).containsExactly("BOX_A", "BOX_B");
-        assertThat(after).isEqualTo(before);
+        assertThat(codesOf(result)).containsExactly("BOX_A", "BOX_B");
     }
 
     @Test
@@ -197,11 +174,10 @@ class KeycapRepositoryTest {
     void countsCompletedKeycapsByAcquisitionType() {
         AppUser user = appUserRepository.save(AppUser.createActive("count-user", null));
         Keycap completedBox = keycapRepository.save(keycap("BOX_DONE", "Box Done", true, 1));
-        Keycap inProgressBox = keycapRepository.save(keycap("BOX_WIP", "Box Wip", true, 2));
+        keycapRepository.save(keycap("BOX_NOT_OWNED", "Box Not Owned", true, 2));
         Keycap completedEvent = keycapRepository.save(keycap("EVENT_DONE", "Event Done", true, 3, Keycap.AcquisitionType.EVENT));
         keycapRepository.flush();
         userKeycapRepository.save(userKeycap(user, completedBox, 10, UserKeycap.Status.COMPLETED, false));
-        userKeycapRepository.save(userKeycap(user, inProgressBox, 3, UserKeycap.Status.IN_PROGRESS, false));
         userKeycapRepository.save(userKeycap(user, completedEvent, 10, UserKeycap.Status.COMPLETED, false));
         userKeycapRepository.flush();
 
@@ -240,14 +216,14 @@ class KeycapRepositoryTest {
     private static UserKeycap userKeycap(
             AppUser user,
             Keycap keycap,
-            int shardCount,
+            int level,
             UserKeycap.Status status,
             boolean equipped
     ) {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap);
-        ReflectionTestUtils.setField(userKeycap, "shardCount", shardCount);
+        ReflectionTestUtils.setField(userKeycap, "level", level);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;

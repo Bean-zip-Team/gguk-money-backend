@@ -17,7 +17,6 @@ import com.ggukmoney.beanzip.domain.user.service.UserService;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
 import com.ggukmoney.beanzip.domain.promotion.service.TapThousandCompletionTrigger;
-import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
@@ -67,7 +66,6 @@ class TapBatchServiceTest {
     private final KeycapBoxAccountService keycapBoxAccountService = mock(KeycapBoxAccountService.class);
     private final RedisService redisService = mock(RedisService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
-    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
     private final PromotionPolicyConfig promotionPolicyConfig = mock(PromotionPolicyConfig.class);
     private final PromotionGrantIssuer promotionGrantIssuer = mock(PromotionGrantIssuer.class);
     private final TapThousandCompletionTrigger tapThousandCompletionTrigger = mock(TapThousandCompletionTrigger.class);
@@ -81,7 +79,7 @@ class TapBatchServiceTest {
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, userTapDailyService, userTapProgressService, userTapSessionService,
             pointAccountService, pointLedgerService,
-            keycapBoxAccountService, redisService, tapPolicyConfig, keycapBoxPolicyConfig,
+            keycapBoxAccountService, redisService, tapPolicyConfig,
             promotionPolicyConfig, promotionGrantIssuer, tapThousandCompletionTrigger, userService,
             eventPublisher, clock, businessZoneId
     );
@@ -90,7 +88,7 @@ class TapBatchServiceTest {
     private final UUID sessionId = UUID.randomUUID();
     private final AppUser accountOwner = mock(AppUser.class);
     private final PointAccount pointAccount = PointAccount.createFor(accountOwner);
-    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner, acceptedAt);
+    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner);
 
     @BeforeEach
     void allowRateLimitByDefault() {
@@ -104,9 +102,6 @@ class TapBatchServiceTest {
         lenient().when(pointAccountService.getForUser(userId)).thenReturn(pointAccount);
         lenient().when(keycapBoxAccountService.getForUser(userId)).thenReturn(boxAccount);
         lenient().when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(accountOwner));
-        lenient().when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(Duration.ofSeconds(60));
-        lenient().when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
-        lenient().when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
         // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
         lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
         lenient().when(tapPolicyConfig.pointDailyCap()).thenReturn(150);
@@ -144,7 +139,7 @@ class TapBatchServiceTest {
         assertThat(response.acceptedCount()).isEqualTo(42);
         assertThat(response.validTapCount()).isEqualTo(77);
         assertThat(response.pointsAwarded()).isZero();
-        assertThat(response.boxesDropped()).isZero();
+        assertThat(response.shardsDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
         assertThat(response.boxProgressTapCount()).isZero();
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(FAR_AWAY_TARGET);
@@ -278,7 +273,7 @@ class TapBatchServiceTest {
 
         assertThat(response.acceptedCount()).isEqualTo(100);
         assertThat(response.pointsAwarded()).isEqualTo(1);
-        assertThat(response.boxesDropped()).isZero();
+        assertThat(response.shardsDropped()).isZero();
         assertThat(response.balance()).isEqualTo(1L);
         assertThat(response.pointDailyCapReached()).isFalse();
         assertThat(progress.getNextPointTarget()).isEqualTo(400);
@@ -297,7 +292,7 @@ class TapBatchServiceTest {
     }
 
     @Test
-    void dropsBoxAndRedrawsBoxTargetWhenSessionTapsReachTarget() {
+    void dropsOneShardAndRedrawsTargetWhenSessionTapsReachTarget() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
@@ -319,17 +314,20 @@ class TapBatchServiceTest {
 
         assertThat(response.acceptedCount()).isEqualTo(200);
         assertThat(response.pointsAwarded()).isZero();
-        assertThat(response.boxesDropped()).isEqualTo(1);
+        assertThat(response.shardsDropped()).isEqualTo(1);
         assertThat(response.boxProgressTapCount()).isEqualTo(200);
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(450);
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
         assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
         assertThat(session.getNextBoxTarget()).isEqualTo(450);
-        assertThat(boxAccount.getBoxBalance()).isEqualTo(1);
-        assertThat(response.boxBalance()).isEqualTo(1);
-        // 개봉 가능 여부는 이번 배치의 지급까지 반영된 잔고 기준이어야 한다.
-        assertThat(response.canFreeOpen()).isTrue();
-        assertThat(response.canAdOpen()).isTrue();
+        assertThat(boxAccount.getShardBalance()).isEqualTo(1);
+        assertThat(response.shardBalance()).isEqualTo(1);
+        assertThat(response.remainingTapsToNextShard()).isEqualTo(250);
+        // 상자 시절 필드는 구버전 앱 호환을 위해 중립값이다 (BEA-329).
+        assertThat(response.boxesDropped()).isZero();
+        assertThat(response.boxBalance()).isZero();
+        assertThat(response.canFreeOpen()).isFalse();
+        assertThat(response.canAdOpen()).isFalse();
         // 계정은 루프 밖에서 한 번만 조회·저장한다.
         verify(keycapBoxAccountService).getForUser(userId);
         verify(keycapBoxAccountService).save(boxAccount);
@@ -360,7 +358,7 @@ class TapBatchServiceTest {
 
         assertThat(daily.getValidTapCount()).isEqualTo(100);
         assertThat(response.pointsAwarded()).isZero();
-        assertThat(response.boxesDropped()).isZero();
+        assertThat(response.shardsDropped()).isZero();
         assertThat(response.balance()).isEqualTo(7L);
         assertThat(response.pointDailyCapReached()).isTrue();
         verify(pointAccountService, never()).credit(any(), anyLong());
@@ -444,13 +442,13 @@ class TapBatchServiceTest {
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
-        // 포인트는 일일 상한에 막히지만 상자 진행도는 인정 탭 전체로 계속 누적된다.
+        // 포인트는 일일 상한에 막히지만 조각 진행도는 인정 탭 전체로 계속 누적된다.
         assertThat(response.pointsAwarded()).isZero();
-        assertThat(response.boxesDropped()).isEqualTo(1);
+        assertThat(response.shardsDropped()).isEqualTo(1);
         assertThat(response.boxProgressTapCount()).isEqualTo(200);
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(450);
         assertThat(session.getSessionValidTapCount()).isEqualTo(200);
-        assertThat(boxAccount.getBoxBalance()).isEqualTo(1);
+        assertThat(boxAccount.getShardBalance()).isEqualTo(1);
         verify(keycapBoxAccountService).save(boxAccount);
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapSessionService).save(session);
@@ -478,6 +476,9 @@ class TapBatchServiceTest {
         assertThat(response.pointEarnedToday()).isZero();
         assertThat(response.remainingTapsToNextPoint()).isEqualTo(150);
         assertThat(response.remainingTapsToNextBox()).isEqualTo(200);
+        assertThat(response.remainingTapsToNextShard()).isEqualTo(200);
+        assertThat(response.shardBalance()).isZero();
+        assertThat(response.shardsDropped()).isZero();
         assertThat(response.boxBalance()).isZero();
         assertThat(response.canFreeOpen()).isFalse();
         assertThat(response.canAdOpen()).isFalse();

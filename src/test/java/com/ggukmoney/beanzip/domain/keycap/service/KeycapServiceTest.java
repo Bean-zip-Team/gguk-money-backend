@@ -38,10 +38,10 @@ class KeycapServiceTest {
             new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig);
 
     @Test
-    void getsActiveKeycapCatalogInRepositoryOrder() {
+    void getsActiveBoxKeycapCatalogInRepositoryOrder() {
         Keycap first = keycap(UUID.randomUUID(), "BASIC_001", "Basic", Keycap.Grade.COMMON, 10, 1, true, 1);
         Keycap second = keycap(UUID.randomUUID(), "RARE_001", "Rare", Keycap.Grade.RARE, 20, 1, true, 2);
-        when(keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc()).thenReturn(List.of(first, second));
+        when(keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)).thenReturn(List.of(first, second));
 
         KeycapListResponse response = keycapService.getKeycaps();
 
@@ -53,12 +53,12 @@ class KeycapServiceTest {
         assertThat(response.keycaps().get(0).season()).isEqualTo(1);
         assertThat(response.keycaps().get(0).imageUrl()).isNull();
         assertThat(response.keycaps().get(0).soundUrl()).isNull();
-        verify(keycapRepository).findByActiveTrueOrderBySortOrderAscCodeAsc();
+        verify(keycapRepository).findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX);
     }
 
     @Test
-    void getsEmptyKeycapCatalogWhenThereAreNoActiveKeycaps() {
-        when(keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc()).thenReturn(List.of());
+    void getsEmptyKeycapCatalogWhenThereAreNoActiveBoxKeycaps() {
+        when(keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)).thenReturn(List.of());
 
         assertThat(keycapService.getKeycaps().keycaps()).isEmpty();
     }
@@ -66,18 +66,18 @@ class KeycapServiceTest {
     @Test
     void getsOnlyCurrentUsersKeycapsWithJoinedKeycapData() {
         UUID userId = UUID.randomUUID();
-        UserKeycap inProgress = userKeycap(userId, UUID.randomUUID(), "BASIC_001", "Basic", 4, UserKeycap.Status.IN_PROGRESS, false);
+        UserKeycap levelEight = userKeycap(userId, UUID.randomUUID(), "BASIC_001", "Basic", 8, UserKeycap.Status.COMPLETED, false);
         UserKeycap completed = userKeycap(userId, UUID.randomUUID(), "RARE_001", "Rare", 20, UserKeycap.Status.COMPLETED, true);
         when(userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId))
-                .thenReturn(List.of(inProgress, completed));
+                .thenReturn(List.of(levelEight, completed));
 
         MyKeycapListResponse response = keycapService.getMyKeycaps(userId);
 
         assertThat(response.keycaps()).hasSize(2);
-        assertThat(response.keycaps().get(0).keycapId()).isEqualTo(inProgress.getKeycap().getPublicId());
+        assertThat(response.keycaps().get(0).keycapId()).isEqualTo(levelEight.getKeycap().getPublicId());
         assertThat(response.keycaps().get(0).code()).isEqualTo("BASIC_001");
-        assertThat(response.keycaps().get(0).shardCount()).isEqualTo(4);
-        assertThat(response.keycaps().get(0).status()).isEqualTo("IN_PROGRESS");
+        assertThat(response.keycaps().get(0).level()).isEqualTo(8);
+        assertThat(response.keycaps().get(0).status()).isEqualTo("COMPLETED");
         assertThat(response.keycaps().get(0).equipped()).isFalse();
         assertThat(response.keycaps().get(1).status()).isEqualTo("COMPLETED");
         assertThat(response.keycaps().get(1).equipped()).isTrue();
@@ -213,22 +213,6 @@ class KeycapServiceTest {
     }
 
     @Test
-    void rejectsIncompleteKeycapEquip() {
-        UUID userId = UUID.randomUUID();
-        UUID keycapId = UUID.randomUUID();
-        UserKeycap target = userKeycap(userId, keycapId, "BASIC_001", "Basic", 4, UserKeycap.Status.IN_PROGRESS, false);
-        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of(target));
-        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId))
-                .thenReturn(Optional.of(target));
-
-        assertThatThrownBy(() -> keycapService.equipKeycap(userId, keycapId))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("KEYCAP_NOT_COMPLETED");
-        verify(userKeycapRepository, never()).findEquippedByUserIdForUpdate(userId);
-    }
-
-    @Test
     void rejectsMissingOrUnownedKeycapEquipAsNotFound() {
         UUID userId = UUID.randomUUID();
         UUID keycapId = UUID.randomUUID();
@@ -252,7 +236,7 @@ class KeycapServiceTest {
             UUID keycapId,
             String code,
             String name,
-            int shardCount,
+            int level,
             UserKeycap.Status status,
             boolean equipped
     ) {
@@ -262,7 +246,7 @@ class KeycapServiceTest {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap(keycapId, code, name, Keycap.Grade.COMMON, 10, 1, true, 1));
-        ReflectionTestUtils.setField(userKeycap, "shardCount", shardCount);
+        ReflectionTestUtils.setField(userKeycap, "level", level);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;

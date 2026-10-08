@@ -32,8 +32,15 @@ public class KeycapService {
     private final KeycapMapper keycapMapper;
     private final OnboardingRewardConfig onboardingRewardConfig;
 
+    /**
+     * 공개 도감은 상시({@code BOX}) 키캡만 내려준다 (BEA-329). 시즌 키캡은 보유자의 내 키캡 목록에서만 보인다.
+     * 안 거르면 미보유 카드에 이름이 노출되는 지금 구조에서 아직 시작도 안 한 이벤트가 새어 나가고,
+     * 뽑아도 절대 안 나오는 키캡이 목록과 진행도 분모에 남는다.
+     */
     public KeycapListResponse getKeycaps() {
-        return keycapMapper.mapToKeycapListResponse(keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc());
+        return keycapMapper.mapToKeycapListResponse(
+                keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+        );
     }
 
     public MyKeycapListResponse getMyKeycaps(UUID userId) {
@@ -89,10 +96,6 @@ public class KeycapService {
         userKeycapRepository.findByUserIdForUpdate(userId);
         UserKeycap target = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_KEYCAP_NOT_FOUND"));
-
-        if (!target.isCompleted()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_NOT_COMPLETED");
-        }
 
         // 해제를 먼저 확정한 뒤에 장착한다. ux_user_keycap_equipped 가 유저당 equipped = true 를
         // 하나로 제한하는데, 두 변경을 모두 더티 체킹에 맡기면 UPDATE 발행 순서가 영속성 컨텍스트

@@ -24,6 +24,13 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 유저가 보유한 키캡 한 종 (BEA-329).
+ *
+ * <p>행이 있으면 보유다. 같은 키캡이 또 뽑히면 {@link #levelUp()} 으로 레벨만 오른다 — 등급 무관,
+ * 상한 없음. {@code status} 는 항상 {@link Status#COMPLETED} 이지만 완성 기준으로 세는 쿼리
+ * (키캡 5개 미션 · 전체 완성 보너스)가 그대로 동작하도록 컬럼을 남겨 둔다.
+ */
 @Getter
 @Entity
 @Table(
@@ -49,12 +56,12 @@ public class UserKeycap {
     @JoinColumn(name = "keycap_id", nullable = false)
     private Keycap keycap;
 
-    @Column(name = "shard_count", nullable = false)
-    private Integer shardCount = 0;
+    @Column(name = "level", nullable = false)
+    private Integer level = 1;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private Status status = Status.IN_PROGRESS;
+    private Status status = Status.COMPLETED;
 
     @Column(name = "equipped", nullable = false)
     private boolean equipped = false;
@@ -85,36 +92,35 @@ public class UserKeycap {
         updatedAt = Instant.now();
     }
 
-    public static UserKeycap createInProgress(AppUser user, Keycap keycap) {
-        UserKeycap userKeycap = new UserKeycap();
-        userKeycap.user = user;
-        userKeycap.keycap = keycap;
-        userKeycap.shardCount = 0;
-        userKeycap.status = Status.IN_PROGRESS;
-        userKeycap.equipped = false;
-        return userKeycap;
-    }
-
-    public static UserKeycap createCompletedOnboardingReward(AppUser user, Keycap keycap, Instant completedAt) {
+    /**
+     * 처음 얻은 키캡. Lv1 로 시작한다.
+     *
+     * <p>{@code completedAt} 은 키캡 5개 미션이 {@code completedAt > launchAt} 으로 소급을 막는 기준이다.
+     * 여기서만 찍고 이후에는 바꾸지 않는다.
+     */
+    public static UserKeycap createOwned(AppUser user, Keycap keycap, Instant acquiredAt) {
         Objects.requireNonNull(user, "user must not be null.");
         Objects.requireNonNull(keycap, "keycap must not be null.");
-        Objects.requireNonNull(completedAt, "completedAt must not be null.");
-        if (keycap.getRequiredShardCount() == null || keycap.getRequiredShardCount() < 0) {
-            throw new IllegalArgumentException("Required shard count must not be negative.");
-        }
+        Objects.requireNonNull(acquiredAt, "acquiredAt must not be null.");
 
         UserKeycap userKeycap = new UserKeycap();
         userKeycap.user = user;
         userKeycap.keycap = keycap;
-        userKeycap.shardCount = keycap.getRequiredShardCount();
+        userKeycap.level = 1;
         userKeycap.status = Status.COMPLETED;
-        userKeycap.completedAt = completedAt;
+        userKeycap.completedAt = acquiredAt;
         userKeycap.equipped = false;
         return userKeycap;
     }
 
     public boolean isCompleted() {
         return status == Status.COMPLETED;
+    }
+
+    /** 중복 획득. 「꽝」은 없다 — 반드시 1 오른다. */
+    public int levelUp() {
+        level += 1;
+        return level;
     }
 
     public void equip() {
@@ -128,27 +134,7 @@ public class UserKeycap {
         equipped = false;
     }
 
-    public boolean addShard(int count, Instant completedAt) {
-        if (isCompleted()) {
-            throw new IllegalStateException("Completed keycaps cannot receive more shards.");
-        }
-        if (count <= 0) {
-            throw new IllegalArgumentException("Shard count must be positive.");
-        }
-        Objects.requireNonNull(completedAt, "completedAt must not be null.");
-
-        int requiredShardCount = keycap.getRequiredShardCount();
-        shardCount = Math.min(shardCount + count, requiredShardCount);
-        if (shardCount < requiredShardCount) {
-            return false;
-        }
-        status = Status.COMPLETED;
-        this.completedAt = completedAt;
-        return true;
-    }
-
     public enum Status {
-        IN_PROGRESS,
         COMPLETED
     }
 }
