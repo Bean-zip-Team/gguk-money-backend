@@ -2,7 +2,6 @@ package com.ggukmoney.beanzip.domain.keycap.entity;
 
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 
@@ -11,101 +10,78 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UserKeycapTest {
 
-    @Test
-    void equipsCompletedKeycap() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.COMPLETED, false);
-
-        userKeycap.equip();
-
-        assertThat(userKeycap.isCompleted()).isTrue();
-        assertThat(userKeycap.isEquipped()).isTrue();
-    }
+    private static final Instant ACQUIRED_AT = Instant.parse("2026-10-09T01:00:00Z");
 
     @Test
-    void rejectsEquipWhenKeycapIsInProgress() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.IN_PROGRESS, false);
-
-        assertThatThrownBy(userKeycap::equip)
-                .isInstanceOf(IllegalStateException.class);
-        assertThat(userKeycap.isEquipped()).isFalse();
-    }
-
-    @Test
-    void unequipsKeycap() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.COMPLETED, true);
-
-        userKeycap.unequip();
-
-        assertThat(userKeycap.isEquipped()).isFalse();
-    }
-
-    @Test
-    void createsInProgressUserKeycapForReward() {
+    void createsOwnedKeycapAtLevelOneWithAcquisitionTimeAsCompletedAt() {
         AppUser user = AppUser.createActive("Bean", null);
-        Keycap keycap = keycap(10);
+        Keycap keycap = keycap();
 
-        UserKeycap userKeycap = UserKeycap.createInProgress(user, keycap);
+        UserKeycap userKeycap = UserKeycap.createOwned(user, keycap, ACQUIRED_AT);
 
         assertThat(userKeycap.getUser()).isSameAs(user);
         assertThat(userKeycap.getKeycap()).isSameAs(keycap);
-        assertThat(userKeycap.getShardCount()).isZero();
-        assertThat(userKeycap.getStatus()).isEqualTo(UserKeycap.Status.IN_PROGRESS);
+        assertThat(userKeycap.getLevel()).isEqualTo(1);
+        assertThat(userKeycap.getStatus()).isEqualTo(UserKeycap.Status.COMPLETED);
+        assertThat(userKeycap.isCompleted()).isTrue();
+        assertThat(userKeycap.getCompletedAt()).isEqualTo(ACQUIRED_AT);
         assertThat(userKeycap.isEquipped()).isFalse();
     }
 
     @Test
-    void addsShardWithoutCompletingBeforeRequiredShardCount() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.IN_PROGRESS, false);
-        Keycap keycap = keycap(3);
-        ReflectionTestUtils.setField(userKeycap, "keycap", keycap);
-        ReflectionTestUtils.setField(userKeycap, "shardCount", 1);
-        Instant now = Instant.parse("2026-07-14T00:00:00Z");
+    void rejectsMissingArguments() {
+        AppUser user = AppUser.createActive("Bean", null);
+        Keycap keycap = keycap();
 
-        boolean completedNow = userKeycap.addShard(1, now);
-
-        assertThat(completedNow).isFalse();
-        assertThat(userKeycap.getShardCount()).isEqualTo(2);
-        assertThat(userKeycap.getStatus()).isEqualTo(UserKeycap.Status.IN_PROGRESS);
-        assertThat(userKeycap.getCompletedAt()).isNull();
+        assertThatThrownBy(() -> UserKeycap.createOwned(null, keycap, ACQUIRED_AT)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> UserKeycap.createOwned(user, null, ACQUIRED_AT)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> UserKeycap.createOwned(user, keycap, null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test
-    void capsShardCountAndCompletesWhenRequiredShardCountIsReached() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.IN_PROGRESS, false);
-        Keycap keycap = keycap(3);
-        ReflectionTestUtils.setField(userKeycap, "keycap", keycap);
-        ReflectionTestUtils.setField(userKeycap, "shardCount", 2);
-        Instant now = Instant.parse("2026-07-14T00:00:00Z");
+    void levelUpAlwaysAddsOneWithoutCapAndKeepsCompletedAt() {
+        UserKeycap userKeycap = UserKeycap.createOwned(AppUser.createActive("Bean", null), keycap(), ACQUIRED_AT);
 
-        boolean completedNow = userKeycap.addShard(2, now);
+        assertThat(userKeycap.levelUp()).isEqualTo(2);
+        for (int i = 0; i < 148; i++) {
+            userKeycap.levelUp();
+        }
 
-        assertThat(completedNow).isTrue();
-        assertThat(userKeycap.getShardCount()).isEqualTo(3);
-        assertThat(userKeycap.getStatus()).isEqualTo(UserKeycap.Status.COMPLETED);
-        assertThat(userKeycap.getCompletedAt()).isEqualTo(now);
+        // 500뽑 시점이면 COMMON 은 Lv 150 근처다. 상한이 없어야 레벨 숫자가 희소성을 거꾸로 보여준다.
+        assertThat(userKeycap.getLevel()).isEqualTo(150);
+        // 키캡 5개 미션은 completedAt > launchAt 을 본다. 레벨업이 이 값을 건드리면 미션이 오발한다.
+        assertThat(userKeycap.getCompletedAt()).isEqualTo(ACQUIRED_AT);
     }
 
     @Test
-    void rejectsShardAdditionWhenAlreadyCompleted() {
-        UserKeycap userKeycap = userKeycap(UserKeycap.Status.COMPLETED, false);
-        Keycap keycap = keycap(3);
-        ReflectionTestUtils.setField(userKeycap, "keycap", keycap);
-        ReflectionTestUtils.setField(userKeycap, "shardCount", 3);
+    void convertsLegacyInProgressRowToOwnedAtLevelOne() {
+        UserKeycap userKeycap = UserKeycap.createOwned(AppUser.createActive("Bean", null), keycap(), ACQUIRED_AT.minusSeconds(3600));
+        org.springframework.test.util.ReflectionTestUtils.setField(userKeycap, "status", UserKeycap.Status.IN_PROGRESS);
+        org.springframework.test.util.ReflectionTestUtils.setField(userKeycap, "completedAt", null);
+        assertThat(userKeycap.isLegacyInProgress()).isTrue();
+        assertThatThrownBy(userKeycap::equip).isInstanceOf(IllegalStateException.class);
 
-        assertThatThrownBy(() -> userKeycap.addShard(1, Instant.now()))
-                .isInstanceOf(IllegalStateException.class);
+        userKeycap.convertLegacyToOwned(ACQUIRED_AT);
+
+        assertThat(userKeycap.isLegacyInProgress()).isFalse();
+        assertThat(userKeycap.isCompleted()).isTrue();
+        assertThat(userKeycap.getLevel()).isEqualTo(1);
+        assertThat(userKeycap.getCompletedAt()).isEqualTo(ACQUIRED_AT);
+        assertThatThrownBy(() -> userKeycap.convertLegacyToOwned(ACQUIRED_AT)).isInstanceOf(IllegalStateException.class);
     }
 
-    private static UserKeycap userKeycap(UserKeycap.Status status, boolean equipped) {
-        UserKeycap userKeycap = new UserKeycap();
-        ReflectionTestUtils.setField(userKeycap, "status", status);
-        ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
-        return userKeycap;
+    @Test
+    void equipsAndUnequipsOwnedKeycap() {
+        UserKeycap userKeycap = UserKeycap.createOwned(AppUser.createActive("Bean", null), keycap(), ACQUIRED_AT);
+
+        userKeycap.equip();
+        assertThat(userKeycap.isEquipped()).isTrue();
+
+        userKeycap.unequip();
+        assertThat(userKeycap.isEquipped()).isFalse();
     }
 
-    private static Keycap keycap(int requiredShardCount) {
-        Keycap keycap = new Keycap();
-        ReflectionTestUtils.setField(keycap, "requiredShardCount", requiredShardCount);
-        return keycap;
+    private static Keycap keycap() {
+        return Keycap.createFor("BASIC_001", "Basic", Keycap.Grade.COMMON, 10, 1, null, null, 1);
     }
 }

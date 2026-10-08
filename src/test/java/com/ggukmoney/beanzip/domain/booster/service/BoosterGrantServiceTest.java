@@ -138,23 +138,4 @@ class BoosterGrantServiceTest {
         assertThat(status.remainingDailyCount()).isEqualTo(3);
     }
 
-    @Test
-    void findActiveMultiplierReturnsGrantMultiplierWhenActive() {
-        AppUser user = mock(AppUser.class);
-        BoosterGrant grant = BoosterGrant.activate(user, LocalDate.now(), 1, Duration.ofSeconds(300));
-        Instant now = Instant.now();
-        when(boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(userId, BoosterGrant.Status.ACTIVE, now))
-                .thenReturn(Optional.of(grant));
-
-        assertThat(boosterGrantService.findActiveMultiplier(userId, now)).isEqualByComparingTo("2.0");
-    }
-
-    @Test
-    void findActiveMultiplierReturnsOneWhenNoActiveGrant() {
-        Instant now = Instant.now();
-        when(boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(userId, BoosterGrant.Status.ACTIVE, now))
-                .thenReturn(Optional.empty());
-
-        assertThat(boosterGrantService.findActiveMultiplier(userId, now)).isEqualByComparingTo(BigDecimal.ONE);
-    }
 }

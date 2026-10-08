@@ -147,11 +147,13 @@ class OpsConfigPageIntegrationTest extends FullStackIntegrationTestSupport {
     @Test
     void listGroupsKeysWithTheirMeaningAndSummarizesJsonPolicies() throws Exception {
         Cookie session = login();
+        // effective_at 은 DB 시각이고 화면은 JVM 의 Instant.now() 로 거른다. 컨테이너 시계가 JVM 보다 수백 µs 앞서면
+        // 방금 넣은 행이 "미래" 가 되어 간헐적으로 빠진다. 1초 전으로 넣어 시계 차이를 없앤다.
         jdbcTemplate.update("""
                 INSERT INTO app_config (public_id, config_key, config_value, effective_at, created_at, updated_at)
                 VALUES (gen_random_uuid(), 'ranking.weeklyReward.policy',
-                        '{"enabled":true,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb, now(), now(), now()),
-                       (gen_random_uuid(), 'keycapBox.freeTicket.cap', '8'::jsonb, now(), now(), now())
+                        '{"enabled":true,"rewards":{"1":10000,"2":5000,"3":2500}}'::jsonb, now() - interval '1 second', now(), now()),
+                       (gen_random_uuid(), 'keycapBox.freeTicket.cap', '8'::jsonb, now() - interval '1 second', now(), now())
                 """);
 
         mockMvc.perform(get("/ops/config").cookie(session))

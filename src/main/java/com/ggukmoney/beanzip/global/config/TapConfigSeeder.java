@@ -37,7 +37,7 @@ public class TapConfigSeeder implements CommandLineRunner {
     }
 
     /** 코드가 관리하는 정책 키 접두사. 이 접두사를 쓰면서 코드에 없는 키는 폐기된 잔재로 본다. */
-    private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "onboarding.");
+    private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "keycap.draw.", "onboarding.");
 
     @Override
     public void run(String... args) {

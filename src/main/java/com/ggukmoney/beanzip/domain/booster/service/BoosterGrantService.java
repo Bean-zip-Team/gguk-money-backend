@@ -89,9 +89,4 @@ public class BoosterGrantService {
         return boosterGrantRepository.countByUserIdAndStartsAtAfter(userId, windowStart);
     }
 
-    public BigDecimal findActiveMultiplier(UUID userId, Instant now) {
-        return boosterGrantRepository.findByUserIdAndStatusAndExpiresAtAfter(userId, BoosterGrant.Status.ACTIVE, now)
-                .map(BoosterGrant::getMultiplier)
-                .orElse(BigDecimal.ONE);
-    }
 }
