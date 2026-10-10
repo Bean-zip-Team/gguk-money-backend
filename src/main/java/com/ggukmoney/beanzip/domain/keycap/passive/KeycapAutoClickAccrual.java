@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.List;
 
 /** Pure calculation. Fractions are clicks, not elapsed time, so changing a rate never reprices them. */
 public final class KeycapAutoClickAccrual {
@@ -15,14 +16,19 @@ public final class KeycapAutoClickAccrual {
         Objects.requireNonNull(now);
         Objects.requireNonNull(policy);
         if (now.isBefore(checkpoint.lastActivityAt())) return new Result(0, checkpoint, false);
-        Instant start = checkpoint.lastActivityAt().isAfter(policy.enabledAt())
-                ? checkpoint.lastActivityAt() : policy.enabledAt();
-        if (!policy.enabled() || checkpoint.clicksPerDay() == 0 || !now.isAfter(start)) {
+        if (checkpoint.clicksPerDay() == 0) {
             return new Result(0, checkpoint.at(now, checkpoint.remainderNumerator()), false);
         }
-        Duration elapsed = Duration.between(start, now);
-        BigInteger nanos = BigInteger.valueOf(elapsed.getSeconds()).multiply(BigInteger.valueOf(1_000_000_000L))
-                .add(BigInteger.valueOf(elapsed.getNano()));
+        BigInteger nanos = BigInteger.ZERO;
+        for (ActivePeriod period : policy.activePeriods()) {
+            Instant start = checkpoint.lastActivityAt().isAfter(period.from()) ? checkpoint.lastActivityAt() : period.from();
+            Instant end = period.until() == null || now.isBefore(period.until()) ? now : period.until();
+            if (end.isAfter(start)) {
+                Duration elapsed = Duration.between(start,end);
+                nanos = nanos.add(BigInteger.valueOf(elapsed.getSeconds()).multiply(BigInteger.valueOf(1_000_000_000L))
+                        .add(BigInteger.valueOf(elapsed.getNano())));
+            }
+        }
         BigInteger total = nanos.multiply(BigInteger.valueOf(checkpoint.clicksPerDay()))
                 .add(BigInteger.valueOf(checkpoint.remainderNumerator()));
         BigInteger ceiling = UNIT.multiply(BigInteger.valueOf(checkpoint.clicksPerDay()))
@@ -53,10 +59,27 @@ public final class KeycapAutoClickAccrual {
         }
     }
 
-    public record Policy(boolean enabled, Instant enabledAt, int capDays) {
-        public Policy {
+    /** Inclusive start, exclusive end; null end represents the current open activation. */
+    public record ActivePeriod(Instant from, Instant until) {
+        public ActivePeriod {
+            Objects.requireNonNull(from);
+            if (until != null && !until.isAfter(from)) throw new IllegalArgumentException("Invalid active period");
+        }
+    }
+
+    public record Policy(List<ActivePeriod> activePeriods, int capDays) {
+        public Policy(boolean enabled, Instant enabledAt, int capDays) {
+            this(enabled ? List.of(new ActivePeriod(enabledAt,null)) : List.of(),capDays);
             Objects.requireNonNull(enabledAt);
+        }
+        public Policy {
+            activePeriods = List.copyOf(activePeriods);
             if (capDays < 1) throw new IllegalArgumentException("Invalid automatic click cap");
+            for (int i=1; i<activePeriods.size(); i++) {
+                Instant previousEnd = activePeriods.get(i-1).until();
+                if (previousEnd == null || previousEnd.isAfter(activePeriods.get(i).from()))
+                    throw new IllegalArgumentException("Active periods must be ordered and non-overlapping");
+            }
         }
     }
     public record Result(int grantedClicks, Checkpoint checkpoint, boolean capped) {}
