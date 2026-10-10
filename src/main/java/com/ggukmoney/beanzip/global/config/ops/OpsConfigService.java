@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.global.config.ops;
 
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -8,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,6 +35,7 @@ public class OpsConfigService {
     private final AppConfigRepository repository;
     private final AppConfigValueValidator validator;
     private final PolicyValueRules rules;
+    private final KeycapPassivePolicyConfig passiveConfig;
 
     @Transactional(readOnly = true)
     public List<AppConfig> currentValues() {
@@ -96,7 +100,23 @@ public class OpsConfigService {
             }
         }
         repository.save(AppConfig.change(key, next, effectiveAt, author, why));
+        if (key.startsWith("keycap.passive.")) {
+            publishPassivePolicyAfterCommit();
+        }
         log.info("OPS_CONFIG_CHANGED key={} from={} to={} by={} reason={}", key, current.getConfigValue(), next, author, why);
+    }
+
+    private void publishPassivePolicyAfterCommit() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    passiveConfig.refresh();
+                }
+            });
+        } else {
+            passiveConfig.refresh();
+        }
     }
 
     private static String required(String value, int max, String label) {

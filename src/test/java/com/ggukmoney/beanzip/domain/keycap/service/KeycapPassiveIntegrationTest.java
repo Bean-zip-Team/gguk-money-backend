@@ -164,16 +164,18 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(keycaps.getKeycaps().keycaps()).allSatisfy(card -> assertThat(card.previewEffects().previewLevel()).isEqualTo(1));
         configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",Instant.now()));
         policy.refresh();
+        assertThat(policy.snapshot().enabled()).isFalse();
         assertThat(passive.settle(user.getId(),"disabled").autoClicksGranted()).isZero();
         assertThat(passive.status(user.getId()).enabled()).isFalse();
     }
 
     @Test void activatingOpsSwitchAtomicallyRecordsANewCutoff() {
         configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",Instant.now()));
+        policy.refresh();
+        assertThat(policy.snapshot().enabled()).isFalse();
         var current=ops.current(KeycapPassivePolicyConfig.KEY_ENABLED);
         var before=Instant.now();
         ops.change(KeycapPassivePolicyConfig.KEY_ENABLED,current.getPublicId().toString(),"true","integration","activate");
-        policy.refresh();
         assertThat(policy.snapshot().enabled()).isTrue();
         assertThat(policy.snapshot().enabledAt()).isBetween(before,Instant.now());
         assertThat(ops.current(KeycapPassivePolicyConfig.KEY_ENABLED_AT).getEffectiveAt())
