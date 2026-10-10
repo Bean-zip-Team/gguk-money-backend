@@ -21,13 +21,13 @@ public record KeycapDrawResponse(
         String imageUrl,
         @Schema(description = "사운드 URL", example = "https://example.com/keycap.mp3")
         String soundUrl,
-        @Schema(description = "처음 얻은 키캡인지 여부. false 면 레벨업", example = "false")
+        @Schema(description = "처음 얻은 키캡인지 여부. false 면 이미 보유한 키캡이라 레벨만 올랐다", example = "false")
         boolean newlyAcquired,
         @Schema(description = "뽑기 후 이 키캡의 레벨", example = "9")
         int level,
         @Schema(description = "이번 뽑기에 쓴 조각 수", example = "5")
         int shardsSpent,
-        @Schema(description = "뽑기 후 조각 잔액. 같은 멱등키로 재생된 응답에서는 현재 잔액", example = "12")
+        @Schema(description = "뽑기 후 조각 잔액. 같은 멱등키로 재호출한 응답에서는 조회 시점의 잔액이다", example = "12")
         int shardBalance,
         @Schema(description = "뽑은 시각", example = "2026-10-09T01:00:00Z")
         Instant drawnAt

@@ -13,25 +13,25 @@ public record KeycapBoxStatusResponse(
         int shardBalance,
         @Schema(description = "뽑기 1회에 드는 조각 수", example = "5")
         int drawPrice,
-        @Schema(description = "조각을 보유하고 있으며 뽑기 가격 이상인지 여부", example = "true")
+        @Schema(description = "조각 잔액이 뽑기 가격 이상인지 여부", example = "true")
         boolean canDraw,
         @Schema(description = "현재 조각 진행 탭 수", example = "45")
         long shardProgressTapCount,
         @Schema(description = "다음 조각 획득 필요 탭 수", example = "100")
         int nextShardRequiredTapCount,
-        @Schema(description = "[deprecated] 상자는 사라졌다. 항상 0", example = "0")
+        @Schema(description = "상자는 사라졌다(BEA-329). 항상 0. 조각은 shardBalance", example = "0", deprecated = true)
         int boxBalance,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean canFreeOpen,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean canAdOpen,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean charging,
-        @Schema(description = "[deprecated] 항상 null", example = "null")
+        @Schema(description = "상자는 사라졌다. 항상 null", nullable = true, deprecated = true)
         Instant nextRechargeAt,
-        @Schema(description = "[deprecated] shardProgressTapCount 와 같다", example = "45")
+        @Schema(description = "shardProgressTapCount 와 같다", example = "45", deprecated = true)
         long boxProgressTapCount,
-        @Schema(description = "[deprecated] nextShardRequiredTapCount 와 같다", example = "100")
+        @Schema(description = "nextShardRequiredTapCount 와 같다", example = "100", deprecated = true)
         int nextBoxRequiredTapCount
 ) {
     public static KeycapBoxStatusResponse of(

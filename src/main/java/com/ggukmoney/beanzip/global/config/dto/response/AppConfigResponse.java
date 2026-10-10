@@ -8,7 +8,7 @@ import java.util.List;
 public record AppConfigResponse(
         @Schema(description = "포인트 정책")
         PointPolicy pointPolicy,
-        @Schema(description = "키캡 상자 정책")
+        @Schema(description = "키캡 조각 정책. 탭 몇 번에 조각 하나가 나오는지 정한다")
         BoxPolicy boxPolicy,
         @Schema(description = "부스터 정책")
         BoosterPolicy boosterPolicy
@@ -21,13 +21,13 @@ public record AppConfigResponse(
     ) {
     }
 
-    @Schema(description = "키캡 상자 정책")
+    @Schema(description = "키캡 조각 정책. 탭 몇 번에 조각 하나가 나오는지 정한다")
     public record BoxPolicy(
-            @Schema(description = "상자 세션 내 1~5번째 상자까지 필요한 탭 수(순서대로)", example = "[25, 35, 50, 70, 100]")
+            @Schema(description = "세션 내 1~5번째 조각까지 필요한 탭 수(순서대로)", example = "[25, 35, 50, 70, 100]")
             List<Integer> sessionStepTapCounts,
-            @Schema(description = "6번째 상자부터 이후 매 상자마다 필요한 탭 수", example = "180")
+            @Schema(description = "6번째 조각부터 이후 매 조각마다 필요한 탭 수", example = "180")
             int tailStepTapCount,
-            @Schema(description = "상자 세션이 리셋되는 유휴 시간(초). 마지막 탭 이후 이만큼 쉬면 스텝이 처음으로 돌아간다.", example = "1800")
+            @Schema(description = "조각 진행 세션이 리셋되는 유휴 시간(초). 마지막 탭 이후 이만큼 쉬면 스텝이 처음으로 돌아간다.", example = "1800")
             int sessionIdleTimeoutSeconds
     ) {
     }
