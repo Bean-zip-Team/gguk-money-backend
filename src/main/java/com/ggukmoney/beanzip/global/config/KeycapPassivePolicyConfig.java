@@ -5,6 +5,8 @@ import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Critical;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Growth;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Profile;
+import com.ggukmoney.beanzip.domain.keycap.passive.KeycapAutoClickAccrual.ActivePeriod;
+import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +18,10 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
 
 /** Publishes one immutable policy per refresh; defaults do not activate rewards. */
 @Component
@@ -27,9 +33,10 @@ public class KeycapPassivePolicyConfig {
     public static final String KEY_CAP_DAYS = PREFIX + "capDays";
     private static final KeycapPassivePolicy BASE_POLICY = KeycapPassivePolicy.defaults();
     public static final Map<String, String> DEFAULT_VALUES = defaultValues();
+    public static final Set<String> CONFIG_KEYS = configKeys();
 
     private final AppConfigBatchLoader loader;
-    private volatile Cached cache = new Cached(DEFAULT_VALUES, new Snapshot(false, BASE_POLICY));
+    private volatile Cached cache = new Cached(Map.of(), new Snapshot(false, BASE_POLICY,Instant.EPOCH,7,List.of(),false));
 
     public KeycapPassivePolicyConfig(AppConfigBatchLoader loader) {
         this.loader = Objects.requireNonNull(loader);
@@ -37,17 +44,9 @@ public class KeycapPassivePolicyConfig {
 
     @PostConstruct
     @Scheduled(fixedRate = 60_000)
-    public void refresh() {
+    public synchronized void refresh() {
         try {
-            Map<String, String> loaded = loader.load(DEFAULT_VALUES.keySet(), Instant.now());
-            Map<String, String> values = new HashMap<>(cache.values());
-            for (String key : DEFAULT_VALUES.keySet()) {
-                if (loaded.containsKey(key)) {
-                    values.put(key, loaded.get(key).trim());
-                }
-            }
-            Snapshot next = decode(values);
-            cache = new Cached(Map.copyOf(values), next);
+            publish(loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,Instant.now()));
         } catch (RuntimeException exception) {
             log.warn("Failed to refresh keycap passive policy; fallback=last-known-good", exception);
         }
@@ -55,6 +54,55 @@ public class KeycapPassivePolicyConfig {
 
     public Snapshot snapshot() {
         return cache.snapshot();
+    }
+
+    /** Refresh at settlement so another pod's committed on/off changes cannot be missed. */
+    public synchronized Snapshot settlementSnapshot(Instant now) {
+        List<AppConfig> rows;
+        try {
+            rows=loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,now);
+        } catch (RuntimeException exception) {
+            log.warn("Passive activation history unavailable; settlement must retry",exception);
+            return unavailableSnapshot();
+        }
+        try {
+            publish(rows);
+        } catch (RuntimeException exception) {
+            log.warn("Invalid passive policy; retain cache and retry settlement without advancing checkpoint",exception);
+            return unavailableSnapshot();
+        }
+        return cache.snapshot();
+    }
+
+    private Snapshot unavailableSnapshot() {
+        var previous=cache.snapshot();
+        return new Snapshot(previous.enabled(),previous.policy(),previous.enabledAt(),previous.capDays(),
+                previous.activePeriods(),false);
+    }
+
+    private void publish(List<AppConfig> rows) {
+        Map<String,String> values=new HashMap<>();
+        rows.forEach(row -> values.put(row.getConfigKey(),row.getConfigValue().trim()));
+        Snapshot decoded=decode(values);
+        var periods=new ArrayList<ActivePeriod>();
+        Instant from=null;
+        for (AppConfig row:rows) {
+            if (!KEY_ENABLED.equals(row.getConfigKey())) continue;
+            String flag=row.getConfigValue().trim();
+            if (!"true".equalsIgnoreCase(flag) && !"false".equalsIgnoreCase(flag))
+                throw new IllegalArgumentException("Invalid activation history flag");
+            if (Boolean.parseBoolean(flag)) {
+                if (from==null) from=row.getEffectiveAt();
+            } else if (from!=null) {
+                if (row.getEffectiveAt().isAfter(from)) periods.add(new ActivePeriod(from,row.getEffectiveAt()));
+                from=null;
+            }
+        }
+        if (from!=null) periods.add(new ActivePeriod(from,null));
+        // Validate ordering before publishing any part of the policy.
+        new com.ggukmoney.beanzip.domain.keycap.passive.KeycapAutoClickAccrual.Policy(periods,decoded.capDays());
+        cache=new Cached(Map.copyOf(values),new Snapshot(decoded.enabled(),decoded.policy(),decoded.enabledAt(),
+                decoded.capDays(),periods,true));
     }
 
     public static Snapshot decode(Map<String, String> overrides) {
@@ -67,9 +115,8 @@ public class KeycapPassivePolicyConfig {
         Map<Grade, Growth> growths = new EnumMap<>(Grade.class);
         for (Grade grade : BASE_POLICY.growths().keySet()) {
             String prefix = PREFIX + grade.name() + ".";
-            growths.put(grade, new Growth(Integer.parseInt(values.get(prefix + "capLevel")),
-                    Double.parseDouble(values.get(prefix + "startStrength")),
-                    Double.parseDouble(values.get(prefix + "maxStrength")),
+            double ratio=startRatio(grade,overrides);
+            growths.put(grade, new Growth(Integer.parseInt(values.get(prefix + "capLevel")),ratio,1.0,
                     Integer.parseInt(values.get(prefix + "autoClickBase")),
                     Integer.parseInt(values.get(prefix + "autoClickPerLevel")),
                     Integer.parseInt(values.get(prefix + "autoClickCap"))));
@@ -104,6 +151,32 @@ public class KeycapPassivePolicyConfig {
                 * Math.max(profile.shard().expectedMultiplier(), profile.point().expectedMultiplier());
     }
 
+    /** Read legacy operational pairs only until the append-only seeder writes their equivalent ratio. */
+    public static double startRatio(Grade grade,Map<String,String> overrides) {
+        String prefix=PREFIX+grade.name()+".";
+        Growth base=BASE_POLICY.growths().get(grade);
+        double ratio;
+        if (overrides.containsKey(prefix+"startRatio")) ratio=Double.parseDouble(overrides.get(prefix+"startRatio"));
+        else {
+            double start=Double.parseDouble(overrides.getOrDefault(prefix+"startStrength",Double.toString(base.startStrength())));
+            double max=Double.parseDouble(overrides.getOrDefault(prefix+"maxStrength",Double.toString(base.maxStrength())));
+            if (!Double.isFinite(start) || !Double.isFinite(max) || start<=0 || max<start || max>1)
+                throw new IllegalArgumentException("Invalid legacy passive growth");
+            ratio=start/max;
+        }
+        if (!Double.isFinite(ratio) || ratio<=0 || ratio>1) throw new IllegalArgumentException("Lv1 비율은 0보다 크고 1 이하입니다.");
+        return ratio;
+    }
+
+    private static Set<String> configKeys() {
+        var keys=new HashSet<>(DEFAULT_VALUES.keySet());
+        BASE_POLICY.growths().keySet().forEach(grade -> {
+            keys.add(PREFIX+grade.name()+".startStrength");
+            keys.add(PREFIX+grade.name()+".maxStrength");
+        });
+        return Set.copyOf(keys);
+    }
+
     private static String unquote(String value) {
         return value.startsWith("\"") && value.endsWith("\"") ? value.substring(1, value.length()-1) : value;
     }
@@ -125,8 +198,7 @@ public class KeycapPassivePolicyConfig {
         BASE_POLICY.growths().forEach((grade, growth) -> {
             String prefix = PREFIX + grade.name() + ".";
             values.put(prefix + "capLevel", Integer.toString(growth.capLevel()));
-            values.put(prefix + "startStrength", Double.toString(growth.startStrength()));
-            values.put(prefix + "maxStrength", Double.toString(growth.maxStrength()));
+            values.put(prefix + "startRatio", Double.toString(growth.startRatio()));
             values.put(prefix + "autoClickBase", Integer.toString(growth.autoClickBase()));
             values.put(prefix + "autoClickPerLevel", Integer.toString(growth.autoClickPerLevel()));
             values.put(prefix + "autoClickCap", Integer.toString(growth.autoClickCap()));
@@ -147,7 +219,12 @@ public class KeycapPassivePolicyConfig {
         }
     }
 
-    public record Snapshot(boolean enabled, KeycapPassivePolicy policy, Instant enabledAt, int capDays) {
+    public record Snapshot(boolean enabled, KeycapPassivePolicy policy, Instant enabledAt, int capDays,
+                           List<ActivePeriod> activePeriods,boolean loaded) {
+        public Snapshot { activePeriods=List.copyOf(activePeriods); }
+        public Snapshot(boolean enabled, KeycapPassivePolicy policy,Instant enabledAt,int capDays) {
+            this(enabled,policy,enabledAt,capDays,enabled?List.of(new ActivePeriod(enabledAt,null)):List.of(),true);
+        }
         public Snapshot(boolean enabled, KeycapPassivePolicy policy) {
             this(enabled, policy, Instant.EPOCH, 7);
         }

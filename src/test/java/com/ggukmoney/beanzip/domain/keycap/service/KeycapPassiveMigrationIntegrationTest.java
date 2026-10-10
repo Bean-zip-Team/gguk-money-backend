@@ -25,18 +25,32 @@ class KeycapPassiveMigrationIntegrationTest extends FullStackIntegrationTestSupp
             statement.execute("insert into user_tap_progress values ('"+user+"',3000)");
             statement.execute("insert into ranking_season values (1,'ALL_TIME')");
             statement.execute("insert into ranking_entry values ('"+user+"',1,5100,100)");
+            // A repeatable PG rehearsal; not a production timing estimate.
+            statement.execute("insert into app_user select gen_random_uuid() from generate_series(1,20000)");
+            statement.execute("insert into user_tap_daily select id,1000 from app_user where id<>'"+user+"'");
+            statement.execute("insert into user_tap_progress select id,1000 from app_user where id<>'"+user+"'");
+            String preflight=new ClassPathResource("db/manual-bea-349-passive-preflight.sql").getContentAsString(StandardCharsets.UTF_8);
+            try(var rows=statement.executeQuery(preflight)) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getLong("daily_rows")).isEqualTo(20001);
+                assertThat(rows.getLong("progress_rows")).isEqualTo(20001);
+                assertThat(rows.getLong("batch_rows")).isZero();
+            }
             String sql=new ClassPathResource("db/manual-bea-349-passive.sql").getContentAsString(StandardCharsets.UTF_8);
+            long migrationStart=System.nanoTime();
             statement.execute(sql);
-            try(var rows=statement.executeQuery("select cumulative_mission_tap_count,cumulative_ranking_tap_count from user_tap_progress")) {
+            System.out.printf("BEA-349 migration rehearsal: daily=20001 progress=20001 elapsedMs=%d%n",
+                    (System.nanoTime()-migrationStart)/1_000_000);
+            try(var rows=statement.executeQuery("select cumulative_mission_tap_count,cumulative_ranking_tap_count from user_tap_progress where user_id='"+user+"'")) {
                 assertThat(rows.next()).isTrue(); assertThat(rows.getLong(1)).isEqualTo(3000); assertThat(rows.getLong(2)).isEqualTo(5000);
             }
             statement.execute("update user_tap_daily set total_effective_tap_count=4060");
             statement.execute("update user_tap_progress set cumulative_ranking_tap_count=5060");
             statement.execute(sql);
-            try(var rows=statement.executeQuery("select total_valid_tap_count,total_effective_tap_count from user_tap_daily")) {
+            try(var rows=statement.executeQuery("select total_valid_tap_count,total_effective_tap_count from user_tap_daily where user_id='"+user+"'")) {
                 assertThat(rows.next()).isTrue(); assertThat(rows.getLong(1)).isEqualTo(4000); assertThat(rows.getLong(2)).isEqualTo(4060);
             }
-            try(var rows=statement.executeQuery("select cumulative_ranking_tap_count from user_tap_progress")) {
+            try(var rows=statement.executeQuery("select cumulative_ranking_tap_count from user_tap_progress where user_id='"+user+"'")) {
                 assertThat(rows.next()).isTrue(); assertThat(rows.getLong(1)).isEqualTo(5060);
             }
             statement.execute("drop schema "+schema+" cascade");

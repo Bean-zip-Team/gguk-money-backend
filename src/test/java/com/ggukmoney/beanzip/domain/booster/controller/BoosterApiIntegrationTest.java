@@ -64,7 +64,9 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 1, 350)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointsAwarded").value(17));
+                .andExpect(jsonPath("$.data.pointsAwarded").value(1))
+                .andExpect(jsonPath("$.data.validTapCount").value(350))
+                .andExpect(jsonPath("$.data.remainingTapsToNextPoint").value(20));
     }
 
     @Test

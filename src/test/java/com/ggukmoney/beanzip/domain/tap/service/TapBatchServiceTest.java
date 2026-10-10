@@ -22,6 +22,8 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -127,11 +129,14 @@ class TapBatchServiceTest {
         verify(userService, never()).getById(any());
     }
 
-    @Test
-    void returnsExistingSnapshotWithoutReprocessingOnDuplicateSubmission() {
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void duplicateReturnsCurrentStateWithoutPayoutEvenWhenCountChanges(boolean changedCount) {
         AppUser user = stubUser();
         TapBatch existing = mock(TapBatch.class);
         when(existing.getAcceptedCount()).thenReturn(42);
+        when(existing.getResultJson()).thenReturn(new tools.jackson.databind.ObjectMapper().writeValueAsString(
+                new TapBatchSubmitResponse(42,75,2,0,98L,false,0,1000,tapDate,2,30,1000,0,
+                        false,false,false,null,0,0,1000,42,0,75)));
         when(existing.getRequestHash()).thenAnswer(i -> com.ggukmoney.beanzip.global.util.TokenHash.sha256Base64Url(sessionId+":1:50"));
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         pointAccount.credit(100L);
@@ -139,9 +144,10 @@ class TapBatchServiceTest {
         // 실제 적립 경로는 두 카운트를 항상 함께 올린다.
         daily.addValidTaps(77);
         daily.addTotalValidTaps(77);
+        daily.addEffectiveTaps(46);
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
-        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 50);
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, changedCount?51:50);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
         assertThat(response.acceptedCount()).isEqualTo(42);
@@ -149,11 +155,15 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.shardsDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
+        assertThat(response.effectiveCount()).isZero();
+        assertThat(response.autoClicksGranted()).isZero();
+        assertThat(response.effectiveTapCountToday()).isEqualTo(123);
         assertThat(response.boxProgressTapCount()).isZero();
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(FAR_AWAY_TARGET);
         verify(userTapDailyService, never()).save(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(eventPublisher, never()).publishEvent(any());
+        verify(passive,never()).settleLocked(any(),any(),anyString(),any());
     }
 
     @Test

@@ -53,8 +53,10 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
 
     @BeforeEach void enable() {
         var now=Instant.now();
+        jdbcTemplate.update("delete from app_config where config_key=?",KeycapPassivePolicyConfig.KEY_ENABLED);
         configs.saveAll(KeycapPassivePolicyConfig.DEFAULT_VALUES.entrySet().stream().map(entry ->
-                AppConfig.createFor(entry.getKey(),entry.getKey().equals(KeycapPassivePolicyConfig.KEY_ENABLED)?"true":entry.getValue(),now)).toList());
+                AppConfig.createFor(entry.getKey(),entry.getKey().equals(KeycapPassivePolicyConfig.KEY_ENABLED)?"true":entry.getValue(),
+                        entry.getKey().equals(KeycapPassivePolicyConfig.KEY_ENABLED)?Instant.EPOCH:now)).toList());
         configs.save(AppConfig.createFor(TapPolicyConfig.KEY_RATE_LIMIT_ENABLED,"false",now));
         policy.refresh(); tapPolicy.refresh();
     }
@@ -102,16 +104,56 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         var day=UserTapDaily.createFor(user,LocalDate.now(ZoneId.of("Asia/Seoul"))); day.addValidTaps(2990); dailies.save(day);
         var request=new TapBatchSubmitRequest(UUID.randomUUID(),1L,50);
         var results=concurrently(() -> taps.submitBatch(user.getId(),request),() -> taps.submitBatch(user.getId(),request));
-        assertThat(results.get(0)).isEqualTo(results.get(1));
-        var response=(TapBatchSubmitResponse)results.get(0);
-        assertThat(response.autoClicksGranted()).isEqualTo(60);
-        assertThat(response.acceptedCount()).isEqualTo(50);
-        assertThat(response.effectiveCount()).isEqualTo(50);
-        assertThat(response.effectiveTapCountToday()).isEqualTo(110);
-        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isZero();
+        var responses=results.stream().map(TapBatchSubmitResponse.class::cast).toList();
+        assertThat(responses).extracting(TapBatchSubmitResponse::autoClicksGranted).containsExactlyInAnyOrder(60,0);
+        assertThat(responses).extracting(TapBatchSubmitResponse::effectiveCount).containsExactlyInAnyOrder(50,0);
+        assertThat(responses).allSatisfy(response -> {
+            assertThat(response.acceptedCount()).isEqualTo(50);
+            assertThat(response.effectiveTapCountToday()).isEqualTo(110);
+        });
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isEqualTo(50);
         assertThat(dailies.findByUserIdAndTapDate(user.getId(),day.getTapDate()).orElseThrow().getValidTapCount()).isEqualTo(3000);
-        assertThatThrownBy(() -> taps.submitBatch(user.getId(),new TapBatchSubmitRequest(request.tapSessionId(),1L,51)))
-                .hasMessageContaining("TAP_BATCH_REQUEST_MISMATCH");
+        var replay=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(request.tapSessionId(),1L,51));
+        assertThat(replay.acceptedCount()).isEqualTo(50);
+        assertThat(replay.pointsAwarded()).isZero();
+        assertThat(replay.shardsDropped()).isZero();
+        assertThat(replay.autoClicksGranted()).isZero();
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeRankingTapCount()).isEqualTo(110);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from tap_batch where user_id=?",Long.class,user.getId())).isEqualTo(1);
+    }
+
+    @Test void disabledPolicyPaysPreviouslyEarnedClicksAndExcludesAllInactiveTime() {
+        var user=user("cheer"); elapsed(user,7);
+        var start=Instant.now().minus(Duration.ofDays(7)).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        activationHistory(start,false);
+        jdbcTemplate.update("update keycap_passive_checkpoint set last_activity_at=? where user_id=?",
+                java.sql.Timestamp.from(start),user.getId());
+        assertThat(passive.status(user.getId()).pendingAutoClicks()).isEqualTo(180);
+        assertThat(passive.settle(user.getId(),"closed-periods").autoClicksGranted()).isEqualTo(180);
+        assertThat(passive.settle(user.getId(),"still-disabled").autoClicksGranted()).isZero();
+        assertThat(policy.snapshot().enabled()).isFalse();
+    }
+
+    @Test void repeatedOnOffTransitionsDoNotEraseEarlierUnclaimedPeriods() {
+        var user=user("cheer"); elapsed(user,7);
+        var start=Instant.now().minus(Duration.ofDays(7)).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        activationHistory(start,true);
+        jdbcTemplate.update("update keycap_passive_checkpoint set last_activity_at=? where user_id=?",
+                java.sql.Timestamp.from(start),user.getId());
+        // Another pod's cache still has the pre-toggle policy; settlement must read committed history.
+        assertThat(passive.settle(user.getId(),"multiple-periods").autoClicksGranted()).isEqualTo(240);
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeRankingTapCount()).isEqualTo(240);
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isZero();
+        assertThat(policy.snapshot().activePeriods()).hasSize(3);
+    }
+
+    private void activationHistory(Instant start,boolean reopen) {
+        jdbcTemplate.update("delete from app_config where config_key=?",KeycapPassivePolicyConfig.KEY_ENABLED);
+        configs.saveAll(List.of(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"true",start),
+                AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",start.plus(Duration.ofDays(2))),
+                AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"true",start.plus(Duration.ofDays(4))),
+                AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",start.plus(Duration.ofDays(5)))));
+        if (reopen) configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"true",start.plus(Duration.ofDays(6))));
     }
 
     @Test void equipmentChangeClosesPreviousRateAndLevelUpStoresNewRate() {

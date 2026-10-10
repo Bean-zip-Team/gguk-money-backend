@@ -1,6 +1,15 @@
 -- BEA-349: run after BEA-329 migration, with old application writers stopped.
 -- Apply before deploying this branch (ddl-auto=validate). No existing counters or scores are reset.
 -- Repeatable: only NULL new counters are backfilled; later increments survive repeated execution.
+-- Run manual-bea-349-passive-preflight.sql first and record actual row counts/table sizes.
+-- Rehearse this entire transaction on a recent production-sized clone with client timing enabled.
+-- ADD COLUMN takes ACCESS EXCLUSIVE, held through the backfills and COMMIT: reads are blocked too.
+-- Clone/CI timings are evidence for that dataset only, not a production duration estimate.
+-- Before COMMIT: on any error issue ROLLBACK; no partial schema/counter change survives.
+-- After new code has written rewards: retain these columns/data and forward-fix.
+-- Do not roll back to unpatched old code: it reads cumulative_valid_tap_count for missions,
+-- which now includes automatic/bonus clicks. A compatible rollback must read the new mission counter.
+-- Never drop/reset counters or rewrite historical point/shard ledgers as a rollback shortcut.
 BEGIN;
 SET LOCAL lock_timeout = '3s';
 
@@ -51,4 +60,5 @@ CREATE TABLE IF NOT EXISTS keycap_passive_settlement (
 
 -- AppConfig defaults are append-only seeded by TapConfigSeeder; existing operational rows win.
 -- Activation remains false. Enable via /ops/config so enabledAt is saved atomically.
+-- The complete append-only keycap.passive.enabled history is the accrual timeline; never prune/update it.
 COMMIT;

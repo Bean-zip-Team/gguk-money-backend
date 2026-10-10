@@ -88,7 +88,18 @@ public class TapConfigSeeder implements CommandLineRunner {
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
             boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
             if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive."))) {
-                appConfigRepository.save(AppConfig.createFor(key, codeValue, now));
+                String seedValue=codeValue;
+                if (key.startsWith("keycap.passive.") && key.endsWith(".startRatio")) {
+                    String prefix=key.substring(0,key.lastIndexOf('.')+1);
+                    var legacy=new LinkedHashMap<String,String>();
+                    for (String suffix:List.of("startStrength","maxStrength")) {
+                        appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(prefix+suffix,now)
+                                .ifPresent(row -> legacy.put(row.getConfigKey(),row.getConfigValue()));
+                    }
+                    var grade=com.ggukmoney.beanzip.domain.keycap.entity.Keycap.Grade.valueOf(key.split("\\.")[2]);
+                    seedValue=Double.toString(KeycapPassivePolicyConfig.startRatio(grade,legacy));
+                }
+                appConfigRepository.save(AppConfig.createFor(key, seedValue, now));
             }
         });
     }

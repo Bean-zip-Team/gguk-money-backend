@@ -46,10 +46,9 @@ public class TapBatchService {
         String hash=requestHash(request);
         if(existing.isPresent()) {
             var saved=existing.get();
-            if(!Objects.equals(hash,saved.getRequestHash()))
-                throw new ResponseStatusException(HttpStatus.CONFLICT,"TAP_BATCH_REQUEST_MISMATCH");
-            if(saved.getResultJson()!=null) return json.readValue(saved.getResultJson(),TapBatchSubmitResponse.class);
-            // Pre-rollout batches have no effects/outcome snapshot. No re-accrual or payout on replay.
+            // Existing apps identify a batch by session/sequence, even if a retry changes count.
+            // Keep the stored confirmed outcome for audit; return current state with zero awards.
+            // Replaying neither settles new automatic clicks nor rolls another reward.
             var state=rewards.award(user,now,com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE,
                     0,true,saved.getPublicId(),new KeycapPassiveRoller());
             return response(saved.getAcceptedCount(),0,0,0,0,state);

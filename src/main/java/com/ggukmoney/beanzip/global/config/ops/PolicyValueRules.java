@@ -114,14 +114,18 @@ public class PolicyValueRules {
                     "활성화 이전 적립을 차단하는 시각 (직접 수정 불가)",null);
             else if (key.endsWith(".probability")) add(key,Kind.DECIMAL,"0 이상 1 이하; 전체 기대배수 검증",
                     raw -> finite(raw)>=0 && finite(raw)<=1,"상한 레벨의 크리티컬 확률: "+key,null);
-            else if (key.endsWith("Strength")) add(key,Kind.DECIMAL,"0보다 크고 1 이하; 전체 정책 검증",
+            else if (key.endsWith(".startRatio")) add(key,Kind.DECIMAL,"0보다 크고 1 이하; 전체 정책 검증",
                     raw -> finite(raw)>0 && finite(raw)<=1,
-                    key.endsWith(".maxStrength")?"보간 기준값 (실제 기대배수 캡 아님): "+key:"Lv1 보간 기준값: "+key,null);
+                    "Lv1 효과 / 상한 효과의 비율 (0.4 = 40%): "+key,null);
             else integer(key,key.endsWith(".autoClickBase")||key.endsWith(".autoClickPerLevel")||key.endsWith(".autoClickCap")?0:1,
                     key.endsWith(".capDays")?"자동 클릭 미수령 상한 (일)":key.endsWith(".autoClickBase")?"Lv1 일당 자동 클릭: "+key:
                     key.endsWith(".autoClickPerLevel")?"레벨당 일당 자동 클릭 증가: "+key:
                     key.endsWith(".autoClickCap")?"일당 자동 클릭 상한: "+key:key);
         });
+        com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.CONFIG_KEYS.stream()
+                .filter(key -> key.endsWith("Strength")).sorted().forEach(key ->
+                    add(key,Kind.DECIMAL,"읽기 전용: 같은 등급의 startRatio를 사용하세요",raw -> false,
+                            "이전 보간 기준값 (실제 캡 아님, 기존 이력 보존): "+key,null));
 
         // 온보딩: 로더가 매 요청 직접 읽고 대체값이 없다. 잘못되면 온보딩 지급이 바로 막힌다.
         group = "온보딩";

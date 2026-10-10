@@ -81,8 +81,8 @@ public class OpsConfigService {
 
         Instant effectiveAt = Instant.now();
         if (key.startsWith("keycap.passive.")) {
-            var passive = new java.util.HashMap<>(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.DEFAULT_VALUES);
-            repository.findLatestEffectiveByConfigKeys(passive.keySet(), effectiveAt)
+            var passive = new java.util.HashMap<String,String>();
+            repository.findLatestEffectiveByConfigKeys(KeycapPassivePolicyConfig.CONFIG_KEYS, effectiveAt)
                     .forEach(row -> passive.put(row.getConfigKey(),row.getConfigValue()));
             passive.put(key,next);
             if (key.equals(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED_AT)) {

@@ -63,4 +63,20 @@ class AppConfigRepositoryTest extends FullStackIntegrationTestSupport {
                 """, Long.class, UUID.randomUUID(), key, value,
                 Timestamp.from(effectiveAt), Timestamp.from(effectiveAt), Timestamp.from(effectiveAt));
     }
+
+    @Test void readsActivationHistoryAndLatestPolicyInOneOrderedSnapshotWithoutFutureRows() {
+        Instant now=Instant.parse("2026-08-31T00:00:00Z");
+        String enabled="passive.history.enabled",ratio="passive.history.ratio";
+        repository.saveAll(List.of(AppConfig.createFor(enabled,"true",now.minusSeconds(100)),
+                AppConfig.createFor(ratio,"1",now.minusSeconds(90)),
+                AppConfig.createFor(enabled,"false",now.minusSeconds(80)),
+                AppConfig.createFor(ratio,"2",now.minusSeconds(70)),
+                AppConfig.createFor(enabled,"true",now.minusSeconds(50)),
+                AppConfig.createFor(enabled,"false",now.plusSeconds(10)),
+                AppConfig.createFor("ignored.history","0",now)));
+        repository.flush();
+        assertThat(repository.findLatestEffectiveWithHistory(Set.of(enabled,ratio),enabled,now))
+                .extracting(AppConfig::getConfigKey,AppConfig::getConfigValue)
+                .containsExactly(tuple(enabled,"true"),tuple(enabled,"false"),tuple(ratio,"2"),tuple(enabled,"true"));
+    }
 }

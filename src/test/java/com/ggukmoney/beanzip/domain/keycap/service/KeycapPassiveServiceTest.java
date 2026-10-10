@@ -19,6 +19,25 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class KeycapPassiveServiceTest {
+    @Test void unloadedPolicyCannotWriteOrAdvanceAnyCheckpoint() {
+        var config=mock(KeycapPassivePolicyConfig.class);
+        var unknown=new KeycapPassivePolicyConfig.Snapshot(false,KeycapPassivePolicy.defaults(),Instant.EPOCH,7,List.of(),false);
+        when(config.settlementSnapshot(any())).thenReturn(unknown);
+        when(config.snapshot()).thenReturn(unknown);
+        var equipment=mock(UserKeycapRepository.class);
+        var checkpoints=mock(KeycapPassiveCheckpointRepository.class);
+        var rewards=mock(TapRewardService.class);
+        var points=mock(PointAccountService.class);
+        var wallets=mock(KeycapBoxAccountService.class);
+        var service=new KeycapPassiveService(mock(UserRewardLock.class),equipment,checkpoints,
+                mock(KeycapPassiveSettlementRepository.class),config,rewards,new ObjectMapper(),Clock.systemUTC(),points,wallets);
+        var user=mock(AppUser.class);
+        assertThatThrownBy(() -> service.settleLocked(user,Instant.now(),"unloaded",new KeycapPassiveRoller()))
+                .hasMessageContaining("503").hasMessageContaining("PASSIVE_POLICY_UNAVAILABLE");
+        assertThatThrownBy(() -> service.status(UUID.randomUUID())).hasMessageContaining("PASSIVE_POLICY_UNAVAILABLE");
+        assertThatThrownBy(() -> service.refreshEquipmentLocked(UUID.randomUUID())).hasMessageContaining("PASSIVE_POLICY_UNAVAILABLE");
+        verifyNoInteractions(checkpoints,equipment,rewards,points,wallets);
+    }
     @Test void changedCapDaysClosesOldCheckpointWithItsPreviouslyValidatedAccrualCap() {
         var user=mock(AppUser.class);
         when(user.getId()).thenReturn(UUID.randomUUID());
@@ -35,7 +54,7 @@ class KeycapPassiveServiceTest {
                 "keycap.passive.COMMON.autoClickBase","100000","keycap.passive.COMMON.autoClickPerLevel","0","keycap.passive.COMMON.autoClickCap","100000"));
         var next=KeycapPassivePolicyConfig.decode(Map.of("keycap.passive.enabled","true","keycap.passive.capDays","30",
                 "keycap.passive.COMMON.autoClickBase","3333","keycap.passive.COMMON.autoClickPerLevel","0","keycap.passive.COMMON.autoClickCap","3333"));
-        when(config.snapshot()).thenReturn(old);
+        when(config.settlementSnapshot(any())).thenReturn(old);
         var rewards=mock(TapRewardService.class);
         var points=mock(PointAccountService.class); var wallets=mock(KeycapBoxAccountService.class);
         var account=PointAccount.createFor(user); var wallet=KeycapBoxAccount.createFor(user);
@@ -46,7 +65,7 @@ class KeycapPassiveServiceTest {
                 mock(KeycapPassiveSettlementRepository.class),config,rewards,new ObjectMapper(),Clock.systemUTC(),points,wallets);
         var start=Instant.parse("2026-10-01T00:00:00Z");
         service.settleLocked(user,start,"init",new KeycapPassiveRoller());
-        when(config.snapshot()).thenReturn(next);
+        when(config.settlementSnapshot(any())).thenReturn(next);
         var result=service.settleLocked(user,start.plus(Duration.ofDays(30)),"transition",new KeycapPassiveRoller());
         assertThat(result.autoClicksGranted()).isEqualTo(100000);
         assertThat(result.capped()).isTrue();

@@ -49,14 +49,14 @@ public class KeycapPassiveService {
     /** All hooks enter after locking AppUser, before locking wallets/equipment or changing levels. */
     @Transactional(propagation=Propagation.MANDATORY)
     public KeycapPassiveSettleResponse settleLocked(AppUser user,Instant now,String operationKey,KeycapPassiveRoller roller) {
-        var snapshot=config.snapshot();
+        var snapshot=requireLoaded(config.settlementSnapshot(now));
         var row=checkpoints.findById(user.getId()).orElseGet(() -> {
             var current=currentEquipment(user.getId(),snapshot);
             return checkpoints.save(KeycapPassiveCheckpoint.create(user,
                     Checkpoint.initial(now,current.code(),current.level(),current.effects().autoClicksPerDay()),
                     json.writeValueAsString(current.effects()),snapshot.capDays()));
         });
-        var calculated=calculator.calculate(row.value(),now,new Policy(snapshot.enabled(),snapshot.enabledAt(),row.getCapDays()));
+        var calculated=calculator.calculate(row.value(),now,new Policy(snapshot.activePeriods(),row.getCapDays()));
         Effects old=json.readValue(row.getEffectsJson(),Effects.class);
         UUID operationId=UUID.nameUUIDFromBytes((user.getId()+":"+operationKey).getBytes(StandardCharsets.UTF_8));
         var award=calculated.grantedClicks()>0
@@ -71,8 +71,8 @@ public class KeycapPassiveService {
 
     @Transactional(propagation=Propagation.MANDATORY)
     public void refreshEquipmentLocked(UUID userId) {
+        var snapshot=requireLoaded(config.snapshot());
         var row=checkpoints.findById(userId).orElseThrow();
-        var snapshot=config.snapshot();
         var current=currentEquipment(userId,snapshot);
         row.update(row.value().withEquipment(current.code(),current.level(),current.effects().autoClicksPerDay()),
                 json.writeValueAsString(current.effects()),snapshot.capDays());
@@ -86,12 +86,12 @@ public class KeycapPassiveService {
     @Transactional(readOnly=true)
     public KeycapPassiveStatusResponse status(UUID userId) {
         var now=clock.instant();
-        var snapshot=config.snapshot();
+        var snapshot=requireLoaded(config.settlementSnapshot(now));
         var current=currentEquipment(userId,snapshot);
         var row=checkpoints.findById(userId);
         var value=row.map(KeycapPassiveCheckpoint::value).orElse(Checkpoint.initial(now,current.code(),current.level(),current.effects().autoClicksPerDay()));
         int capDays=row.map(KeycapPassiveCheckpoint::getCapDays).orElse(snapshot.capDays());
-        var pending=calculator.calculate(value,now,new Policy(snapshot.enabled(),snapshot.enabledAt(),capDays));
+        var pending=calculator.calculate(value,now,new Policy(snapshot.activePeriods(),capDays));
         return new KeycapPassiveStatusResponse(snapshot.enabled(),current.code(),current.code()==null?null:current.level(),
                 KeycapPassiveEffectResponse.from(current.effects(),snapshot.enabled(),null),pending.grantedClicks(),
                 Math.multiplyExact(value.clicksPerDay(),capDays),pending.capped(),row.map(KeycapPassiveCheckpoint::getLastActivityAt).orElse(null),now);
@@ -103,6 +103,10 @@ public class KeycapPassiveService {
                 .map(owned -> new Equipment(owned.getKeycap().getCode(),owned.getLevel(),
                         snapshot.policy().effects(owned.getKeycap().getCode(),owned.getLevel())))
                 .orElse(new Equipment(null,0,Effects.NONE));
+    }
+    private KeycapPassivePolicyConfig.Snapshot requireLoaded(KeycapPassivePolicyConfig.Snapshot snapshot) {
+        if (!snapshot.loaded()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"PASSIVE_POLICY_UNAVAILABLE");
+        return snapshot;
     }
     private record Equipment(String code,int level,Effects effects) {}
 }
