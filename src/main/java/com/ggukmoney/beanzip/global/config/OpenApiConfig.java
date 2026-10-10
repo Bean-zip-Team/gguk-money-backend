@@ -17,7 +17,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Gguk Money Backend API")
-                        .description("Gguk Money backend API documentation")
+                        .description("Gguk Money 백엔드 API 문서예요.")
                         .version("v1"))
                 .components(new Components()
                         .addSecuritySchemes(BEARER_AUTH, new SecurityScheme()
