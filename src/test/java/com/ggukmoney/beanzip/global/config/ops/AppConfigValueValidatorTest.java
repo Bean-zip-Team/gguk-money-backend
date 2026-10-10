@@ -39,7 +39,7 @@ class AppConfigValueValidatorTest {
         assertRejected("onboarding.reward.requiredTapCount", "45", "0");
         assertRejected("cashout.pointToKrwRate", "0.02", "0");
         assertRejected("cashout.minimumPoint", "50", "0");
-        assertRejected("keycapBox.openCycle.durationSeconds", "3600", "0");
+        assertRejected("keycap.draw.price", "5", "0");
         assertRejected("notification.rankChange.minimumDifference", "1", "0");
     }
 

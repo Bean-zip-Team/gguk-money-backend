@@ -8,9 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -18,10 +15,9 @@ import java.util.UUID;
 public class KeycapBoxAccountService {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
-    private final Clock clock;
 
     public KeycapBoxAccount createFor(AppUser user) {
-        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
+        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
     }
 
     public KeycapBoxAccount save(KeycapBoxAccount account) {
@@ -36,11 +32,5 @@ public class KeycapBoxAccountService {
     public KeycapBoxAccount getForUserForUpdate(UUID userId) {
         return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
-    }
-
-    public KeycapBoxAccount refreshOpenCycleForUpdate(UUID userId, Instant now, Duration cycleDuration) {
-        KeycapBoxAccount account = getForUserForUpdate(userId);
-        account.refreshOpenCycle(now, cycleDuration);
-        return account;
     }
 }

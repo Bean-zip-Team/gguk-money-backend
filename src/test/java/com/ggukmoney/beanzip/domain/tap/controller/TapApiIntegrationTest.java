@@ -58,6 +58,8 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.acceptedCount").value(50))
                 .andExpect(jsonPath("$.data.pointsAwarded").exists())
                 .andExpect(jsonPath("$.data.boxesDropped").exists())
+                .andExpect(jsonPath("$.data.shardsDropped").exists())
+                .andExpect(jsonPath("$.data.shardBalance").exists())
                 .andExpect(jsonPath("$.data.balance").exists())
                 .andExpect(jsonPath("$.data.pointDailyCapReached").value(false))
                 .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist())
@@ -143,7 +145,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TestTokens registerUserWithSession(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, Instant.now()));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
         userTapProgressService.createFor(user, tapPolicyConfig);
         return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
     }

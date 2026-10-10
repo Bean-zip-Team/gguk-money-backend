@@ -131,7 +131,7 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
         assertThat(userTapDailyRepository.findByUserIdAndTapDate(user.getId(), tapDate).orElseThrow().getValidTapCount())
                 .isEqualTo(10);
         assertThat(pointAccountRepository.findByUserId(user.getId()).orElseThrow().getBalance()).isEqualTo(1L);
-        assertThat(keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow().getBoxBalance()).isEqualTo(1);
+        assertThat(keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(1);
         assertThat(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(user.getId(), sessionId, 1L)).isPresent();
         verify(rankingProjectionService).syncLatestWeeklyScore(eq(user.getId()), any(Instant.class));
     }
@@ -143,7 +143,7 @@ class RankingScoreSyncTransactionIntegrationTest extends FullStackIntegrationTes
     private AppUser registerUserWithProgressTargets(int pointTarget, int boxTarget) {
         AppUser user = appUserRepository.save(AppUser.createActive("ranking-tx-" + UUID.randomUUID(), null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
+        keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
         userTapProgressRepository.save(UserTapProgress.createFor(user, pointTarget));
         Instant now = clock.instant();
         userTapSessionRepository.save(UserTapSession.createFor(user, now, now.plusSeconds(3600), boxTarget));
