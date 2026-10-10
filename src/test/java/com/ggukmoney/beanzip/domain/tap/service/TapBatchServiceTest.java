@@ -315,7 +315,7 @@ class TapBatchServiceTest {
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
-        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(1), eq(tapPolicyConfig))).thenReturn(450);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -445,7 +445,7 @@ class TapBatchServiceTest {
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
-        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(1), eq(tapPolicyConfig))).thenReturn(450);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);

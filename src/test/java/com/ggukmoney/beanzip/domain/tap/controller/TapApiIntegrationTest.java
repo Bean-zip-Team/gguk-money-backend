@@ -73,18 +73,23 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
         UUID sessionId = UUID.randomUUID();
         String body = batchJson(sessionId, 1, 50);
 
-        mockMvc.perform(post("/api/tap/batches")
+        var first = mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()).andReturn();
+        long before = pointAccountRepository.findByUserId(tokens.session().userId()).orElseThrow().getBalance();
 
-        mockMvc.perform(post("/api/tap/batches")
+        var replay = mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointsAwarded").value(0));
+                .andReturn();
+        org.assertj.core.api.Assertions.assertThat(replay.getResponse().getContentAsString())
+                .isEqualTo(first.getResponse().getContentAsString());
+        org.assertj.core.api.Assertions.assertThat(pointAccountRepository.findByUserId(tokens.session().userId()).orElseThrow().getBalance())
+                .isEqualTo(before);
     }
 
     @Test

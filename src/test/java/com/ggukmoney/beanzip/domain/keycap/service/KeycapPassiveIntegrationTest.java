@@ -47,11 +47,15 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     @Autowired TapPolicyConfig tapPolicy;
     @Autowired KeycapPassiveCheckpointRepository checkpoints;
     @Autowired PlatformTransactionManager tx;
+    @Autowired com.ggukmoney.beanzip.global.config.ops.OpsConfigService ops;
+    @Autowired com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService seasons;
     @MockitoBean KeycapRewardSelector selector;
 
     @BeforeEach void enable() {
-        configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"true",Instant.now().minusSeconds(1)));
-        configs.save(AppConfig.createFor(TapPolicyConfig.KEY_RATE_LIMIT_ENABLED,"false",Instant.now().minusSeconds(1)));
+        var now=Instant.now();
+        configs.saveAll(KeycapPassivePolicyConfig.DEFAULT_VALUES.entrySet().stream().map(entry ->
+                AppConfig.createFor(entry.getKey(),entry.getKey().equals(KeycapPassivePolicyConfig.KEY_ENABLED)?"true":entry.getValue(),now)).toList());
+        configs.save(AppConfig.createFor(TapPolicyConfig.KEY_RATE_LIMIT_ENABLED,"false",now));
         policy.refresh(); tapPolicy.refresh();
     }
 
@@ -76,6 +80,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     }
 
     @Test void sameKeyAndSimultaneousRequestsPayExactlyOnceAndReplaySnapshot() throws Exception {
+        seasons.ensureCurrentWeeklySeason(Instant.now());
         var user=user("cheer"); elapsed(user,1);
         var result=concurrently(() -> passive.settle(user.getId(),"same"),() -> passive.settle(user.getId(),"same"));
         assertThat(result.get(0)).isEqualTo(result.get(1));
@@ -87,6 +92,9 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(today.getTotalEffectiveTapCount()).isEqualTo(60);
         assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isZero();
         assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeRankingTapCount()).isEqualTo(60);
+        assertThat(jdbcTemplate.queryForList(
+                "select e.score-e.ranking_boost_score from ranking_entry e join ranking_season s on e.season_id=s.id where e.user_id=? and s.ranking_type in ('WEEKLY','ALL_TIME')",
+                Long.class,user.getId())).containsExactlyInAnyOrder(60L,60L);
     }
 
     @Test void concurrentTapBatchesPersistOneOutcomeAndAutomaticClicksTakeAllowanceFirst() throws Exception {
@@ -158,6 +166,36 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         policy.refresh();
         assertThat(passive.settle(user.getId(),"disabled").autoClicksGranted()).isZero();
         assertThat(passive.status(user.getId()).enabled()).isFalse();
+    }
+
+    @Test void activatingOpsSwitchAtomicallyRecordsANewCutoff() {
+        configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",Instant.now()));
+        var current=ops.current(KeycapPassivePolicyConfig.KEY_ENABLED);
+        var before=Instant.now();
+        ops.change(KeycapPassivePolicyConfig.KEY_ENABLED,current.getPublicId().toString(),"true","integration","activate");
+        policy.refresh();
+        assertThat(policy.snapshot().enabled()).isTrue();
+        assertThat(policy.snapshot().enabledAt()).isBetween(before,Instant.now());
+        assertThat(ops.current(KeycapPassivePolicyConfig.KEY_ENABLED_AT).getEffectiveAt())
+                .isEqualTo(ops.current(KeycapPassivePolicyConfig.KEY_ENABLED).getEffectiveAt());
+    }
+
+    @Test void simultaneousIndividuallyValidPolicyChangesCannotExceedCombinedBudget() throws Exception {
+        String shard="keycap.passive.earth.shard.probability";
+        String click="keycap.passive.earth.click.probability";
+        configs.saveAll(List.of(AppConfig.createFor(shard,"0.10",Instant.now()),AppConfig.createFor(click,"0.05",Instant.now())));
+        String shardBase=ops.current(shard).getPublicId().toString();
+        String clickBase=ops.current(click).getPublicId().toString();
+        var results=concurrently(() -> changePolicy(shard,shardBase,"0.15"),() -> changePolicy(click,clickBase,"0.10"));
+        assertThat(results).containsExactlyInAnyOrder("saved","rejected");
+        var values=new HashMap<String,String>();
+        ops.currentValues().forEach(row -> values.put(row.getConfigKey(),row.getConfigValue()));
+        assertThatCode(() -> KeycapPassivePolicyConfig.decode(values)).doesNotThrowAnyException();
+    }
+
+    private String changePolicy(String key,String base,String next) {
+        try { ops.change(key,base,next,"integration","budget race"); return "saved"; }
+        catch (IllegalArgumentException expected) { return "rejected"; }
     }
 
     private List<Object> concurrently(Callable<?> a,Callable<?> b) throws Exception {

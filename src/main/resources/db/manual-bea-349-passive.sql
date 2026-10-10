@@ -35,9 +35,11 @@ CREATE TABLE IF NOT EXISTS keycap_passive_checkpoint (
     equipped_keycap_code VARCHAR(255),
     equipped_level INTEGER NOT NULL,
     clicks_per_day INTEGER NOT NULL CHECK (clicks_per_day >= 0),
+    cap_days INTEGER NOT NULL CHECK (cap_days BETWEEN 1 AND 30),
     effects_json TEXT NOT NULL,
     version BIGINT NOT NULL DEFAULT 0
 );
+ALTER TABLE keycap_passive_checkpoint ADD COLUMN IF NOT EXISTS cap_days INTEGER NOT NULL DEFAULT 7;
 CREATE TABLE IF NOT EXISTS keycap_passive_settlement (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES app_user(id),

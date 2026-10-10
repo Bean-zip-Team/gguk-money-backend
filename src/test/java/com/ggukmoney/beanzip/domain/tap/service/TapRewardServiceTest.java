@@ -78,4 +78,17 @@ class TapRewardServiceTest {
         assertThat(progress.getCumulativeMissionTapCount()).isZero();
         assertThat(progress.getCumulativeRankingTapCount()).isEqualTo(17);
     }
+
+    @Test
+    void eachCompletedShardUsesTheFollowingStepAndAwardsOnlyCrossedBoundaries() {
+        prepare();
+        session.resetFor(now,now.plusSeconds(3600),25);
+        when(tap.boxSessionStep1()).thenReturn(25);
+        when(tap.boxSessionStep2()).thenReturn(35);
+        when(tap.boxSessionStep3()).thenReturn(50);
+        when(sessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenCallRealMethod();
+        var result = rewards.award(user,now,Effects.NONE,59,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.shardsDropped()).isEqualTo(1);
+        assertThat(session.getNextBoxTarget()).isEqualTo(60);
+    }
 }

@@ -39,6 +39,8 @@ class KeycapEquipIndexIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private UserKeycapRepository userKeycapRepository;
+    @Autowired private com.ggukmoney.beanzip.domain.point.repository.PointAccountRepository accounts;
+    @Autowired private com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository wallets;
 
     @BeforeEach
     void createProductionOnlyIndex() {
@@ -69,6 +71,8 @@ class KeycapEquipIndexIntegrationTest extends FullStackIntegrationTestSupport {
 
     private void assertEquipSucceeds(String nickname, boolean saveTargetFirst) throws Exception {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
+        accounts.save(com.ggukmoney.beanzip.domain.point.entity.PointAccount.createFor(user));
+        wallets.save(com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount.createFor(user));
         List<Keycap> catalog = keycapRepository.findAll().stream().limit(2).toList();
         Keycap alreadyEquipped = catalog.get(0);
         Keycap target = catalog.get(1);

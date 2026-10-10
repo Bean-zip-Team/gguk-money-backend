@@ -15,15 +15,17 @@ public class KeycapPassiveCheckpoint {
     private String equippedKeycapCode;
     @Column(nullable=false) private int equippedLevel;
     @Column(nullable=false) private int clicksPerDay;
+    @Column(nullable=false) private int capDays;
     @Column(nullable=false,columnDefinition="text") private String effectsJson;
-    @Version private long version;
-    public static KeycapPassiveCheckpoint create(AppUser user, Checkpoint value, String effects) {
-        var row=new KeycapPassiveCheckpoint(); row.user=user; row.userId=user.getId(); row.update(value,effects); return row;
+    @Version private Long version;
+    public static KeycapPassiveCheckpoint create(AppUser user, Checkpoint value, String effects, int capDays) {
+        var row=new KeycapPassiveCheckpoint(); row.user=user; row.userId=user.getId(); row.update(value,effects,capDays); return row;
     }
     public Checkpoint value() { return new Checkpoint(lastActivityAt,remainderNumerator,equippedKeycapCode,equippedLevel,clicksPerDay); }
-    public void update(Checkpoint value,String effects) {
+    public void update(Checkpoint value,String effects,int capDays) {
         lastActivityAt=value.lastActivityAt(); remainderNumerator=value.remainderNumerator();
         equippedKeycapCode=value.equippedKeycapCode(); equippedLevel=value.equippedLevel();
         clicksPerDay=value.clicksPerDay(); effectsJson=effects;
+        this.capDays=capDays;
     }
 }

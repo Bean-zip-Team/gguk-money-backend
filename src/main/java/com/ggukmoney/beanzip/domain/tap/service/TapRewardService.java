@@ -86,7 +86,7 @@ public class TapRewardService {
             wallet.addShards(amount);
             shards = Math.addExact(shards,amount);
             int boundary = session.getNextBoxTarget();
-            int next = sessionService.drawNextBoxTargetInSession(boundary,session.getBoxesDroppedInSession(),tap);
+            int next = sessionService.drawNextBoxTargetInSession(boundary,session.getBoxesDroppedInSession()+1,tap);
             if (next <= boundary) throw new IllegalStateException("Shard target must advance");
             session.advanceBoxTarget(next);
         }
