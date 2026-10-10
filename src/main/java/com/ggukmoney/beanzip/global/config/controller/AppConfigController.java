@@ -26,7 +26,7 @@ public class AppConfigController {
 
     private final AppConfigService appConfigService;
 
-    @Operation(summary = "앱 설정 조회", description = "포인트, 키캡 상자, 부스터 정책 값을 조회합니다.")
+    @Operation(summary = "앱 설정 조회", description = "포인트, 키캡 조각, 부스터 정책 값을 조회합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))

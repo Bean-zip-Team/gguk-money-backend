@@ -23,7 +23,7 @@ public record TapBatchSubmitResponse(
         int validTapCount,
         @Schema(description = "지급된 포인트", example = "1")
         int pointsAwarded,
-        @Schema(description = "[deprecated] 상자는 사라졌다. 항상 0. 조각은 shardsDropped", example = "0")
+        @Schema(description = "상자는 사라졌다(BEA-329). 항상 0. 조각은 shardsDropped", example = "0", deprecated = true)
         int boxesDropped,
         @Schema(description = "제출 후 포인트 잔액", example = "15")
         long balance,
@@ -39,17 +39,17 @@ public record TapBatchSubmitResponse(
         int pointEarnedToday,
         @Schema(description = "다음 포인트까지 남은 탭 수. 0이면 오늘은 더 이상 지급되지 않는다(포인트 상한 또는 일일 탭 상한 도달). 상한 이전에는 항상 1 이상이다.", example = "10")
         int remainingTapsToNextPoint,
-        @Schema(description = "다음 조각까지 남은 탭 수. remainingTapsToNextShard 와 같다", example = "55")
+        @Schema(description = "remainingTapsToNextShard 와 같다", example = "55", deprecated = true)
         int remainingTapsToNextBox,
-        @Schema(description = "[deprecated] 상자는 사라졌다. 항상 0. 조각은 shardBalance", example = "0")
+        @Schema(description = "상자는 사라졌다(BEA-329). 항상 0. 조각은 shardBalance", example = "0", deprecated = true)
         int boxBalance,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean canFreeOpen,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean canAdOpen,
-        @Schema(description = "[deprecated] 항상 false", example = "false")
+        @Schema(description = "상자는 사라졌다. 항상 false", example = "false", deprecated = true)
         boolean charging,
-        @Schema(description = "[deprecated] 항상 null", example = "null")
+        @Schema(description = "상자는 사라졌다. 항상 null", nullable = true, deprecated = true)
         Instant nextRechargeAt,
         @Schema(description = "이번 배치에서 드롭된 조각 수", example = "1")
         int shardsDropped,

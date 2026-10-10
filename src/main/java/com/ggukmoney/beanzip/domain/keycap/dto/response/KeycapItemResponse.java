@@ -14,11 +14,11 @@ public record KeycapItemResponse(
         String name,
         @Schema(description = "키캡 등급", example = "COMMON")
         String grade,
-        @Schema(description = "완성 필요 조각 수", example = "5")
+        @Schema(description = "조각을 모아 완성하는 방식은 사라졌다(BEA-329). 뽑기 가격은 조각 상태 응답의 drawPrice 를 본다", example = "5", deprecated = true)
         int requiredShardCount,
         @Schema(description = "시즌", example = "1")
         int season,
-        @Schema(description = "획득 경로. BOX: 상자에서 추첨, EVENT: 이벤트 한정 지급", example = "BOX")
+        @Schema(description = "획득 경로. BOX: 상시 뽑기, EVENT: 시즌 한정 지급", example = "BOX")
         String acquisitionType,
         @Schema(description = "이미지 URL", example = "https://example.com/keycap.png")
         String imageUrl,
