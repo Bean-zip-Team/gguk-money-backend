@@ -66,6 +66,8 @@ public class KeycapDrawService {
     private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
+    private final KeycapPassiveService passiveService;
 
     public KeycapDrawResponse draw(UUID userId, String idempotencyKey) {
         validateIdempotencyKey(idempotencyKey);
@@ -84,12 +86,15 @@ public class KeycapDrawService {
     }
 
     private KeycapDrawResponse drawInTransaction(UUID userId, String idempotencyKey) {
+        AppUser user = rewardLock.acquire(userId);
         Optional<KeycapDrawResponse> replay = findReplay(userId, idempotencyKey);
         if (replay.isPresent()) {
             return replay.get();
         }
 
         Instant drawnAt = clock.instant();
+        passiveService.settleLocked(user, drawnAt, "draw:"+idempotencyKey,
+                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller());
         int price = keycapBoxPolicyConfig.drawPrice();
         KeycapBoxAccount wallet = keycapBoxAccountService.getForUserForUpdate(userId);
         if (!wallet.canAfford(price)) {
@@ -104,7 +109,6 @@ public class KeycapDrawService {
         }
         Keycap selected = keycapRewardSelector.select(candidates);
 
-        AppUser user = userService.getById(userId);
         Optional<UserKeycap> existing = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId());
         boolean newlyAcquired = existing.isEmpty() || existing.get().isLegacyInProgress();
         UserKeycap userKeycap;
@@ -125,6 +129,8 @@ public class KeycapDrawService {
         }
 
         wallet.consumeShards(price);
+        userKeycapRepository.flush();
+        passiveService.refreshEquipmentLocked(userId);
 
         if (newlyAcquired) {
             long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);

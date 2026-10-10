@@ -43,7 +43,10 @@ class KeycapControllerTest {
     private final AuthService authService = mock(AuthService.class);
     private final KeycapService keycapService = mock(KeycapService.class);
     private final KeycapDrawService keycapDrawService = mock(KeycapDrawService.class);
-    private final KeycapController keycapController = new KeycapController(keycapService, keycapDrawService);
+    private final com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService passive =
+            mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.class);
+    private final KeycapController keycapController = new KeycapController(keycapService, keycapDrawService,
+            passive);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -244,6 +247,21 @@ class KeycapControllerTest {
 
     private UUID authenticatedUserId() {
         return UUID.fromString("00000000-0000-0000-0000-000000000015");
+    }
+
+    @Test void unavailablePassivePolicyReturnsRetryable503ThroughTheErrorHandler() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        when(passive.status(authenticatedUserId())).thenThrow(
+                new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"PASSIVE_POLICY_UNAVAILABLE"));
+        when(passive.settle(authenticatedUserId(),"retry-key")).thenThrow(
+                new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"PASSIVE_POLICY_UNAVAILABLE"));
+        mockMvc.perform(get("/api/keycaps/passive").header(HttpHeaders.AUTHORIZATION,"Bearer access-token"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("PASSIVE_POLICY_UNAVAILABLE"));
+        mockMvc.perform(post("/api/keycaps/passive/settle").header(HttpHeaders.AUTHORIZATION,"Bearer access-token")
+                        .header("Idempotency-Key","retry-key"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("PASSIVE_POLICY_UNAVAILABLE"));
     }
 
     private void stubAuthenticatedAccessToken(String token) {

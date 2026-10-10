@@ -54,4 +54,24 @@ class TapConfigSeederTest {
         when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(KEY), any(Instant.class)))
                 .thenReturn(Optional.of(AppConfig.createFor(KEY, "999", Instant.EPOCH)));
     }
+
+    @Test void migratingToStartRatioPreservesLegacyOperationalGrowth() {
+        String prefix="keycap.passive.COMMON.";
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(prefix+"startStrength"),any()))
+                .thenReturn(Optional.of(AppConfig.createFor(prefix+"startStrength","0.03",Instant.EPOCH)));
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(prefix+"maxStrength"),any()))
+                .thenReturn(Optional.of(AppConfig.createFor(prefix+"maxStrength","0.1",Instant.EPOCH)));
+        new TapConfigSeeder(repository,true).run();
+        verify(repository).save(argThat(row -> (prefix+"startRatio").equals(row.getConfigKey())
+                && Math.abs(Double.parseDouble(row.getConfigValue())-0.3)<1e-12));
+        verify(repository,never()).save(argThat(row -> row.getConfigKey().endsWith("Strength")));
+    }
+
+    @Test void explicitOperationalStartRatioIsNeverResetBySeeder() {
+        String key="keycap.passive.COMMON.startRatio";
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(key),any()))
+                .thenReturn(Optional.of(AppConfig.createFor(key,"0.7",Instant.EPOCH)));
+        new TapConfigSeeder(repository,true).run();
+        verify(repository,never()).save(argThat(row -> key.equals(row.getConfigKey())));
+    }
 }

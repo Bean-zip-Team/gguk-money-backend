@@ -24,6 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
 
+    @Autowired private com.ggukmoney.beanzip.global.config.repository.AppConfigRepository configs;
+
     @Autowired
     private AppUserRepository appUserRepository;
 
@@ -40,7 +42,12 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
     private TapPolicyConfig tapPolicyConfig;
 
     @Test
-    void activatesBoosterButTapBatchStillAwardsSinglePoint() throws Exception {
+    void acceptsAlreadyBoostedCountWithoutApplyingMultiplierAgain() throws Exception {
+        var configuredAt=Instant.now();
+        configs.saveAll(java.util.List.of(
+                com.ggukmoney.beanzip.global.config.entity.AppConfig.createFor(TapPolicyConfig.KEY_CURVE_GENERAL_BASE,"20",configuredAt),
+                com.ggukmoney.beanzip.global.config.entity.AppConfig.createFor(TapPolicyConfig.KEY_CURVE_GENERAL_VARIANCE,"0",configuredAt)));
+        tapPolicyConfig.refresh();
         TestTokens tokens = registerUserWithSession("booster-tester-1");
 
         mockMvc.perform(post("/api/boosters/activate")
@@ -57,7 +64,9 @@ class BoosterApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(batchJson(UUID.randomUUID(), 1, 350)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointsAwarded").value(1));
+                .andExpect(jsonPath("$.data.pointsAwarded").value(1))
+                .andExpect(jsonPath("$.data.validTapCount").value(350))
+                .andExpect(jsonPath("$.data.remainingTapsToNextPoint").value(20));
     }
 
     @Test

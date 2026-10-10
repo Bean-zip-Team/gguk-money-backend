@@ -68,6 +68,7 @@ public enum ErrorCode {
     POINT_ACCOUNT_NOT_FOUND("POINT_ACCOUNT_NOT_FOUND", "포인트 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     KEYCAP_NOT_FOUND("KEYCAP_NOT_FOUND", "키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    PASSIVE_POLICY_UNAVAILABLE("PASSIVE_POLICY_UNAVAILABLE", "자동 클릭 정책을 확인할 수 없습니다. 잠시 후 다시 시도해주세요.", HttpStatus.SERVICE_UNAVAILABLE),
     USER_KEYCAP_NOT_FOUND("USER_KEYCAP_NOT_FOUND", "보유한 키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     KEYCAP_NOT_COMPLETED("KEYCAP_NOT_COMPLETED", "완성한 키캡만 장착할 수 있습니다.", HttpStatus.BAD_REQUEST),
     KEYCAP_BOX_ACCOUNT_NOT_FOUND("KEYCAP_BOX_ACCOUNT_NOT_FOUND", "키캡 조각 지갑을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),

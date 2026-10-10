@@ -38,7 +38,7 @@ public class KeycapCatalogSeeder implements CommandLineRunner {
             new CatalogEntry("pudding", "푸딩 키캡", Grade.LEGENDARY, "c02_slime_squish.wav"),
             new CatalogEntry("redlego", "레드레고 키캡", Grade.COMMON, "m05_black.wav"),
             new CatalogEntry("yellowlego", "옐로우레고 키캡", Grade.COMMON, "m05_black.wav"),
-            new CatalogEntry("radio", "라디오 키캡", Grade.LEGENDARY, "c07_earth_radio.wav"),
+            new CatalogEntry(KeycapCodes.RADIO, "라디오 키캡", Grade.LEGENDARY, "c07_earth_radio.wav"),
             new CatalogEntry("space", "스페이스 키캡", Grade.EPIC, "c11_elephant.wav")
     );
 

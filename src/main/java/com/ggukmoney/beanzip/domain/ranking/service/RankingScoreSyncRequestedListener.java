@@ -23,5 +23,10 @@ public class RankingScoreSyncRequestedListener {
         } catch (RuntimeException exception) {
             log.error("Failed to synchronize ranking projection userId={}", event.userId(), exception);
         }
+        try {
+            rankingProjectionService.syncLatestAllTimeScore(event.userId());
+        } catch (RuntimeException exception) {
+            log.error("Failed to synchronize all-time ranking userId={}", event.userId(), exception);
+        }
     }
 }

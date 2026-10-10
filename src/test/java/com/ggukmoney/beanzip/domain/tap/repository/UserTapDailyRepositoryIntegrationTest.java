@@ -48,7 +48,7 @@ class UserTapDailyRepositoryIntegrationTest extends FullStackIntegrationTestSupp
         UUID cursor = null;
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> page =
-                    dailyRepository.findTotalValidTapAggregates(startDate, endDate, cursor, 2);
+                    dailyRepository.findTotalEffectiveTapAggregates(startDate, endDate, cursor, 2);
             if (page.isEmpty()) {
                 break;
             }

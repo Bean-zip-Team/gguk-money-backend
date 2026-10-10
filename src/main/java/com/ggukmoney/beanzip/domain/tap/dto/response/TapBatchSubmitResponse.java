@@ -56,6 +56,12 @@ public record TapBatchSubmitResponse(
         @Schema(description = "제출 후 조각 잔액", example = "12")
         int shardBalance,
         @Schema(description = "다음 조각까지 남은 탭 수", example = "55")
-        int remainingTapsToNextShard
+        int remainingTapsToNextShard,
+        @Schema(description = "이번 사용자 탭에 ②를 반영한 유효 클릭 수")
+        int effectiveCount,
+        @Schema(description = "이번 요청에서 먼저 정산한 자동 클릭 수")
+        int autoClicksGranted,
+        @Schema(description = "오늘 전체 유효 클릭 수 (자동 클릭 및 ② 포함)")
+        long effectiveTapCountToday
 ) {
 }

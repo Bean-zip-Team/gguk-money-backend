@@ -61,6 +61,8 @@ class KeycapDrawServiceTest {
     private final PromotionGrantIssuer promotionGrantIssuer = mock(PromotionGrantIssuer.class);
     private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger = mock(KeycapFiveCompletionTrigger.class);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock = mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class);
+    private final KeycapPassiveService passiveService = mock(KeycapPassiveService.class);
     private final KeycapDrawService service = new KeycapDrawService(
             keycapBoxAccountService,
             keycapDrawRepository,
@@ -74,7 +76,7 @@ class KeycapDrawServiceTest {
             promotionGrantIssuer,
             keycapFiveCompletionTrigger,
             transactionManager,
-            Clock.fixed(NOW, ZoneOffset.UTC)
+            Clock.fixed(NOW, ZoneOffset.UTC),rewardLock,passiveService
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -84,6 +86,7 @@ class KeycapDrawServiceTest {
 
     @BeforeEach
     void stubHappyPath() {
+        when(rewardLock.acquire(any())).thenReturn(user);
         when(transactionManager.getTransaction(any(TransactionDefinition.class))).thenReturn(new SimpleTransactionStatus());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
         when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(wallet);

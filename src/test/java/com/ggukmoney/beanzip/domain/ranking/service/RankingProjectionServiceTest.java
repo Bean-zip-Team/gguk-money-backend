@@ -71,7 +71,7 @@ class RankingProjectionServiceTest {
         when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
         RankingSeason season = weeklySeason();
         when(seasonService.findWeeklySeasonContaining(occurredAt)).thenReturn(Optional.of(season));
-        when(userTapDailyRepository.sumTotalValidTapCount(
+        when(userTapDailyRepository.sumTotalEffectiveTapCount(
                 userId,
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27)
@@ -124,7 +124,7 @@ class RankingProjectionServiceTest {
         when(user.getId()).thenReturn(userId);
         when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
         UserTapProgress progress = mock(UserTapProgress.class);
-        when(progress.getCumulativeValidTapCount()).thenReturn(123L);
+        when(progress.getCumulativeRankingTapCount()).thenReturn(123L);
         RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);
         when(seasonService.getOrCreateActiveAllTimeSeason()).thenReturn(season);
@@ -185,7 +185,7 @@ class RankingProjectionServiceTest {
         when(user.getId()).thenReturn(userId);
         when(user.getStatus()).thenReturn(AppUser.Status.ACTIVE);
         UserTapProgress progress = mock(UserTapProgress.class);
-        when(progress.getCumulativeValidTapCount()).thenReturn(110L);
+        when(progress.getCumulativeRankingTapCount()).thenReturn(110L);
         RankingSeason season = RankingSeason.activeAllTime(Instant.parse("2026-07-19T00:00:00Z"));
         RankingEntry entry = RankingEntry.createFor(season, user, 110L, null, Instant.parse("2026-07-19T00:00:01Z"));
         when(userTapProgressService.getForUser(userId)).thenReturn(progress);

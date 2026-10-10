@@ -63,7 +63,7 @@ public class RankingProjectionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RankingEntry syncLatestAllTimeScore(UUID userId) {
         UserTapProgress progress = userTapProgressService.getForUser(userId);
-        return upsertAllTimeScore(userId, progress.getCumulativeValidTapCount());
+        return upsertAllTimeScore(userId, progress.getCumulativeRankingTapCount());
     }
 
     @Deprecated
@@ -79,7 +79,7 @@ public class RankingProjectionService {
         RankingEntry entry = entryRepository.findBySeasonAndUserId(season, userId)
                 .orElseGet(() -> RankingEntry.createFor(season, user, cumulativeValidTapCount, null, now));
         String previousRegionCode = entry.getRegionCode();
-        long score = Math.max(entry.getScore(), cumulativeValidTapCount);
+        long score = Math.max(entry.getRealScore(), cumulativeValidTapCount);
         if (entry.getRealScore() != score || entry.getRegionCode() != null) {
             entry.updateScore(score, null, now);
         }
@@ -129,7 +129,7 @@ public class RankingProjectionService {
     }
 
     private long weeklyScore(UUID userId, RankingSeason season) {
-        return userTapDailyRepository.sumTotalValidTapCount(
+        return userTapDailyRepository.sumTotalEffectiveTapCount(
                 userId,
                 LocalDate.ofInstant(season.getStartsAt(), businessZoneId),
                 LocalDate.ofInstant(season.getEndsAt(), businessZoneId)

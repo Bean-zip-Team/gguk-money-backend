@@ -9,12 +9,19 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
 public class AppConfigBatchLoader {
 
     private final AppConfigRepository repository;
+
+    public List<AppConfig> loadWithHistory(Set<String> configKeys, String historyKey, Instant now) {
+        if (configKeys.isEmpty()) return List.of();
+        if (!configKeys.contains(historyKey)) throw new IllegalArgumentException("History key must be requested");
+        return repository.findLatestEffectiveWithHistory(configKeys,historyKey,now);
+    }
 
     public Map<String, String> load(Set<String> configKeys, Instant now) {
         if (configKeys.isEmpty()) {

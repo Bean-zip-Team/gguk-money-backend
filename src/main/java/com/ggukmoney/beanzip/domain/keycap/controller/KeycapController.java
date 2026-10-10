@@ -39,6 +39,24 @@ public class KeycapController {
 
     private final KeycapService keycapService;
     private final KeycapDrawService keycapDrawService;
+    private final com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService passiveService;
+
+    @Operation(summary = "키캡 패시브 조회", description = "현재 효과와 미수령 자동 클릭을 조회합니다. 지급하지 않습니다.",
+            security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @GetMapping("/passive")
+    public ResponseEntity<ApiResponse<com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveStatusResponse>> passive(
+            @Parameter(hidden = true) HttpServletRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(passiveService.status(AuthRequestAttributes.getRequiredUserId(request))));
+    }
+
+    @Operation(summary = "자동 클릭 정산", description = "앱 진입 시 호출합니다. 같은 멱등키는 저장된 지급 결과를 재생합니다.",
+            security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @PostMapping("/passive/settle")
+    public ResponseEntity<ApiResponse<com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveSettleResponse>> settle(
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
+            @Parameter(hidden = true) HttpServletRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(passiveService.settle(AuthRequestAttributes.getRequiredUserId(request),key)));
+    }
 
     @Operation(summary = "키캡 목록 조회", description = "상시(BOX) 키캡 카탈로그를 조회합니다. 시즌(EVENT) 키캡은 내려주지 않으며, 보유한 시즌 키캡은 내 키캡 목록에서만 보입니다. 도감 진행도의 분모는 이 목록의 길이입니다.")
     @ApiResponses({
