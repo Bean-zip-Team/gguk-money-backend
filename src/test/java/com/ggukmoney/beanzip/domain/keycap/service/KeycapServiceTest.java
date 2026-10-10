@@ -35,7 +35,10 @@ class KeycapServiceTest {
     private final KeycapMapper keycapMapper = Mappers.getMapper(KeycapMapper.class);
     private final OnboardingRewardConfig onboardingRewardConfig = mock(OnboardingRewardConfig.class);
     private final KeycapService keycapService =
-            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig);
+            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig,
+                    mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class),mock(KeycapPassiveService.class),
+                    java.time.Clock.systemUTC(),new com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig(
+                    mock(com.ggukmoney.beanzip.global.config.AppConfigBatchLoader.class)));
 
     @Test
     void getsActiveBoxKeycapCatalogInRepositoryOrder() {

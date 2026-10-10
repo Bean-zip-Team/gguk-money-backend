@@ -55,6 +55,17 @@ public class TapBatch {
     @Column(name = "request_hash", nullable = false, length = 128)
     private String requestHash;
 
+    @Column(name = "result_json", columnDefinition = "text")
+    private String resultJson;
+
+    @Column(name = "effects_json", columnDefinition = "text")
+    private String effectsJson;
+
+    public void confirmResult(String effectsJson, String resultJson) {
+        this.effectsJson = effectsJson;
+        this.resultJson = resultJson;
+    }
+
     @Column(name = "bot_suspected", nullable = false)
     private boolean botSuspected = false;
 

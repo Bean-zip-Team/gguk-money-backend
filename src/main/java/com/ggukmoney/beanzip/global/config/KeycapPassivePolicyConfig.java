@@ -23,6 +23,8 @@ public class KeycapPassivePolicyConfig {
     private static final Logger log = LoggerFactory.getLogger(KeycapPassivePolicyConfig.class);
     private static final String PREFIX = "keycap.passive.";
     public static final String KEY_ENABLED = PREFIX + "enabled";
+    public static final String KEY_ENABLED_AT = PREFIX + "enabledAt";
+    public static final String KEY_CAP_DAYS = PREFIX + "capDays";
     private static final KeycapPassivePolicy BASE_POLICY = KeycapPassivePolicy.defaults();
     public static final Map<String, String> DEFAULT_VALUES = defaultValues();
 
@@ -55,7 +57,9 @@ public class KeycapPassivePolicyConfig {
         return cache.snapshot();
     }
 
-    private static Snapshot decode(Map<String, String> values) {
+    public static Snapshot decode(Map<String, String> overrides) {
+        Map<String, String> values = new HashMap<>(DEFAULT_VALUES);
+        values.putAll(overrides);
         String enabled = values.get(KEY_ENABLED);
         if (!"true".equalsIgnoreCase(enabled) && !"false".equalsIgnoreCase(enabled)) {
             throw new IllegalArgumentException("Invalid passive enabled flag");
@@ -75,7 +79,33 @@ public class KeycapPassivePolicyConfig {
                 critical(values, code, "shard", base.shard()),
                 critical(values, code, "click", base.click()),
                 critical(values, code, "point", base.point()), base.autoClick())));
-        return new Snapshot(Boolean.parseBoolean(enabled), new KeycapPassivePolicy(growths, profiles));
+        int capDays = Integer.parseInt(values.get(KEY_CAP_DAYS));
+        if (capDays < 1 || capDays > 30) throw new IllegalArgumentException("적립 상한은 1~30일입니다.");
+        for (Growth growth : growths.values()) {
+            if ((long) growth.autoClickCap() * capDays > 100_000) {
+                throw new IllegalArgumentException("정산 클릭 상한은 100,000 이하입니다.");
+            }
+        }
+        profiles.forEach((code, profile) -> {
+            Profile base = BASE_POLICY.profiles().get(code);
+            if (Math.max(profile.click().multiplier(), Math.max(profile.shard().multiplier(),profile.point().multiplier()))>5) {
+                throw new IllegalArgumentException("크리티컬 배수는 5 이하입니다.");
+            }
+            if (budget(profile) > budget(base) + 1e-12) {
+                throw new IllegalArgumentException(code + ": 기본 프로필의 기대배수를 초과합니다.");
+            }
+        });
+        return new Snapshot(Boolean.parseBoolean(enabled), new KeycapPassivePolicy(growths, profiles),
+                Instant.parse(unquote(values.get(KEY_ENABLED_AT))), capDays);
+    }
+
+    private static double budget(Profile profile) {
+        return profile.click().expectedMultiplier()
+                * Math.max(profile.shard().expectedMultiplier(), profile.point().expectedMultiplier());
+    }
+
+    private static String unquote(String value) {
+        return value.startsWith("\"") && value.endsWith("\"") ? value.substring(1, value.length()-1) : value;
     }
 
     private static Critical critical(Map<String, String> values, String code, String axis, Critical base) {
@@ -90,6 +120,8 @@ public class KeycapPassivePolicyConfig {
     private static Map<String, String> defaultValues() {
         Map<String, String> values = new HashMap<>();
         values.put(KEY_ENABLED, "false");
+        values.put(KEY_ENABLED_AT, "\"1970-01-01T00:00:00Z\"");
+        values.put(KEY_CAP_DAYS, "7");
         BASE_POLICY.growths().forEach((grade, growth) -> {
             String prefix = PREFIX + grade.name() + ".";
             values.put(prefix + "capLevel", Integer.toString(growth.capLevel()));
@@ -115,6 +147,10 @@ public class KeycapPassivePolicyConfig {
         }
     }
 
-    public record Snapshot(boolean enabled, KeycapPassivePolicy policy) {}
+    public record Snapshot(boolean enabled, KeycapPassivePolicy policy, Instant enabledAt, int capDays) {
+        public Snapshot(boolean enabled, KeycapPassivePolicy policy) {
+            this(enabled, policy, Instant.EPOCH, 7);
+        }
+    }
     private record Cached(Map<String, String> values, Snapshot snapshot) {}
 }

@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface AppConfigRepository extends JpaRepository<AppConfig, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    Optional<AppConfig> findFirstByConfigKeyOrderByIdAsc(String configKey);
+
     Optional<AppConfig> findByPublicId(UUID publicId);
 
     Optional<AppConfig> findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(String configKey, Instant now);

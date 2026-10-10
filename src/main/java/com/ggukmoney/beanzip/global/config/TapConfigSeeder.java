@@ -48,6 +48,7 @@ public class TapConfigSeeder implements CommandLineRunner {
             managed.putAll(CashoutPolicyConfig.DEFAULT_VALUES);
             managed.putAll(KeycapBoxPolicyConfig.DEFAULT_VALUES);
             managed.putAll(OnboardingRewardConfig.DEFAULT_VALUES);
+            managed.putAll(KeycapPassivePolicyConfig.DEFAULT_VALUES);
 
             syncDefaults(managed, now);
             warnOnOrphanKeys(managed.keySet());
@@ -86,7 +87,7 @@ public class TapConfigSeeder implements CommandLineRunner {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
             boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
-            if (latest.isEmpty() || (overridden && revertOverrides)) {
+            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive."))) {
                 appConfigRepository.save(AppConfig.createFor(key, codeValue, now));
             }
         });

@@ -23,6 +23,15 @@ public record KeycapItemResponse(
         @Schema(description = "이미지 URL", example = "https://example.com/keycap.png")
         String imageUrl,
         @Schema(description = "사운드 URL", example = "https://example.com/keycap.mp3")
-        String soundUrl
+        String soundUrl,
+        @Schema(description = "미보유 카드의 Lv1 미리보기. 실제 보유 효과는 내 키캡의 effects를 사용합니다.")
+        KeycapPassiveEffectResponse previewEffects
 ) {
+    public KeycapItemResponse(UUID id,String code,String name,String grade,int requiredShardCount,int season,
+            String acquisitionType,String imageUrl,String soundUrl) {
+        this(id,code,name,grade,requiredShardCount,season,acquisitionType,imageUrl,soundUrl,null);
+    }
+    public KeycapItemResponse withPreview(KeycapPassiveEffectResponse value) {
+        return new KeycapItemResponse(keycapId,code,name,grade,requiredShardCount,season,acquisitionType,imageUrl,soundUrl,value);
+    }
 }

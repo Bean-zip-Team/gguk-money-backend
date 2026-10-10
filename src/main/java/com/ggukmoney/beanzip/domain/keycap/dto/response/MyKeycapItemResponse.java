@@ -25,6 +25,15 @@ public record MyKeycapItemResponse(
         @Schema(description = "이미지 URL", example = "https://example.com/keycap.png")
         String imageUrl,
         @Schema(description = "사운드 URL", example = "https://example.com/keycap.mp3")
-        String soundUrl
+        String soundUrl,
+        @Schema(description = "현재 레벨의 효과. enabled=false이면 지급에는 적용하지 않습니다.")
+        KeycapPassiveEffectResponse effects
 ) {
+    public MyKeycapItemResponse(UUID id,String code,String name,int level,String status,boolean equipped,
+            String grade,String acquisitionType,String imageUrl,String soundUrl) {
+        this(id,code,name,level,status,equipped,grade,acquisitionType,imageUrl,soundUrl,null);
+    }
+    public MyKeycapItemResponse withEffects(KeycapPassiveEffectResponse value) {
+        return new MyKeycapItemResponse(keycapId,code,name,level,status,equipped,grade,acquisitionType,imageUrl,soundUrl,value);
+    }
 }

@@ -65,7 +65,7 @@ class TapThousandCompletionTriggerTest {
         when(policyConfig.tapThousandThreshold()).thenReturn(1000);
         UserTapProgress progress = mock(UserTapProgress.class);
         when(progress.hasPromotionTapBaseline()).thenReturn(true);
-        when(progress.getCumulativeValidTapCount()).thenReturn(4150L);
+        when(progress.getCumulativeMissionTapCount()).thenReturn(4150L);
         when(progress.getPromotionTapBaseline()).thenReturn(3200L);
         when(userTapProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
 

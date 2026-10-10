@@ -43,7 +43,8 @@ class KeycapControllerTest {
     private final AuthService authService = mock(AuthService.class);
     private final KeycapService keycapService = mock(KeycapService.class);
     private final KeycapDrawService keycapDrawService = mock(KeycapDrawService.class);
-    private final KeycapController keycapController = new KeycapController(keycapService, keycapDrawService);
+    private final KeycapController keycapController = new KeycapController(keycapService, keycapDrawService,
+            mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.class));
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
