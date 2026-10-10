@@ -65,13 +65,16 @@ public class KeycapPassivePolicyConfig {
             String prefix = PREFIX + grade.name() + ".";
             growths.put(grade, new Growth(Integer.parseInt(values.get(prefix + "capLevel")),
                     Double.parseDouble(values.get(prefix + "startStrength")),
-                    Double.parseDouble(values.get(prefix + "maxStrength"))));
+                    Double.parseDouble(values.get(prefix + "maxStrength")),
+                    Integer.parseInt(values.get(prefix + "autoClickBase")),
+                    Integer.parseInt(values.get(prefix + "autoClickPerLevel")),
+                    Integer.parseInt(values.get(prefix + "autoClickCap"))));
         }
         Map<String, Profile> profiles = new HashMap<>();
         BASE_POLICY.profiles().forEach((code, base) -> profiles.put(code, new Profile(base.grade(),
                 critical(values, code, "shard", base.shard()),
                 critical(values, code, "click", base.click()),
-                critical(values, code, "point", base.point()))));
+                critical(values, code, "point", base.point()), base.autoClick())));
         return new Snapshot(Boolean.parseBoolean(enabled), new KeycapPassivePolicy(growths, profiles));
     }
 
@@ -92,6 +95,9 @@ public class KeycapPassivePolicyConfig {
             values.put(prefix + "capLevel", Integer.toString(growth.capLevel()));
             values.put(prefix + "startStrength", Double.toString(growth.startStrength()));
             values.put(prefix + "maxStrength", Double.toString(growth.maxStrength()));
+            values.put(prefix + "autoClickBase", Integer.toString(growth.autoClickBase()));
+            values.put(prefix + "autoClickPerLevel", Integer.toString(growth.autoClickPerLevel()));
+            values.put(prefix + "autoClickCap", Integer.toString(growth.autoClickCap()));
         });
         BASE_POLICY.profiles().forEach((code, profile) -> {
             addCritical(values, code, "shard", profile.shard());
