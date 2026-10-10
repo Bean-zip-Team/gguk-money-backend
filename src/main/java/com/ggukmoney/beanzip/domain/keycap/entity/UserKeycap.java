@@ -28,8 +28,9 @@ import java.util.UUID;
  * 유저가 보유한 키캡 한 종 (BEA-329).
  *
  * <p>행이 있으면 보유다. 같은 키캡이 또 뽑히면 {@link #levelUp()} 으로 레벨만 오른다 — 등급 무관,
- * 상한 없음. {@code status} 는 항상 {@link Status#COMPLETED} 이지만 완성 기준으로 세는 쿼리
- * (키캡 5개 미션 · 전체 완성 보너스)가 그대로 동작하도록 컬럼을 남겨 둔다.
+ * 상한 없음. 새 코드는 {@link Status#COMPLETED} 만 만들지만, 무중단 배포 중 구 코드가 남긴
+ * {@link Status#IN_PROGRESS} 행을 읽을 수 있어야 하므로 값은 남겨 둔다. 그런 행은 "미보유"로 취급하고,
+ * 뽑기에서 걸리면 {@link #convertLegacyToOwned(Instant)} 로 그 자리에서 보유로 바꾼다.
  */
 @Getter
 @Entity
@@ -117,6 +118,25 @@ public class UserKeycap {
         return status == Status.COMPLETED;
     }
 
+    /** 구 코드(상자 개봉)가 남긴 진행 중 행. 마이그레이션 B 가 쓸어 담기 전까지 잠깐 존재한다. */
+    public boolean isLegacyInProgress() {
+        return status == Status.IN_PROGRESS;
+    }
+
+    /**
+     * 진행 중 행을 뽑기로 얻은 것으로 바꾼다. Lv1 로 시작하고 {@code completedAt} 을 지금으로 찍는다 —
+     * 이 키캡은 지금 처음 얻은 것이므로 미션 집계에도 지금 들어가는 것이 맞다.
+     */
+    public void convertLegacyToOwned(Instant acquiredAt) {
+        Objects.requireNonNull(acquiredAt, "acquiredAt must not be null.");
+        if (!isLegacyInProgress()) {
+            throw new IllegalStateException("Only legacy in-progress keycaps can be converted.");
+        }
+        level = 1;
+        status = Status.COMPLETED;
+        completedAt = acquiredAt;
+    }
+
     /** 중복 획득. 「꽝」은 없다 — 반드시 1 오른다. */
     public int levelUp() {
         level += 1;
@@ -135,6 +155,8 @@ public class UserKeycap {
     }
 
     public enum Status {
+        /** 구 코드가 남긴 값. 새 코드는 만들지 않고 읽기만 한다. 마이그레이션 B 가 지운다. */
+        IN_PROGRESS,
         COMPLETED
     }
 }

@@ -151,6 +151,30 @@ class KeycapDrawServiceTest {
     }
 
     @Test
+    void convertsLegacyInProgressRowToOwnedAndMovesItsShardsIntoTheWallet() {
+        // 무중단 배포 구간: 구 코드가 남긴 진행 중 행(조각 3개)이 뽑기에 걸린 경우.
+        wallet.addShards(5);
+        UserKeycap legacy = UserKeycap.createOwned(user, keycap, NOW.minusSeconds(3600));
+        ReflectionTestUtils.setField(legacy, "status", UserKeycap.Status.IN_PROGRESS);
+        ReflectionTestUtils.setField(legacy, "completedAt", null);
+        ReflectionTestUtils.setField(legacy, "id", 77L);
+        when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 1L)).thenReturn(Optional.of(legacy));
+        when(userKeycapRepository.findLegacyShardCount(77L)).thenReturn(3);
+        when(userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED)).thenReturn(1L);
+
+        KeycapDrawResponse response = service.draw(userId, "draw-legacy");
+
+        assertThat(response.newlyAcquired()).isTrue();
+        assertThat(response.level()).isEqualTo(1);
+        // 5 + 종별 조각 3 - 가격 5
+        assertThat(response.shardBalance()).isEqualTo(3);
+        assertThat(legacy.isCompleted()).isTrue();
+        assertThat(legacy.getCompletedAt()).isEqualTo(NOW);
+        verify(userKeycapRepository, never()).save(any());
+        verify(promotionGrantIssuer).issueIfEligible(eq(keycapFiveCompletionTrigger), any(PromotionTriggerContext.class));
+    }
+
+    @Test
     void rejectsDrawWhenShardBalanceIsBelowPrice() {
         wallet.addShards(4);
 

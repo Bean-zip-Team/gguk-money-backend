@@ -105,6 +105,7 @@ public class KeycapController {
     @Operation(summary = "키캡 장착", description = "보유 키캡을 현재 장착 키캡으로 설정합니다.", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "장착 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "보유하지 않은(진행 중) 키캡", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보유 키캡 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })

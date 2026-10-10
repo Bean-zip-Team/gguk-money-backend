@@ -54,6 +54,23 @@ class UserKeycapTest {
     }
 
     @Test
+    void convertsLegacyInProgressRowToOwnedAtLevelOne() {
+        UserKeycap userKeycap = UserKeycap.createOwned(AppUser.createActive("Bean", null), keycap(), ACQUIRED_AT.minusSeconds(3600));
+        org.springframework.test.util.ReflectionTestUtils.setField(userKeycap, "status", UserKeycap.Status.IN_PROGRESS);
+        org.springframework.test.util.ReflectionTestUtils.setField(userKeycap, "completedAt", null);
+        assertThat(userKeycap.isLegacyInProgress()).isTrue();
+        assertThatThrownBy(userKeycap::equip).isInstanceOf(IllegalStateException.class);
+
+        userKeycap.convertLegacyToOwned(ACQUIRED_AT);
+
+        assertThat(userKeycap.isLegacyInProgress()).isFalse();
+        assertThat(userKeycap.isCompleted()).isTrue();
+        assertThat(userKeycap.getLevel()).isEqualTo(1);
+        assertThat(userKeycap.getCompletedAt()).isEqualTo(ACQUIRED_AT);
+        assertThatThrownBy(() -> userKeycap.convertLegacyToOwned(ACQUIRED_AT)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void equipsAndUnequipsOwnedKeycap() {
         UserKeycap userKeycap = UserKeycap.createOwned(AppUser.createActive("Bean", null), keycap(), ACQUIRED_AT);
 

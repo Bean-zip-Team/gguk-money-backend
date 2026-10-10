@@ -109,10 +109,22 @@ public class KeycapDrawService {
         }
         Keycap selected = keycapRewardSelector.select(candidates);
 
-        Optional<UserKeycap> owned = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId());
-        boolean newlyAcquired = owned.isEmpty();
-        UserKeycap userKeycap = owned.orElseGet(() -> userKeycapRepository.save(UserKeycap.createOwned(user, selected, drawnAt)));
-        if (!newlyAcquired) {
+        Optional<UserKeycap> existing = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId());
+        boolean newlyAcquired = existing.isEmpty() || existing.get().isLegacyInProgress();
+        UserKeycap userKeycap;
+        if (existing.isEmpty()) {
+            userKeycap = userKeycapRepository.save(UserKeycap.createOwned(user, selected, drawnAt));
+        } else if (existing.get().isLegacyInProgress()) {
+            // 무중단 배포 구간: 구 코드가 남긴 진행 중 행이다. 그 자리에서 보유로 바꾸고, 행에 남은 종별 조각은
+            // 지갑으로 옮긴다. 마이그레이션 B 가 쓸어 담을 몫을 먼저 옮기는 것이라 합계가 어긋나지 않는다.
+            userKeycap = existing.get();
+            int legacyShards = userKeycapRepository.findLegacyShardCount(userKeycap.getId());
+            userKeycap.convertLegacyToOwned(drawnAt);
+            if (legacyShards > 0) {
+                wallet.addShards(legacyShards);
+            }
+        } else {
+            userKeycap = existing.get();
             userKeycap.levelUp();
         }
 

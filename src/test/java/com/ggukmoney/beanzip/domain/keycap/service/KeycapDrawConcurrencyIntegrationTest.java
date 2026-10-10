@@ -3,6 +3,8 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapDrawResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
+import com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
@@ -45,6 +47,9 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
     @Autowired
     private PointAccountRepository pointAccountRepository;
 
+    @Autowired
+    private UserKeycapRepository userKeycapRepository;
+
     @Test
     void sameIdempotencyKeyFromTwoThreadsDrawsOnceAndSpendsOnce() throws Exception {
         AppUser user = registerUserWithShards(10);
@@ -70,6 +75,24 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
                 .isEqualTo("KEYCAP_SHARD_INSUFFICIENT");
         assertThat(drawCount(user.getId())).isEqualTo(1);
         assertThat(keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow().getShardBalance()).isZero();
+    }
+
+    /**
+     * 무중단 배포 구간에 구 코드가 남긴 진행 중 행의 종별 조각을 읽는 네이티브 쿼리. 테스트 스키마는 엔티티에서
+     * 만들어져 옛 컬럼이 없으므로, 운영 DB(정리 SQL C 실행 전) 상태를 흉내 내어 컬럼을 추가한 뒤 확인한다.
+     */
+    @Test
+    void readsLegacyShardCountFromTheOldColumnOnPostgres() {
+        AppUser user = registerUserWithShards(0);
+        Keycap keycap = keycapRepository.save(Keycap.createFor("DRAW_LEGACY_001", "Legacy", Keycap.Grade.COMMON, 10, 1, null, null, 9));
+        UserKeycap legacy = UserKeycap.createOwned(user, keycap, java.time.Instant.now());
+        org.springframework.test.util.ReflectionTestUtils.setField(legacy, "status", UserKeycap.Status.IN_PROGRESS);
+        legacy = userKeycapRepository.saveAndFlush(legacy);
+        jdbcTemplate.execute("alter table user_keycap add column if not exists shard_count integer not null default 0");
+        jdbcTemplate.update("update user_keycap set shard_count = 4 where id = ?", legacy.getId());
+
+        assertThat(userKeycapRepository.findLegacyShardCount(legacy.getId())).isEqualTo(4);
+        assertThat(userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(user.getId())).isEmpty();
     }
 
     private List<Object> drawConcurrently(UUID userId, String firstKey, String secondKey) throws Exception {
@@ -106,7 +129,9 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
         AppUser user = appUserRepository.save(AppUser.createActive("draw-" + UUID.randomUUID(), null));
         pointAccountRepository.save(PointAccount.createFor(user));
         KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
-        wallet.addShards(shards);
+        if (shards > 0) {
+            wallet.addShards(shards);
+        }
         keycapBoxAccountRepository.save(wallet);
         // 뽑기 후보가 두 종 이상이어야 한 번 뽑아 전체 완성 보너스 경로로 빠지지 않는다.
         if (keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX).size() < 2) {

@@ -216,6 +216,22 @@ class KeycapServiceTest {
     }
 
     @Test
+    void rejectsLegacyInProgressKeycapEquip() {
+        UUID userId = UUID.randomUUID();
+        UUID keycapId = UUID.randomUUID();
+        UserKeycap target = userKeycap(userId, keycapId, "BASIC_001", "Basic", 1, UserKeycap.Status.IN_PROGRESS, false);
+        when(userKeycapRepository.findByUserIdForUpdate(userId)).thenReturn(List.of(target));
+        when(userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId))
+                .thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> keycapService.equipKeycap(userId, keycapId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getReason())
+                .isEqualTo("KEYCAP_NOT_COMPLETED");
+        verify(userKeycapRepository, never()).findEquippedByUserIdForUpdate(userId);
+    }
+
+    @Test
     void rejectsMissingOrUnownedKeycapEquipAsNotFound() {
         UUID userId = UUID.randomUUID();
         UUID keycapId = UUID.randomUUID();

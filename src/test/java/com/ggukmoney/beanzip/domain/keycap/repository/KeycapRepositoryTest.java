@@ -79,8 +79,11 @@ class KeycapRepositoryTest {
         Keycap second = keycapRepository.save(keycap("BASIC_002", "Second", true, 2));
         Keycap first = keycapRepository.save(keycap("BASIC_001", "First", true, 1));
 
+        Keycap legacy = keycapRepository.save(keycap("BASIC_000", "Legacy", true, 0));
         userKeycapRepository.save(userKeycap(currentUser, second, 3, UserKeycap.Status.COMPLETED, false));
         userKeycapRepository.save(userKeycap(currentUser, first, 10, UserKeycap.Status.COMPLETED, true));
+        // 구 코드가 남긴 진행 중 행은 미보유라 목록에 나오지 않는다 (무중단 배포 구간).
+        userKeycapRepository.save(userKeycap(currentUser, legacy, 1, UserKeycap.Status.IN_PROGRESS, false));
         userKeycapRepository.save(userKeycap(otherUser, first, 7, UserKeycap.Status.COMPLETED, false));
 
         List<UserKeycap> result = userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(currentUser.getId());
