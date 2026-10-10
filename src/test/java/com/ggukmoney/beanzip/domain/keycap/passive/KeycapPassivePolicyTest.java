@@ -86,10 +86,10 @@ class KeycapPassivePolicyTest {
         "pinkjelly,1,100,false", "pinkjelly,11,300,true", "moon,1,160,false",
         "moon,11,480,true", "radio,1,300,false", "radio,5,540,false",
         "radio,11,900,true", "radio,2147483647,900,true", "main,50,0,false"})
-    void exposesAutomaticClicksWithAnIndependentCap(String code, int level, int clicks, boolean capped) throws Exception {
+    void exposesAutomaticClicksWithAnIndependentCap(String code, int level, int clicks, boolean capped) {
         var effects = policy.effects(code, level);
-        assertThat(effects.getClass().getMethod("autoClicksPerDay").invoke(effects)).isEqualTo(clicks);
-        assertThat(effects.getClass().getMethod("autoClickCapReached").invoke(effects)).isEqualTo(capped);
+        assertThat(effects.autoClicksPerDay()).isEqualTo(clicks);
+        assertThat(effects.autoClickCapReached()).isEqualTo(capped);
     }
 
     @Test

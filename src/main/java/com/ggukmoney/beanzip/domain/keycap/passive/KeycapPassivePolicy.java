@@ -75,6 +75,12 @@ public final class KeycapPassivePolicy {
                 profile.autoClick() && growth.autoClicks(level) >= growth.autoClickCap());
     }
 
+    /**
+     * Grade-wide growth shape: startStrength/maxStrength is the Lv1 ratio of each Profile's own cap.
+     * maxStrength is a legacy interpolation denominator, not an effect cap.
+     * Automatic rates are shared by the grade. Each grade currently has one axis-⑤ keycap;
+     * another axis-⑤ keycap of that grade would inherit the same automatic rates.
+     */
     public record Growth(int capLevel, double startStrength, double maxStrength,
                          int autoClickBase, int autoClickPerLevel, int autoClickCap) {
         public Growth(int capLevel, double startStrength, double maxStrength) {
@@ -93,9 +99,13 @@ public final class KeycapPassivePolicy {
             return (int) Math.min((long) autoClickBase + (long) (level - 1) * autoClickPerLevel, autoClickCap);
         }
 
+        public double startRatio() {
+            return startStrength / maxStrength;
+        }
+
         private double scale(int level) {
             double t = Math.clamp((level - 1.0) / (capLevel - 1.0), 0.0, 1.0);
-            double startRatio = startStrength / maxStrength;
+            double startRatio = startRatio();
             return startRatio + (1 - startRatio) * t;
         }
     }
