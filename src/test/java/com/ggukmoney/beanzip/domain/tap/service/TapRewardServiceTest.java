@@ -11,6 +11,8 @@ import com.ggukmoney.beanzip.domain.tap.entity.*;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.global.config.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationEventPublisher;
 import java.time.*;
 import java.util.UUID;
@@ -29,7 +31,7 @@ class TapRewardServiceTest {
     private final TapRewardService rewards = new TapRewardService(dailyService, progressService, sessionService,
             points, ledger, wallets, tap, mock(PromotionPolicyConfig.class),
             mock(PromotionGrantIssuer.class), mock(TapThousandCompletionTrigger.class),
-            mock(ApplicationEventPublisher.class));
+            mock(ApplicationEventPublisher.class),ZoneOffset.UTC);
     private final AppUser user = mock(AppUser.class);
     private final Instant now = Instant.parse("2026-10-10T03:00:00Z");
     private final UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.of(2026,10,10));
@@ -49,6 +51,12 @@ class TapRewardServiceTest {
         when(tap.pointDailyCap()).thenReturn(150);
         when(tap.boxSessionIdleTimeoutSeconds()).thenReturn(3600);
         when(progressService.drawNextTarget(anyLong(),any())).thenAnswer(i -> (int)i.getArgument(0,Long.class).longValue()+1);
+    }
+
+    @Test void rewardsUseTheConfiguredBusinessDate() {
+        prepare();
+        rewards.award(user,Instant.parse("2026-10-09T16:00:00Z"),Effects.NONE,1,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        verify(dailyService).getOrCreate(user,LocalDate.of(2026,10,9));
     }
 
     @Test
@@ -75,8 +83,27 @@ class TapRewardServiceTest {
         assertThat(daily.getValidTapCount()).isEqualTo(3000);
         assertThat(daily.getTotalValidTapCount()).isEqualTo(3);
         assertThat(daily.getTotalEffectiveTapCount()).isEqualTo(17);
-        assertThat(progress.getCumulativeMissionTapCount()).isZero();
+        assertThat(progress.getCumulativeMissionTapCount()).isEqualTo(3);
         assertThat(progress.getCumulativeRankingTapCount()).isEqualTo(17);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false,true})
+    void eachManualOrAutomaticBatchHasOnePointBoundaryAtItsEndpoint(boolean automatic) {
+        prepare();
+        var result = rewards.award(user,now,Effects.NONE,100,automatic,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isEqualTo(1);
+        assertThat(progress.getNextPointTarget()).isEqualTo(101);
+        verify(progressService).drawNextTarget(eq(100L),eq(tap));
+    }
+
+    @Test void cappedPointBoundaryIsConsumedFromTheBatchEndpointWithoutCredit() {
+        prepare();
+        daily.addPointEarned(150);
+        var result = rewards.award(user,now,Effects.NONE,100,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isZero();
+        assertThat(progress.getNextPointTarget()).isEqualTo(101);
+        verify(progressService).drawNextTarget(eq(100L),eq(tap));
+        verifyNoInteractions(ledger);
     }
 
     @Test

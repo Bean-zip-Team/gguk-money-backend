@@ -35,12 +35,13 @@ public class TapRewardService {
     private final PromotionGrantIssuer promotionIssuer;
     private final TapThousandCompletionTrigger thousandTrigger;
     private final ApplicationEventPublisher events;
+    private final ZoneId businessZoneId;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public Award award(AppUser user, Instant now, Effects effects, int count, boolean automatic,
                        UUID operationId, KeycapPassiveRoller roller) {
         if (count < 0) throw new IllegalArgumentException("Negative click count");
-        var daily = dailyService.getOrCreate(user, LocalDate.ofInstant(now, ZoneId.of("Asia/Seoul")));
+        var daily = dailyService.getOrCreate(user, LocalDate.ofInstant(now, businessZoneId));
         var progress = progressService.getForUser(user.getId());
         var session = sessionService.getOrCreateActiveSession(user, now, tap);
         var account = points.getForUser(user.getId());
@@ -56,27 +57,26 @@ public class TapRewardService {
         progress.addRankingTaps(clicks.effectiveCount());
         if (!automatic) {
             long before = progress.getCumulativeMissionTapCount();
-            progress.addMissionTaps(eligible);
+            progress.addMissionTaps(count);
             issueMission(user, progress, before, now);
         }
 
         int awarded = 0;
-        int index = 0;
-        // Advance from each crossed boundary, not from the batch endpoint. Capped payouts consume boundaries too.
-        while (progress.hasReachedPointTarget()) {
+        // Manual and automatic batches use the same legacy pacing: one payout, then a target beyond the batch.
+        // Even a capped payout advances the target so it cannot move into tomorrow's rewards.
+        if (progress.hasReachedPointTarget()) {
             int amount = roller.rollPoint(effects, 1, Math.max(tap.pointDailyCap()-daily.getPointEarnedAmount(),0));
             if (amount > 0) {
                 account.credit(amount);
-                UUID key = UUID.nameUUIDFromBytes((operationId+"-"+index).getBytes(StandardCharsets.UTF_8));
+                UUID key = UUID.nameUUIDFromBytes((operationId+"-0").getBytes(StandardCharsets.UTF_8));
                 ledger.recordCredit(account,user,amount,"TAP_REWARD",key);
                 daily.addPointEarned(amount);
                 awarded = Math.addExact(awarded,amount);
             }
-            int boundary = progress.getNextPointTarget();
-            int next = progressService.drawNextTarget(boundary,tap);
-            if (next <= boundary) throw new IllegalStateException("Point target must advance");
+            long batchEnd = progress.getCumulativeValidTapCount();
+            int next = progressService.drawNextTarget(batchEnd,tap);
+            if (next <= batchEnd) throw new IllegalStateException("Point target must advance");
             progress.advancePointTarget(next);
-            index++;
         }
         int shards = 0;
         session.addValidTaps(clicks.effectiveCount());

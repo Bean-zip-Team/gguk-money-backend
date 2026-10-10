@@ -81,7 +81,7 @@ class TapBatchServiceTest {
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, new TapRewardService(userTapDailyService,userTapProgressService,userTapSessionService,
                     pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
-                    promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher),
+                    promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId),
             passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,new tools.jackson.databind.ObjectMapper(),clock
     );
 
@@ -495,7 +495,7 @@ class TapBatchServiceTest {
     }
 
     @Test
-    void loadsAndSavesPointAccountOnceEvenWhenBatchAwardsMultiplePoints() {
+    void batchCrossingSeveralTargetsPaysOnceAndAdvancesPastItsEndpoint() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
@@ -510,25 +510,26 @@ class TapBatchServiceTest {
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
 
-        // 한 배치 안에서 목표를 세 번 넘기도록 다음 목표를 이어서 돌려준다.
+        // 목표 세 개 분량의 탭이어도 배치에서 한 번만 지급한다.
         when(userTapProgressService.drawNextTarget(anyLong(), eq(tapPolicyConfig)))
                 .thenAnswer(i -> (int)(i.getArgument(0,Long.class)+10));
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 30);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
-        assertThat(response.pointsAwarded()).isEqualTo(3);
-        assertThat(response.balance()).isEqualTo(3L);
-        assertThat(daily.getPointEarnedAmount()).isEqualTo(3);
+        assertThat(response.pointsAwarded()).isEqualTo(1);
+        assertThat(response.balance()).isEqualTo(1L);
+        assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
+        assertThat(progress.getNextPointTarget()).isEqualTo(40);
 
         // 지급 횟수와 무관하게 계정 조회·저장은 각각 한 번이어야 한다.
         verify(pointAccountService, times(1)).getForUser(userId);
         verify(pointAccountService, times(1)).save(pointAccount);
         verify(pointAccountService, never()).credit(any(), anyLong());
 
-        // 원장은 지급 건마다 남고 멱등 키는 서로 달라야 한다.
+        // 원장도 배치에서 한 번만 기록한다.
         ArgumentCaptor<UUID> keyCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(pointLedgerService, times(3))
+        verify(pointLedgerService, times(1))
                 .recordCredit(eq(pointAccount), eq(user), eq(1L), eq("TAP_REWARD"), keyCaptor.capture());
         assertThat(keyCaptor.getAllValues()).doesNotHaveDuplicates();
     }
