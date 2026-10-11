@@ -12,11 +12,19 @@ public record MyKeycapItemResponse(
         String code,
         @Schema(description = "키캡 이름", example = "기본 콩")
         String name,
-        @Schema(description = "보유 조각 수", example = "3")
-        int shardCount,
-        @Schema(description = "보유 키캡 상태", example = "IN_PROGRESS")
+        @Schema(description = "레벨. 처음 얻으면 1, 중복으로 뽑을 때마다 +1. 상한 없음", example = "9")
+        int level,
+        @Schema(description = "[deprecated] 보유 키캡은 항상 COMPLETED", example = "COMPLETED")
         String status,
         @Schema(description = "현재 장착 여부", example = "false")
-        boolean equipped
+        boolean equipped,
+        @Schema(description = "키캡 등급", example = "COMMON")
+        String grade,
+        @Schema(description = "획득 경로. BOX: 상시(뽑기), EVENT: 시즌 한정. 시즌 키캡은 카탈로그에 없으므로 여기 값으로 그린다", example = "BOX")
+        String acquisitionType,
+        @Schema(description = "이미지 URL", example = "https://example.com/keycap.png")
+        String imageUrl,
+        @Schema(description = "사운드 URL", example = "https://example.com/keycap.mp3")
+        String soundUrl
 ) {
 }

@@ -17,10 +17,16 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 유저의 조각 지갑 (BEA-329).
+ *
+ * <p>조각은 등급 없는 단일 화폐다. 탭 드롭 곡선에서 1개씩 쌓이고 뽑기에서 가격만큼 빠진다.
+ * 테이블과 클래스 이름은 상자 시절({@code keycap_box_account})의 것을 그대로 쓴다 — 유저당 1행,
+ * 가입 시 생성, 낙관적 락이 모두 그대로 필요해서 새로 만들 이유가 없다.
+ */
 @Getter
 @Entity
 @Table(name = "keycap_box_account")
@@ -38,17 +44,8 @@ public class KeycapBoxAccount {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private AppUser user;
 
-    @Column(name = "box_balance", nullable = false)
-    private Integer boxBalance = 0;
-
-    @Column(name = "free_open_used_count", nullable = false)
-    private Integer freeOpenUsedCount = 0;
-
-    @Column(name = "ad_open_used_count", nullable = false)
-    private Integer adOpenUsedCount = 0;
-
-    @Column(name = "open_cycle_started_at", nullable = false)
-    private Instant openCycleStartedAt;
+    @Column(name = "shard_balance", nullable = false)
+    private Integer shardBalance = 0;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -60,105 +57,30 @@ public class KeycapBoxAccount {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static KeycapBoxAccount createFor(AppUser user, Instant createdAt) {
-        if (createdAt == null) {
-            throw new IllegalArgumentException("createdAt is required");
-        }
+    public static KeycapBoxAccount createFor(AppUser user) {
         KeycapBoxAccount account = new KeycapBoxAccount();
         account.user = user;
-        account.openCycleStartedAt = createdAt;
         return account;
     }
 
-    public void addBoxes(int count) {
-        this.boxBalance += count;
-    }
-
-    public boolean hasBox() {
-        return boxBalance > 0;
-    }
-
-    public OpenCycleSnapshot calculateOpenCycleSnapshot(
-            Instant now,
-            Duration cycleDuration,
-            int freeLimit,
-            int adLimit
-    ) {
-        validateOpenCyclePolicy(now, cycleDuration, freeLimit, adLimit);
-        CycleState cycleState = currentCycleState(now, cycleDuration);
-        boolean hasAvailableBox = hasBox();
-        boolean canFreeOpen = hasAvailableBox && cycleState.freeOpenUsedCount() < freeLimit;
-        boolean canAdOpen = hasAvailableBox && cycleState.adOpenUsedCount() < adLimit;
-        boolean charging = cycleState.freeOpenUsedCount() >= freeLimit
-                && cycleState.adOpenUsedCount() >= adLimit;
-        Instant nextRechargeAt = charging ? cycleState.openCycleStartedAt().plus(cycleDuration) : null;
-        return new OpenCycleSnapshot(canFreeOpen, canAdOpen, charging, nextRechargeAt);
-    }
-
-    public void refreshOpenCycle(Instant now, Duration cycleDuration) {
-        validateOpenCyclePolicy(now, cycleDuration, 0, 0);
-        CycleState cycleState = currentCycleState(now, cycleDuration);
-        if (!cycleState.openCycleStartedAt().equals(openCycleStartedAt)) {
-            openCycleStartedAt = cycleState.openCycleStartedAt();
-            freeOpenUsedCount = 0;
-            adOpenUsedCount = 0;
+    public void addShards(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException("Shard count must be positive.");
         }
+        this.shardBalance += count;
     }
 
-    public Instant calculateEffectiveOpenCycleStartedAt(Instant now, Duration cycleDuration) {
-        validateOpenCyclePolicy(now, cycleDuration, 0, 0);
-        return currentCycleState(now, cycleDuration).openCycleStartedAt();
+    public boolean canAfford(int price) {
+        validatePrice(price);
+        return shardBalance >= price;
     }
 
-    public boolean canUseFreeOpen(int freeLimit) {
-        validateLimit("freeLimit", freeLimit);
-        return freeOpenUsedCount < freeLimit;
-    }
-
-    public boolean canUseAdOpen(int adLimit) {
-        validateLimit("adLimit", adLimit);
-        return adOpenUsedCount < adLimit;
-    }
-
-    /**
-     * 일괄 개봉으로 상자를 소모한다 (BEA-280).
-     *
-     * <p>무료·광고 카운터를 건드리지 않는다. 개봉 주기 제한을 우회하는 것이 이 보상의 내용이라
-     * 소모 이력을 그 카운터에 섞으면 다음 주기 계산이 틀어진다.
-     *
-     * @return 실제로 소모한 개수. 보유량이 요청보다 적으면 보유량만큼이다.
-     */
-    public int consumeForBulkOpen(int requested) {
-        if (requested <= 0) {
-            return 0;
+    public void consumeShards(int price) {
+        validatePrice(price);
+        if (shardBalance < price) {
+            throw new IllegalStateException("Keycap shard balance is insufficient.");
         }
-        int consumed = Math.min(boxBalance, requested);
-        boxBalance -= consumed;
-        return consumed;
-    }
-
-    public void consumeFreeOpen(int freeLimit) {
-        validateLimit("freeLimit", freeLimit);
-        if (!hasBox()) {
-            throw new IllegalStateException("Keycap box balance is insufficient.");
-        }
-        if (!canUseFreeOpen(freeLimit)) {
-            throw new IllegalStateException("Free open limit exceeded.");
-        }
-        boxBalance -= 1;
-        freeOpenUsedCount += 1;
-    }
-
-    public void consumeAdOpen(int adLimit) {
-        validateLimit("adLimit", adLimit);
-        if (!hasBox()) {
-            throw new IllegalStateException("Keycap box balance is insufficient.");
-        }
-        if (!canUseAdOpen(adLimit)) {
-            throw new IllegalStateException("Ad open limit exceeded.");
-        }
-        boxBalance -= 1;
-        adOpenUsedCount += 1;
+        shardBalance -= price;
     }
 
     @PrePersist
@@ -178,54 +100,9 @@ public class KeycapBoxAccount {
         updatedAt = Instant.now();
     }
 
-    private CycleState currentCycleState(Instant now, Duration cycleDuration) {
-        if (now.isBefore(openCycleStartedAt)) {
-            return new CycleState(openCycleStartedAt, freeOpenUsedCount, adOpenUsedCount);
+    private void validatePrice(int price) {
+        if (price <= 0) {
+            throw new IllegalArgumentException("Draw price must be positive.");
         }
-        try {
-            long elapsedCycleCount = Duration.between(openCycleStartedAt, now).dividedBy(cycleDuration);
-            if (elapsedCycleCount <= 0) {
-                return new CycleState(openCycleStartedAt, freeOpenUsedCount, adOpenUsedCount);
-            }
-            Instant effectiveCycleStartedAt = openCycleStartedAt.plus(cycleDuration.multipliedBy(elapsedCycleCount));
-            return new CycleState(effectiveCycleStartedAt, 0, 0);
-        } catch (ArithmeticException exception) {
-            throw new IllegalStateException("Open cycle calculation overflowed.", exception);
-        }
-    }
-
-    private void validateOpenCyclePolicy(Instant now, Duration cycleDuration, int freeLimit, int adLimit) {
-        if (now == null) {
-            throw new IllegalArgumentException("now is required");
-        }
-        if (openCycleStartedAt == null) {
-            throw new IllegalStateException("openCycleStartedAt is required");
-        }
-        if (cycleDuration == null || cycleDuration.isZero() || cycleDuration.isNegative()) {
-            throw new IllegalArgumentException("cycleDuration must be positive");
-        }
-        validateLimit("freeLimit", freeLimit);
-        validateLimit("adLimit", adLimit);
-    }
-
-    private void validateLimit(String name, int limit) {
-        if (limit < 0) {
-            throw new IllegalArgumentException(name + " must not be negative");
-        }
-    }
-
-    public record OpenCycleSnapshot(
-            boolean canFreeOpen,
-            boolean canAdOpen,
-            boolean charging,
-            Instant nextRechargeAt
-    ) {
-    }
-
-    private record CycleState(
-            Instant openCycleStartedAt,
-            int freeOpenUsedCount,
-            int adOpenUsedCount
-    ) {
     }
 }

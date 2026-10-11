@@ -46,7 +46,7 @@ public abstract class RedisIntegrationTestSupport {
         RedisService redisService = new RedisService(redisTemplate);
         authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null);
         tapBatchService = new TapBatchService(
-                null, null, null, null, null, null, null, redisService, null, null,
+                null, null, null, null, null, null, null, redisService, null,
                 null, null, null, null, null,
                 Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC),
                 ZoneId.of("Asia/Seoul")

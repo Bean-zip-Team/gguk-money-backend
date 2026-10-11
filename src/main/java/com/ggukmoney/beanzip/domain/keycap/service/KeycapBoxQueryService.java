@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,8 +42,7 @@ public class KeycapBoxQueryService {
     private final KeycapBoxHistoryCursorCodec cursorCodec;
 
     /**
-     * 읽기 전용이다. 개봉 주기 계산({@code calculateOpenCycleSnapshot})과 상자 진행도 조회
-     * ({@code getBoxProgress}) 모두 순수 계산이라 아무것도 저장하지 않는다.
+     * 읽기 전용이다. 조각 진행도 조회({@code getBoxProgress})는 순수 계산이라 아무것도 저장하지 않는다.
      *
      * <p>유휴로 만료된 탭 세션의 리셋도 여기서 영속화하지 않는다. 조회가 리셋을 저장하면
      * 탭 배치와 같은 행을 동시에 갱신해 낙관적 락이 깨진다 (UserTapSessionService 참고).
@@ -52,16 +50,14 @@ public class KeycapBoxQueryService {
     @Transactional(readOnly = true)
     public KeycapBoxStatusResponse getStatus(UUID userId) {
         KeycapBoxAccount account = keycapBoxAccountService.getForUser(userId);
-        Instant now = clock.instant();
-        KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot = account.calculateOpenCycleSnapshot(
-                now,
-                keycapBoxPolicyConfig.openCycleDuration(),
-                keycapBoxPolicyConfig.freeOpenLimit(),
-                keycapBoxPolicyConfig.adOpenLimit()
-        );
         AppUser user = userService.getById(userId);
-        BoxProgressSnapshot progress = userTapSessionService.getBoxProgress(user, now, tapPolicyConfig);
-        return keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress);
+        BoxProgressSnapshot progress = userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig);
+        return KeycapBoxStatusResponse.of(
+                account.getShardBalance(),
+                keycapBoxPolicyConfig.drawPrice(),
+                progress.cumulativeValidTapCount(),
+                progress.nextBoxTarget()
+        );
     }
 
     @Transactional(readOnly = true)

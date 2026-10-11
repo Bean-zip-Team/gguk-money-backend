@@ -1,7 +1,5 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
-import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDelivery;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationDeliveryStatus;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
@@ -14,7 +12,6 @@ import com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository;
 import com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
 import com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason;
-import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.AppConfigBatchLoader;
 import com.ggukmoney.beanzip.global.config.RankChangeNotificationPolicyConfig;
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
@@ -45,8 +42,6 @@ class NotificationDeliveryPersistenceServiceTest {
     private final NotificationRankStateRepository rankStateRepository = mock(NotificationRankStateRepository.class);
     private final RankingSeasonService rankingSeasonService = mock(RankingSeasonService.class);
     private final RankingEntryRepository rankingEntryRepository = mock(RankingEntryRepository.class);
-    private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
-    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig = mock(KeycapBoxPolicyConfig.class);
     private final AppConfigRepository appConfigRepository = mock(AppConfigRepository.class);
     private final RankChangeNotificationPolicyConfig rankChangePolicyConfig =
             new RankChangeNotificationPolicyConfig(new AppConfigBatchLoader(appConfigRepository));
@@ -56,8 +51,6 @@ class NotificationDeliveryPersistenceServiceTest {
             rankStateRepository,
             rankingSeasonService,
             rankingEntryRepository,
-            keycapBoxAccountRepository,
-            keycapBoxPolicyConfig,
             rankChangePolicyConfig,
             new NotificationTemplateProperties("WEEKLY", "RANK_SET", "BOOSTER", null, null, null, "clickmoney-box"),
             Clock.fixed(Instant.parse("2026-07-25T10:00:00Z"), ZoneOffset.UTC)
@@ -221,7 +214,6 @@ class NotificationDeliveryPersistenceServiceTest {
                 "enqueueWeeklyReset",
                 "claimWeeklyResetAttempt",
                 "markWeeklyResetRetryWaiting",
-                "prepareKeycapBoxOpenAvailable",
                 "captureRankBaselineOnAgreement",
                 "markSent",
                 "markRetryWaiting",
@@ -607,166 +599,10 @@ class NotificationDeliveryPersistenceServiceTest {
         assertThat(state.getBaselineRank()).isEqualTo(11L);
     }
 
-    @Test
-    void keycapCampaignMissingStopsBeforePreferenceAndAccountLock() {
-        NotificationDeliveryPersistenceService unconfiguredService = new NotificationDeliveryPersistenceService(
-                deliveryRepository,
-                preferenceRepository,
-                rankStateRepository,
-                rankingSeasonService,
-                rankingEntryRepository,
-                keycapBoxAccountRepository,
-                keycapBoxPolicyConfig,
-                rankChangePolicyConfig,
-                new NotificationTemplateProperties(null, "RANK_SET", null, null, null, null, null),
-                Clock.fixed(Instant.parse("2026-08-03T01:00:00Z"), ZoneOffset.UTC)
-        );
-        UUID userId = UUID.randomUUID();
-
-        assertThat(unconfiguredService.prepareKeycapBoxOpenAvailable(userId, Instant.parse("2026-08-03T01:00:00Z")))
-                .isEmpty();
-
-        verify(preferenceRepository, org.mockito.Mockito.never()).findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE);
-        verify(keycapBoxAccountRepository, org.mockito.Mockito.never()).findByUserIdForUpdate(userId);
-    }
-
-    @Test
-    void keycapAgreementMissingStopsBeforeAccountLock() {
-        UUID userId = UUID.randomUUID();
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE))
-                .thenReturn(Optional.empty());
-
-        assertThat(service.prepareKeycapBoxOpenAvailable(userId, Instant.parse("2026-08-03T01:00:00Z")))
-                .isEmpty();
-
-        verify(keycapBoxAccountRepository, org.mockito.Mockito.never()).findByUserIdForUpdate(userId);
-    }
-
-    @Test
-    void keycapPendingCreationRefreshesCycleInTheSamePreparation() {
-        UUID userId = UUID.randomUUID();
-        Instant cycleStartedAt = Instant.parse("2026-08-03T00:00:00Z");
-        Instant now = Instant.parse("2026-08-03T01:01:00Z");
-        KeycapBoxAccount account = exhaustedAccount(cycleStartedAt);
-        String dedupeKey = "KEYCAP_BOX_OPEN_AVAILABLE:" + userId + ":2026-08-03T01:00:00Z";
-        NotificationDelivery pending = NotificationDelivery.pending(
-                userId,
-                NotificationType.KEYCAP_BOX_OPEN_AVAILABLE,
-                dedupeKey,
-                "clickmoney-box",
-                now
-        );
-        stubKeycapPolicy();
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE))
-                .thenReturn(Optional.of(agreed(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)));
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
-        when(deliveryRepository.insertPendingIfAbsent(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(userId),
-                org.mockito.ArgumentMatchers.eq("KEYCAP_BOX_OPEN_AVAILABLE"),
-                org.mockito.ArgumentMatchers.eq(dedupeKey),
-                org.mockito.ArgumentMatchers.eq("clickmoney-box"),
-                org.mockito.ArgumentMatchers.eq("{}"),
-                org.mockito.ArgumentMatchers.any()
-        )).thenReturn(1);
-        when(deliveryRepository.findByDedupeKey(dedupeKey)).thenReturn(Optional.of(pending));
-
-        assertThat(service.prepareKeycapBoxOpenAvailable(userId, now)).contains(pending);
-
-        assertThat(account.getOpenCycleStartedAt()).isEqualTo(Instant.parse("2026-08-03T01:00:00Z"));
-        assertThat(account.getFreeOpenUsedCount()).isZero();
-        assertThat(account.getAdOpenUsedCount()).isZero();
-        verify(keycapBoxAccountRepository).saveAndFlush(account);
-    }
-
-    @Test
-    void duplicateKeycapDeliveryDoesNotRefreshCycle() {
-        UUID userId = UUID.randomUUID();
-        Instant cycleStartedAt = Instant.parse("2026-08-03T00:00:00Z");
-        Instant now = Instant.parse("2026-08-03T01:01:00Z");
-        KeycapBoxAccount account = exhaustedAccount(cycleStartedAt);
-        stubKeycapPolicy();
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE))
-                .thenReturn(Optional.of(agreed(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)));
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
-        when(deliveryRepository.insertPendingIfAbsent(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(userId),
-                org.mockito.ArgumentMatchers.eq("KEYCAP_BOX_OPEN_AVAILABLE"),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.eq("clickmoney-box"),
-                org.mockito.ArgumentMatchers.eq("{}"),
-                org.mockito.ArgumentMatchers.any()
-        )).thenReturn(0);
-
-        assertThat(service.prepareKeycapBoxOpenAvailable(userId, now)).isEmpty();
-
-        assertThat(account.getOpenCycleStartedAt()).isEqualTo(cycleStartedAt);
-        assertThat(account.getFreeOpenUsedCount()).isEqualTo(2);
-        assertThat(account.getAdOpenUsedCount()).isEqualTo(2);
-        verify(keycapBoxAccountRepository, org.mockito.Mockito.never()).saveAndFlush(account);
-    }
-
-    @Test
-    void keycapAccountWithRemainingOpenDoesNotCreatePendingOrRefreshCycle() {
-        UUID userId = UUID.randomUUID();
-        Instant cycleStartedAt = Instant.parse("2026-08-03T00:00:00Z");
-        KeycapBoxAccount account = exhaustedAccount(cycleStartedAt);
-        ReflectionTestUtils.setField(account, "freeOpenUsedCount", 1);
-        stubKeycapPolicy();
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE))
-                .thenReturn(Optional.of(agreed(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)));
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
-
-        assertThat(service.prepareKeycapBoxOpenAvailable(userId, Instant.parse("2026-08-03T01:01:00Z")))
-                .isEmpty();
-
-        verify(deliveryRepository, org.mockito.Mockito.never()).insertPendingIfAbsent(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any()
-        );
-        assertThat(account.getOpenCycleStartedAt()).isEqualTo(cycleStartedAt);
-        assertThat(account.getFreeOpenUsedCount()).isEqualTo(1);
-    }
-
-    @Test
-    void zeroKeycapOpenCapacityStopsBeforeAccountLock() {
-        UUID userId = UUID.randomUUID();
-        when(preferenceRepository.findByUserIdAndType(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE))
-                .thenReturn(Optional.of(agreed(userId, NotificationType.KEYCAP_BOX_OPEN_AVAILABLE)));
-        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofHours(1));
-        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(0);
-        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(0);
-
-        assertThat(service.prepareKeycapBoxOpenAvailable(userId, Instant.parse("2026-08-03T01:01:00Z")))
-                .isEmpty();
-
-        verify(keycapBoxAccountRepository, org.mockito.Mockito.never()).findByUserIdForUpdate(userId);
-    }
-
     private NotificationPreference agreed(UUID userId, NotificationType type) {
         NotificationPreference preference = NotificationPreference.defaultOf(userId, type);
         preference.applyAgreement("newAgreement");
         return preference;
-    }
-
-    private void stubKeycapPolicy() {
-        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofHours(1));
-        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
-        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
-    }
-
-    private KeycapBoxAccount exhaustedAccount(Instant cycleStartedAt) {
-        KeycapBoxAccount account = KeycapBoxAccount.createFor(null, cycleStartedAt);
-        ReflectionTestUtils.setField(account, "boxBalance", 1);
-        ReflectionTestUtils.setField(account, "freeOpenUsedCount", 2);
-        ReflectionTestUtils.setField(account, "adOpenUsedCount", 2);
-        return account;
     }
 
     private NotificationDelivery pending(UUID userId, NotificationType type, String dedupeKey) {

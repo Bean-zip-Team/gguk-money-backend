@@ -1,12 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.controller;
 
-import com.ggukmoney.beanzip.domain.keycap.dto.request.KeycapBoxOpenRequest;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxHistoryResponse;
-import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxBulkOpenResponse;
-import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxOpenResponse;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapBoxStatusResponse;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxBulkOpenService;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxQueryService;
 import com.ggukmoney.beanzip.global.common.ApiErrorResponse;
 import com.ggukmoney.beanzip.global.common.ApiResponse;
@@ -14,7 +9,6 @@ import com.ggukmoney.beanzip.global.config.OpenApiConfig;
 import com.ggukmoney.beanzip.global.interceptor.AuthRequestAttributes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -22,72 +16,56 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 조각 상태와 상자 개봉 이력 (BEA-329). 개봉·일괄 개봉은 사라졌고 뽑기는 {@code /api/keycaps/draw} 다.
+ * 경로는 구버전 앱 호환을 위해 그대로 둔다.
+ */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/keycap-boxes")
-@Tag(name = "Keycap Boxes", description = "키캡 상자 상태, 개봉, 이력 API")
+@Tag(name = "Keycap Boxes", description = "키캡 조각 상태, 상자 개봉 이력 API")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class KeycapBoxController {
 
     private final KeycapBoxQueryService keycapBoxQueryService;
-    private final KeycapBoxOpenService keycapBoxOpenService;
-    private final KeycapBoxBulkOpenService keycapBoxBulkOpenService;
 
-    @Operation(summary = "키캡 상자 상태 조회")
+    @Operation(summary = "키캡 조각 상태 조회", description = "조각 잔액, 뽑기 가격, 다음 조각까지의 진행도를 조회합니다. 상자 시절 필드는 중립값으로 유지됩니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "조회 성공",
-                    content = @Content(examples = {
-                            @ExampleObject(
-                                    name = "상자 없음 - 개봉 횟수 남음",
-                                    value = """
-                                            {
-                                              "success": true,
-                                              "data": {
-                                                "boxBalance": 0,
-                                                "canFreeOpen": false,
-                                                "canAdOpen": false,
-                                                "charging": false,
-                                                "nextRechargeAt": null,
-                                                "boxProgressTapCount": 45,
-                                                "nextBoxRequiredTapCount": 100
-                                              }
-                                            }
-                                            """
-                            ),
-                            @ExampleObject(
-                                    name = "상자 없음 - 공통 주기 충전 중",
-                                    value = """
-                                            {
-                                              "success": true,
-                                              "data": {
-                                                "boxBalance": 0,
-                                                "canFreeOpen": false,
-                                                "canAdOpen": false,
-                                                "charging": true,
-                                                "nextRechargeAt": "2026-07-26T01:00:00Z",
-                                                "boxProgressTapCount": 45,
-                                                "nextBoxRequiredTapCount": 100
-                                              }
-                                            }
-                                            """
-                            )
-                    })
+                    content = @Content(examples = @ExampleObject(
+                            name = "조각 12개 보유",
+                            value = """
+                                    {
+                                      "success": true,
+                                      "data": {
+                                        "shardBalance": 12,
+                                        "drawPrice": 5,
+                                        "canDraw": true,
+                                        "shardProgressTapCount": 45,
+                                        "nextShardRequiredTapCount": 100,
+                                        "boxBalance": 0,
+                                        "canFreeOpen": false,
+                                        "canAdOpen": false,
+                                        "charging": false,
+                                        "nextRechargeAt": null,
+                                        "boxProgressTapCount": 45,
+                                        "nextBoxRequiredTapCount": 100
+                                      }
+                                    }
+                                    """
+                    ))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 또는 탭 진행도 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "지갑 또는 탭 진행도 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping("/status")
     public ResponseEntity<ApiResponse<KeycapBoxStatusResponse>> getStatus(@Parameter(hidden = true) HttpServletRequest httpServletRequest) {
@@ -96,53 +74,7 @@ public class KeycapBoxController {
         )));
     }
 
-    @Operation(summary = "키캡 상자 개봉", description = "보유 상자를 무료 또는 광고 방식으로 개봉해 키캡 조각을 지급합니다.")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "개봉 성공 또는 멱등 재응답"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락, 개봉 불가, 요청 값 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "공통 충전 주기 개봉 한도 초과", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "멱등키 재사용 또는 보상 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
-    })
-    @PostMapping("/open")
-    public ResponseEntity<ApiResponse<KeycapBoxOpenResponse>> open(
-            @Parameter(in = ParameterIn.HEADER, description = "개봉 요청 멱등키. 최대 100자이며 같은 요청 재시도에 같은 값을 사용합니다.", required = true, example = "open-20260715-0001")
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody KeycapBoxOpenRequest request,
-            @Parameter(hidden = true) HttpServletRequest httpServletRequest
-    ) {
-        return ResponseEntity.ok(ApiResponse.success(keycapBoxOpenService.open(
-                AuthRequestAttributes.getRequiredUserId(httpServletRequest),
-                idempotencyKey,
-                request
-        )));
-    }
-
-    @Operation(summary = "키캡 상자 일괄 개봉",
-            description = "알림 동의 보상으로 쌓인 상자를 한 번에 엽니다. 개봉 주기·무료/광고 횟수 제한을 적용하지 않으며, "
-                    + "유저당 1회만 가능합니다. 상한은 `keycapBox.bulkOpen.limit` 설정값이고 보유량이 그보다 적으면 보유량만큼 열립니다. "
-                    + "보유 상자가 없으면 openedCount 0 으로 응답하며 수령 기록을 남기지 않습니다.")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "개봉 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "알림 동의 기록 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "상자 계정 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
-    })
-    @PostMapping("/bulk-open")
-    public ResponseEntity<ApiResponse<KeycapBoxBulkOpenResponse>> bulkOpen(
-            @Parameter(in = ParameterIn.HEADER, description = "개봉 요청 멱등키. 재시도에 같은 값을 사용합니다.", required = true, example = "bulk-20260908-0001")
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @Parameter(hidden = true) HttpServletRequest httpServletRequest
-    ) {
-        return ResponseEntity.ok(ApiResponse.success(keycapBoxBulkOpenService.bulkOpen(
-                AuthRequestAttributes.getRequiredUserId(httpServletRequest),
-                idempotencyKey
-        )));
-    }
-
-    @Operation(summary = "키캡 상자 개봉 이력 조회", description = "커서 기반으로 키캡 상자 개봉 이력을 조회합니다.")
+    @Operation(summary = "키캡 상자 개봉 이력 조회", description = "커서 기반으로 과거 상자 개봉 이력을 조회합니다. 개봉은 더 이상 발생하지 않습니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 cursor 또는 size", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),

@@ -25,16 +25,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NotificationSchedulerTest {
 
     @Test
-    void keycapScheduleUsesConfigurableEveryMinuteCronInKst() throws Exception {
-        Scheduled scheduled = NotificationScheduler.class
-                .getMethod("scheduleKeycapBoxOpenAvailableNotifications")
-                .getAnnotation(Scheduled.class);
-
-        assertThat(scheduled.cron()).isEqualTo("${app.smart-message.schedule.keycap-box-cron:0 * * * * *}");
-        assertThat(scheduled.zone()).isEqualTo("${app.smart-message.schedule.zone:Asia/Seoul}");
-    }
-
-    @Test
     void dailyMissionScheduleRunsAtNineInTheEveningInKst() throws Exception {
         Scheduled scheduled = NotificationScheduler.class
                 .getMethod("scheduleDailyMissionNotifications")
@@ -137,69 +127,6 @@ class NotificationSchedulerTest {
 
         verify(deliveryService, never()).sendMorningNotifications(org.mockito.ArgumentMatchers.any());
         verify(release, never()).execute();
-    }
-
-    @Test
-    void doesNotInvokeKeycapDeliveryWhenAdvisoryLockIsNotAcquired() throws Exception {
-        NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
-        WeeklyRankingResetNotificationService resetService = mock(WeeklyRankingResetNotificationService.class);
-        DataSource dataSource = mock(DataSource.class);
-        Connection connection = mock(Connection.class);
-        PreparedStatement acquire = mock(PreparedStatement.class);
-        PreparedStatement release = mock(PreparedStatement.class);
-        ResultSet resultSet = mock(ResultSet.class);
-        when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(acquire);
-        when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(release);
-        when(acquire.executeQuery()).thenReturn(resultSet);
-        when(resultSet.next()).thenReturn(true);
-        when(resultSet.getBoolean(1)).thenReturn(false);
-
-        NotificationScheduler scheduler = new NotificationScheduler(
-                deliveryService,
-                resetService,
-                new AdvisoryLockRunner(dataSource),
-                Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC),
-                "Asia/Seoul",
-                true
-        );
-
-        scheduler.scheduleKeycapBoxOpenAvailableNotifications();
-
-        verify(deliveryService, never()).sendKeycapBoxOpenAvailableNotifications(org.mockito.ArgumentMatchers.any());
-        verify(release, never()).execute();
-        verify(resetService, never()).enqueueNextPreferencePage();
-    }
-
-    @Test
-    void invokesKeycapDeliveryAndReleasesAdvisoryLock() throws Exception {
-        NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
-        WeeklyRankingResetNotificationService resetService = mock(WeeklyRankingResetNotificationService.class);
-        DataSource dataSource = mock(DataSource.class);
-        Connection connection = mock(Connection.class);
-        PreparedStatement acquire = mock(PreparedStatement.class);
-        PreparedStatement release = mock(PreparedStatement.class);
-        ResultSet resultSet = mock(ResultSet.class);
-        when(dataSource.getConnection()).thenReturn(connection);
-        when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(acquire);
-        when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(release);
-        when(acquire.executeQuery()).thenReturn(resultSet);
-        when(resultSet.next()).thenReturn(true);
-        when(resultSet.getBoolean(1)).thenReturn(true);
-        Instant now = Instant.parse("2026-08-03T01:01:00Z");
-        NotificationScheduler scheduler = new NotificationScheduler(
-                deliveryService,
-                resetService,
-                new AdvisoryLockRunner(dataSource),
-                Clock.fixed(now, ZoneOffset.UTC),
-                "Asia/Seoul",
-                true
-        );
-
-        scheduler.scheduleKeycapBoxOpenAvailableNotifications();
-
-        verify(deliveryService).sendKeycapBoxOpenAvailableNotifications(now);
-        verify(release).execute();
     }
 
     @Test

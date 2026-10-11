@@ -74,9 +74,9 @@ class KeycapEquipIndexIntegrationTest extends FullStackIntegrationTestSupport {
         Keycap target = catalog.get(1);
 
         Instant now = Instant.now();
-        UserKeycap current = UserKeycap.createCompletedOnboardingReward(user, alreadyEquipped, now);
+        UserKeycap current = UserKeycap.createOwned(user, alreadyEquipped, now);
         current.equip();
-        UserKeycap next = UserKeycap.createCompletedOnboardingReward(user, target, now);
+        UserKeycap next = UserKeycap.createOwned(user, target, now);
 
         if (saveTargetFirst) {
             userKeycapRepository.save(next);

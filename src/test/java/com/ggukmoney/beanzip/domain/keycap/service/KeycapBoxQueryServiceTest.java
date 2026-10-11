@@ -60,31 +60,47 @@ class KeycapBoxQueryServiceTest {
     private final UUID userId = UUID.randomUUID();
 
     @Test
-    void getsStatusFromOrdinaryAccountLookupAndTapProgress() {
-        KeycapBoxAccount account = keycapBoxAccount(userId, 2, 1, 0);
-        AppUser user = account.getUser();
+    void getsShardStatusFromWalletPolicyAndTapProgress() {
+        KeycapBoxAccount wallet = wallet(userId, 12);
+        AppUser user = wallet.getUser();
         when(userService.getById(userId)).thenReturn(user);
-        BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
-        KeycapBoxAccount.OpenCycleSnapshot snapshot =
-                new KeycapBoxAccount.OpenCycleSnapshot(true, true, false, null);
-        KeycapBoxStatusResponse mapped = new KeycapBoxStatusResponse(2, true, true, false, null, 45, 100);
-        when(keycapBoxAccountService.getForUser(userId)).thenReturn(account);
-        when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig)).thenReturn(progress);
-        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofHours(1));
-        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
-        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(2);
-        when(keycapBoxMapper.mapToStatusResponse(account, snapshot, progress)).thenReturn(mapped);
+        when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
+        when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(45, 100));
 
         KeycapBoxStatusResponse response = service.getStatus(userId);
 
-        assertThat(response).isEqualTo(mapped);
+        assertThat(response.shardBalance()).isEqualTo(12);
+        assertThat(response.drawPrice()).isEqualTo(5);
+        assertThat(response.canDraw()).isTrue();
+        assertThat(response.shardProgressTapCount()).isEqualTo(45);
+        assertThat(response.nextShardRequiredTapCount()).isEqualTo(100);
+        // 상자 시절 필드는 구버전 앱 호환을 위해 중립값으로 남긴다 (BEA-329).
+        assertThat(response.boxBalance()).isZero();
+        assertThat(response.canFreeOpen()).isFalse();
+        assertThat(response.canAdOpen()).isFalse();
+        assertThat(response.charging()).isFalse();
+        assertThat(response.nextRechargeAt()).isNull();
+        assertThat(response.boxProgressTapCount()).isEqualTo(45);
+        assertThat(response.nextBoxRequiredTapCount()).isEqualTo(100);
         verify(keycapBoxAccountService).getForUser(userId);
         verify(userTapSessionService).getBoxProgress(user, clock.instant(), tapPolicyConfig);
-        verify(keycapBoxMapper).mapToStatusResponse(account, snapshot, progress);
     }
 
     @Test
-    void propagatesMissingBoxAccountWithoutLoadingTapProgress() {
+    void cannotDrawWhenBalanceIsBelowPrice() {
+        KeycapBoxAccount wallet = wallet(userId, 4);
+        when(userService.getById(userId)).thenReturn(wallet.getUser());
+        when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
+        when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        when(userTapSessionService.getBoxProgress(any(), any(), any())).thenReturn(new BoxProgressSnapshot(0, 25));
+
+        assertThat(service.getStatus(userId).canDraw()).isFalse();
+    }
+
+    @Test
+    void propagatesMissingWalletWithoutLoadingTapProgress() {
         when(keycapBoxAccountService.getForUser(userId))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
 
@@ -174,22 +190,14 @@ class KeycapBoxQueryServiceTest {
         return open;
     }
 
-    private static KeycapBoxAccount keycapBoxAccount(
-            UUID userId,
-            int boxBalance,
-            int freeOpenUsedCount,
-            int adOpenUsedCount
-    ) {
+    private static KeycapBoxAccount wallet(UUID userId, int shardBalance) {
         AppUser user = AppUser.createActive("Bean", null);
         ReflectionTestUtils.setField(user, "id", userId);
-
-        KeycapBoxAccount account = newInstance(KeycapBoxAccount.class);
-        ReflectionTestUtils.setField(account, "user", user);
-        ReflectionTestUtils.setField(account, "boxBalance", boxBalance);
-        ReflectionTestUtils.setField(account, "freeOpenUsedCount", freeOpenUsedCount);
-        ReflectionTestUtils.setField(account, "adOpenUsedCount", adOpenUsedCount);
-        ReflectionTestUtils.setField(account, "openCycleStartedAt", Instant.parse("2026-07-16T00:00:00Z"));
-        return account;
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
+        if (shardBalance > 0) {
+            wallet.addShards(shardBalance);
+        }
+        return wallet;
     }
 
     private static <T> T newInstance(Class<T> type) {

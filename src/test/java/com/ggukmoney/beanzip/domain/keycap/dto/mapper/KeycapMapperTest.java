@@ -66,16 +66,21 @@ class KeycapMapperTest {
     @Test
     void mapsUserKeycapToMyKeycapItem() {
         UUID keycapId = UUID.randomUUID();
-        UserKeycap userKeycap = userKeycap(UUID.randomUUID(), keycapId, "RARE_001", "Rare", 8, UserKeycap.Status.IN_PROGRESS, false);
+        UserKeycap userKeycap = userKeycap(UUID.randomUUID(), keycapId, "RARE_001", "Rare", 8, UserKeycap.Status.COMPLETED, false);
 
         MyKeycapItemResponse response = keycapMapper.mapToMyKeycapItemResponse(userKeycap);
 
         assertThat(response.keycapId()).isEqualTo(keycapId);
         assertThat(response.code()).isEqualTo("RARE_001");
         assertThat(response.name()).isEqualTo("Rare");
-        assertThat(response.shardCount()).isEqualTo(8);
-        assertThat(response.status()).isEqualTo("IN_PROGRESS");
+        assertThat(response.level()).isEqualTo(8);
+        assertThat(response.status()).isEqualTo("COMPLETED");
         assertThat(response.equipped()).isFalse();
+        // 시즌 키캡은 카탈로그에 없으므로 보유 목록이 그릴 정보를 직접 든다 (BEA-329).
+        assertThat(response.grade()).isEqualTo("COMMON");
+        assertThat(response.acquisitionType()).isEqualTo("BOX");
+        assertThat(response.imageUrl()).isNull();
+        assertThat(response.soundUrl()).isNull();
     }
 
     @Test
@@ -134,7 +139,7 @@ class KeycapMapperTest {
             UUID keycapId,
             String code,
             String name,
-            int shardCount,
+            int level,
             UserKeycap.Status status,
             boolean equipped
     ) {
@@ -144,7 +149,7 @@ class KeycapMapperTest {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap(keycapId, code, name, Keycap.Grade.COMMON, 10, 1, true, 1));
-        ReflectionTestUtils.setField(userKeycap, "shardCount", shardCount);
+        ReflectionTestUtils.setField(userKeycap, "level", level);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;

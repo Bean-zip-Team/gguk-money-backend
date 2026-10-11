@@ -6,7 +6,6 @@ import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
 import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreSyncRequestedEvent;
-import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
@@ -63,7 +62,6 @@ public class TapBatchService {
     private final KeycapBoxAccountService keycapBoxAccountService;
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
-    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
     private final PromotionPolicyConfig promotionPolicyConfig;
     private final PromotionGrantIssuer promotionGrantIssuer;
     private final TapThousandCompletionTrigger tapThousandCompletionTrigger;
@@ -104,7 +102,7 @@ public class TapBatchService {
         batch = tapBatchRepository.save(batch);
 
         int pointsAwarded = 0;
-        int boxesDropped = 0;
+        int shardsDropped = 0;
 
         if (acceptedCount > 0) {
             daily.addTotalValidTaps(acceptedCount);
@@ -143,21 +141,22 @@ public class TapBatchService {
                 }
             }
 
-            // 상자 진행도는 포인트 일일 상한(tap.validity.maxPerDay)과 무관하게 인정된 탭 전체로 누적한다.
-            // 상자 획득 속도의 실질 병목은 재고가 아니라 개봉 주기(무료 2회·광고 2회)이므로 여기서 막지 않는다.
+            // 조각 진행도는 포인트 일일 상한(tap.validity.maxPerDay)과 무관하게 인정된 탭 전체로 누적한다.
+            // 조각은 무료 재화라 여기서 막지 않는다. 드롭당 1개 고정이다(BEA-329).
+            // 부스터 배수는 앱이 탭 카운트에 이미 곱해서 보내므로 여기서 다시 곱하지 않는다 — 곱하면 4배가 된다.
             session.addValidTaps(acceptedCount);
             // 유휴 마감을 마지막 탭 기준으로 다시 민다. 계속 치는 동안에는 세션이 리셋되지 않으므로
-            // 상자 간격은 tailStep 에 머무른다. 손을 뗀 뒤 유휴 시간이 지나야 싼 스텝부터 다시 시작한다.
+            // 조각 간격은 tailStep 에 머무른다. 손을 뗀 뒤 유휴 시간이 지나야 싼 스텝부터 다시 시작한다.
             session.recordActivity(acceptedAt, tapPolicyConfig.boxSessionIdleTimeoutSeconds());
             while (session.hasReachedBoxTarget()) {
-                boxAccount.addBoxes(1);
+                boxAccount.addShards(1);
 
                 int nextBoxTarget = userTapSessionService.drawNextBoxTargetInSession(session.getSessionValidTapCount(), session.getBoxesDroppedInSession(), tapPolicyConfig);
                 session.advanceBoxTarget(nextBoxTarget);
 
-                boxesDropped++;
+                shardsDropped++;
             }
-            if (boxesDropped > 0) {
+            if (shardsDropped > 0) {
                 keycapBoxAccountService.save(boxAccount);
             }
             userTapSessionService.save(session);
@@ -166,13 +165,9 @@ public class TapBatchService {
             eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
-        return buildResponse(acceptedCount, pointsAwarded, boxesDropped, acceptedAt, daily, session, progress, pointAccount, boxAccount);
+        return buildResponse(acceptedCount, pointsAwarded, shardsDropped, acceptedAt, daily, session, progress, pointAccount, boxAccount);
     }
 
-    /**
-     * 배치 확정 직후 화면을 그리는 데 필요한 값을 모두 담는다. 상자 개봉 가능 여부는
-     * 이번 배치의 지급까지 반영된 잔고 기준이어야 하므로 지급이 끝난 뒤 계산한다.
-     */
     /**
      * 1,000번 누르기 미션 (BEA-278). 임계를 넘는 그 배치에서만 1회 발급한다.
      *
@@ -205,25 +200,23 @@ public class TapBatchService {
                 PromotionTriggerContext.tapThresholdCrossed(user, after - baseline, acceptedAt));
     }
 
+    /**
+     * 배치 확정 직후 화면을 그리는 데 필요한 값을 모두 담는다. 조각 잔액은 이번 배치의 드롭까지
+     * 반영된 값이다. 상자 시절 필드는 구버전 앱 호환을 위해 중립값으로 채운다(BEA-329).
+     */
     private TapBatchSubmitResponse buildResponse(
             int acceptedCount,
             int pointsAwarded,
-            int boxesDropped,
+            int shardsDropped,
             Instant now,
             UserTapDaily daily,
             UserTapSession session,
             UserTapProgress progress,
             PointAccount pointAccount,
-            KeycapBoxAccount boxAccount
+            KeycapBoxAccount shardWallet
     ) {
         int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
-        int remainingToNextBox = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
-        KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot = boxAccount.calculateOpenCycleSnapshot(
-                now,
-                keycapBoxPolicyConfig.openCycleDuration(),
-                keycapBoxPolicyConfig.freeOpenLimit(),
-                keycapBoxPolicyConfig.adOpenLimit()
-        );
+        int remainingToNextShard = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
 
         // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
         // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
@@ -231,7 +224,7 @@ public class TapBatchService {
                 acceptedCount,
                 daily.getTotalValidTapCount(),
                 pointsAwarded,
-                boxesDropped,
+                0,
                 pointAccount.getBalance(),
                 daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap(),
                 session.getSessionValidTapCount(),
@@ -239,12 +232,15 @@ public class TapBatchService {
                 daily.getTapDate(),
                 daily.getPointEarnedAmount(),
                 remainingToNextPoint,
-                remainingToNextBox,
-                boxAccount.getBoxBalance(),
-                cycleSnapshot.canFreeOpen(),
-                cycleSnapshot.canAdOpen(),
-                cycleSnapshot.charging(),
-                cycleSnapshot.nextRechargeAt()
+                remainingToNextShard,
+                0,
+                false,
+                false,
+                false,
+                null,
+                shardsDropped,
+                shardWallet.getShardBalance(),
+                remainingToNextShard
         );
     }
 
