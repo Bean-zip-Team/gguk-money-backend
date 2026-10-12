@@ -5,6 +5,7 @@ import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
@@ -36,63 +37,233 @@ class KeycapBoxPolicyConfigTest {
     }
 
     @Test
-    void managesOnlyDrawPriceKey() {
-        // 상자 개봉 주기·무료/광고/일괄 개봉 한도는 개봉과 함께 사라졌다 (BEA-329).
+    void managesOnlySharedCyclePolicyKeys() {
         assertThat(KeycapBoxPolicyConfig.DEFAULT_VALUES)
-                .containsOnlyKeys(KeycapBoxPolicyConfig.KEY_DRAW_PRICE)
-                .containsEntry(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, "5");
-        assertThat(KeycapBoxPolicyConfig.KEY_DRAW_PRICE).isEqualTo("keycap.draw.price");
+                .containsOnlyKeys(
+                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                        KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                        KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                        KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT
+                )
+                .containsEntry(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, "3600")
+                .containsEntry(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, "2")
+                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "6")
+                // 일괄 개봉 상한 (BEA-280). 예산 방어값이 아니라 체감·연출 기준으로 고른 값이다.
+                .containsEntry(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, "30");
     }
 
     @Test
-    void usesDefaultWhenRowIsMissing() {
+    void usesDefaultsWhenRowsAreMissing() {
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(any(), any()))
                 .thenReturn(Optional.empty());
 
         config.refresh();
 
-        assertThat(config.drawPrice()).isEqualTo(5);
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.freeOpenLimit()).isEqualTo(2);
+        assertThat(config.adOpenLimit()).isEqualTo(6);
         verify(appConfigRepository).findLatestEffectiveByConfigKeys(
-                eq(KeycapBoxPolicyConfig.DEFAULT_VALUES.keySet()),
+                org.mockito.ArgumentMatchers.eq(KeycapBoxPolicyConfig.DEFAULT_VALUES.keySet()),
                 any(Instant.class)
         );
     }
 
     @Test
-    void resolvesDrawPriceFromAppConfigRow() {
-        stubDrawPrice("3");
-
-        config.refresh();
-
-        assertThat(config.drawPrice()).isEqualTo(3);
-    }
-
-    @Test
-    void keepsLastKnownGoodValueWhenNewValueIsInvalid() {
-        stubDrawPrice("3");
-        config.refresh();
-
-        stubDrawPrice("0");
-        config.refresh();
-        assertThat(config.drawPrice()).isEqualTo(3);
-
-        stubDrawPrice("five");
-        config.refresh();
-        assertThat(config.drawPrice()).isEqualTo(3);
-    }
-
-    @Test
-    void fallsBackToDefaultWhenValueIsInvalidOnInitialLoad() {
-        stubDrawPrice("-1");
-
-        config.refresh();
-
-        assertThat(config.drawPrice()).isEqualTo(5);
-    }
-
-    private void stubDrawPrice(String value) {
+    void resolvesOpenCyclePolicyFromAppConfigRows() {
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_DRAW_PRICE), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, value, Instant.EPOCH)));
+                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                "1800",
+                Instant.EPOCH
+        )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                "1",
+                Instant.EPOCH
+        )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                "3",
+                Instant.EPOCH
+        )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
+                "10",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(30));
+        assertThat(config.freeOpenLimit()).isEqualTo(1);
+        assertThat(config.adOpenLimit()).isEqualTo(3);
+        // 검증 분기가 빠지면 어떤 값이든 거부되어 기본값 30 으로 폴백한다 (BEA-280 에서 실제로 그랬다).
+        assertThat(config.bulkOpenLimit()).isEqualTo(10);
+    }
+
+    @Test
+    void usesDefaultWhenBulkOpenLimitIsInvalidOnInitialLoad() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
+                "-1",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.bulkOpenLimit()).isEqualTo(30);
+    }
+
+    @Test
+    void usesDefaultWhenOpenCycleDurationIsInvalidOnInitialLoad() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                "0",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+    }
+
+    @Test
+    void usesDefaultWhenFreeOpenLimitIsInvalidOnInitialLoad() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                "-1",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.freeOpenLimit()).isEqualTo(2);
+    }
+
+    @Test
+    void usesDefaultWhenAdOpenLimitIsInvalidOnInitialLoad() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                "-1",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.adOpenLimit()).isEqualTo(6);
+    }
+
+    @Test
+    void usesDefaultWhenMalformedPolicyValueIsLoadedInitially() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                "not-a-number",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+    }
+
+    @Test
+    void usesDefaultWhenPolicyValueIsDecimal() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                "1.5",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.freeOpenLimit()).isEqualTo(2);
+    }
+
+    @Test
+    void usesDefaultWhenPolicyValueExceedsIntegerRange() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                "2147483648",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.adOpenLimit()).isEqualTo(6);
+    }
+
+    @Test
+    void keepsLastKnownGoodWhenRefreshReceivesMalformedPolicyValue() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
+        )).thenReturn(
+                Optional.of(AppConfig.createFor(
+                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                        "1800",
+                        Instant.EPOCH
+                )),
+                Optional.of(AppConfig.createFor(
+                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                        "not-a-number",
+                        Instant.EPOCH
+                ))
+        );
+
+        config.refresh();
+        config.refresh();
+
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(30));
+    }
+
+    @Test
+    void appliesValidPolicyValuesWhenOnlyOneRefreshValueIsMalformed() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
+                "not-a-number",
+                Instant.EPOCH
+        )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
+                "1",
+                Instant.EPOCH
+        )));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(
+                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
+                "3",
+                Instant.EPOCH
+        )));
+
+        config.refresh();
+
+        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
+        assertThat(config.freeOpenLimit()).isEqualTo(1);
+        assertThat(config.adOpenLimit()).isEqualTo(3);
     }
 }

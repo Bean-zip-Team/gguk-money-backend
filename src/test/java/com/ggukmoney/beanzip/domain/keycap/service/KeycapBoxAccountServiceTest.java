@@ -4,8 +4,13 @@ import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,43 +24,54 @@ import static org.mockito.Mockito.when;
 class KeycapBoxAccountServiceTest {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
-    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository);
+    private final Clock clock = Clock.fixed(Instant.parse("2026-07-16T00:00:00Z"), ZoneOffset.UTC);
+    private final KeycapBoxAccountService keycapBoxAccountService =
+            new KeycapBoxAccountService(keycapBoxAccountRepository, clock);
+
+    private final UUID userId = UUID.randomUUID();
 
     @Test
-    void createsEmptyWalletForNewUser() {
+    void createsAccountAtClockTimeAndSaves() {
         AppUser user = AppUser.createActive("Bean", null);
-        when(keycapBoxAccountRepository.save(any(KeycapBoxAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(keycapBoxAccountRepository.save(any(KeycapBoxAccount.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         KeycapBoxAccount result = keycapBoxAccountService.createFor(user);
 
         assertThat(result.getUser()).isSameAs(user);
-        assertThat(result.getShardBalance()).isZero();
+        assertThat(result.getOpenCycleStartedAt()).isEqualTo(clock.instant());
         verify(keycapBoxAccountRepository).save(result);
     }
 
     @Test
-    void locksWalletRowForUpdate() {
-        UUID userId = UUID.randomUUID();
-        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null);
-        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(wallet));
+    void refreshesOpenCycleFromLockedAccount() {
+        KeycapBoxAccount account = KeycapBoxAccount.createFor(
+                AppUser.createActive("Bean", null),
+                clock.instant().minus(Duration.ofHours(2))
+        );
+        ReflectionTestUtils.setField(account, "freeOpenUsedCount", 2);
+        ReflectionTestUtils.setField(account, "adOpenUsedCount", 2);
+        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
 
-        assertThat(keycapBoxAccountService.getForUserForUpdate(userId)).isSameAs(wallet);
+        KeycapBoxAccount result = keycapBoxAccountService.refreshOpenCycleForUpdate(
+                userId,
+                clock.instant(),
+                Duration.ofHours(1)
+        );
+
+        assertThat(result).isSameAs(account);
+        assertThat(result.getOpenCycleStartedAt()).isEqualTo(clock.instant());
+        assertThat(result.getFreeOpenUsedCount()).isZero();
+        assertThat(result.getAdOpenUsedCount()).isZero();
         verify(keycapBoxAccountRepository).findByUserIdForUpdate(userId);
     }
 
     @Test
-    void missingWalletIsNotFound() {
-        UUID userId = UUID.randomUUID();
-        when(keycapBoxAccountRepository.findByUserId(userId)).thenReturn(Optional.empty());
+    void throwsNotFoundWhenAccountMissing() {
         when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> keycapBoxAccountService.getForUser(userId))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
         assertThatThrownBy(() -> keycapBoxAccountService.getForUserForUpdate(userId))
                 .isInstanceOf(ResponseStatusException.class)
-                .extracting(exception -> ((ResponseStatusException) exception).getReason())
-                .isEqualTo("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
+                .hasMessageContaining("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
     }
 }
