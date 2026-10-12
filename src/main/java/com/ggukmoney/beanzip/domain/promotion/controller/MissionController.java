@@ -29,19 +29,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/missions")
-@Tag(name = "Mission", description = "미션 목록 API")
+@Tag(name = "Mission", description = "미션 목록을 조회하고 미션 보상을 받는 API예요.")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class MissionController {
 
     private final MissionFeedService missionFeedService;
 
     @Operation(summary = "미션 목록 조회",
-            description = "상시 미션과 오늘의 데일리 미션을 한 목록으로 조회합니다. "
-                    + "꺼진 미션은 목록에서 빠지지만, 이미 받은 미션은 계속 노출됩니다. "
-                    + "오늘 판정할 수 없는 데일리 미션도 빠집니다: 주간 시즌이 초기화되는 월요일의 랭킹 미션이 여기 해당합니다.")
+            description = "상시 미션과 오늘의 데일리 미션을 한 목록으로 조회해요. "
+                    + "꺼진 상시 미션은 목록에서 빠져요. 다만 이미 달성해 지급 건이 생긴 상시 미션은 꺼져도 계속 보여요. "
+                    + "보상을 받은 단발성 데일리 미션은 다시 나오지 않아요. "
+                    + "오늘 판정할 수 없는 데일리 미션도 빠져요. 주간 시즌이 초기화되는 월요일의 랭킹 미션이 여기 해당해요. "
+                    + "조회하면서 오늘 달성한 데일리 미션의 보상을 수령 대기 상태로 만들어 둬요.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping
     public ResponseEntity<ApiResponse<MissionListResponse>> getMissions(

@@ -32,7 +32,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/notifications")
-@Tag(name = "Notifications", description = "Apps-in-Toss Smart Message 알림 설정 API")
+@Tag(name = "Notifications", description = "Apps-in-Toss Smart Message 알림 설정을 조회하고 변경해요.")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class NotificationPreferenceController {
 
@@ -41,19 +41,19 @@ public class NotificationPreferenceController {
     @GetMapping("/preferences")
     @Operation(
             summary = "알림 설정 조회",
-            description = "Apps-in-Toss 캠페인 코드가 설정된 알림 타입만 반환합니다. 각 항목의 templateCode를 requestNotificationAgreement에 사용합니다."
+            description = "Apps-in-Toss 캠페인 코드가 설정된 알림 타입만 돌려줘요. 각 항목의 `templateCode` 값을 `requestNotificationAgreement` 호출에 써요."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "알림 설정 조회 성공",
+                    description = "조회에 성공했어요.",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"items":[{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true},{"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}]}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 필요",
+                    description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
@@ -67,30 +67,31 @@ public class NotificationPreferenceController {
     @PatchMapping("/preferences")
     @Operation(
             summary = "알림 동의 결과 저장",
-            description = "Apps-in-Toss requestNotificationAgreement의 결과를 해당 알림 타입에 저장합니다. 사용자가 나중에를 선택하면 호출하지 않습니다."
+            description = "Apps-in-Toss `requestNotificationAgreement` 호출 결과를 해당 알림 타입에 저장해요. 사용자가 '나중에'를 선택하면 호출하지 않아요."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "알림 동의 결과 저장 성공",
+                    description = "저장에 성공했어요.",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"type":"RANK_CHANGE","enabled":true,"agreementStatus":"AGREED","templateCode":"clickmoney-asfasf","promptEligible":true}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
-                    description = "지원하지 않는 동의 결과",
+                    description = "지원하지 않는 동의 결과예요. 알림 타입이나 동의 결과가 빠졌거나 올바르지 않을 때도 이 응답을 돌려줘요.",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 필요",
+                    description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
     public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> agree(
             @Parameter(hidden = true) HttpServletRequest request,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "동의 결과를 저장할 알림 타입과 동의 결과예요.",
                     required = true,
                     content = @Content(examples = @ExampleObject(value = """
                             {"type":"RANK_CHANGE","agreementResult":"newAgreement"}
@@ -105,30 +106,36 @@ public class NotificationPreferenceController {
     @PatchMapping("/preferences/enabled")
     @Operation(
             summary = "알림 활성화 상태 변경",
-            description = "동의한 알림 타입 하나의 활성화 상태를 변경합니다. 알림을 켜려면 해당 타입의 사전 동의가 필요합니다."
+            description = "동의한 알림 타입 하나의 활성화 상태를 변경해요. 알림을 켜려면 해당 타입의 사전 동의가 필요해요."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "알림 활성화 상태 변경 성공",
+                    description = "변경에 성공했어요.",
                     content = @Content(examples = @ExampleObject(value = """
                             {"success":true,"data":{"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":false,"agreementStatus":"AGREED","templateCode":"clickmoney-box","promptEligible":false}}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = "알림 타입이 빠졌거나 올바르지 않아요.",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 필요",
+                    description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "알림 활성화 전 동의 필요",
+                    description = "알림을 켜기 전에 동의가 필요해요. 해당 타입의 동의 상태가 `AGREED`가 아니에요.",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
     public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> updateEnabled(
             @Parameter(hidden = true) HttpServletRequest request,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "활성화 상태를 바꿀 알림 타입과 바꿀 상태예요.",
                     required = true,
                     content = @Content(examples = @ExampleObject(value = """
                             {"type":"KEYCAP_BOX_OPEN_AVAILABLE","enabled":false}

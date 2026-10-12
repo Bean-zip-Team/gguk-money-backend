@@ -91,38 +91,38 @@ class RankingControllerTest {
     @Test
     void rankingResponseDtosHaveOpenApiSchemas() {
         assertThat(CurrentRankingResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("현재 랭킹 응답");
+                .isEqualTo("현재 랭킹 응답이에요.");
         assertThat(RankingItemResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("랭킹 목록 항목");
+                .isEqualTo("랭킹 목록 항목이에요.");
         assertThat(MyRankingResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("내 랭킹 정보");
+                .isEqualTo("내 랭킹 정보예요.");
         assertThat(RankingSeasonResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("현재 랭킹 시즌 정보");
+                .isEqualTo("현재 랭킹 시즌 정보예요.");
 
         assertThat(schemaDescription(CurrentRankingResponse.class, "season"))
-                .isEqualTo("현재 랭킹 시즌 정보");
+                .isEqualTo("현재 랭킹 시즌 정보예요.");
         assertThat(schemaDescription(CurrentRankingResponse.class, "totalParticipantCount"))
-                .isEqualTo("전체 랭킹 참가자 수");
+                .isEqualTo("전체 랭킹 참가자 수예요.");
         assertThat(schemaDescription(RankingItemResponse.class, "isMe"))
-                .isEqualTo("현재 로그인한 사용자인지 여부");
+                .isEqualTo("현재 로그인한 사용자인지 여부예요.");
         assertThat(schemaDescription(RankingItemResponse.class, "rankChange"))
-                .isEqualTo("순위 변화. previousRank - rank");
+                .isEqualTo("순위 변화예요. `previousRank` 값에서 `rank` 값을 뺀 값이에요. `previousRank` 값이 null이면 null이에요.");
         assertThat(schemaDescription(MyRankingResponse.class, "previousRank"))
-                .isEqualTo("직전 주 최종 순위. 미참가 시 null");
+                .isEqualTo("직전 주 최종 순위예요. 직전 주에 참가하지 않았으면 null이에요.");
         assertThat(schemaDescription(MyRankingResponse.class, "scoreGapToFirst"))
-                .isEqualTo("1위와 점수 차이");
+                .isEqualTo("1위와의 점수 차이예요. 내가 1위면 0이에요.");
     }
 
     @Test
     void rankingHistoryResponseDtosHaveOpenApiSchemas() {
         assertThat(RankingHistoryResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("주간 랭킹 히스토리 페이지 응답");
+                .isEqualTo("주간 랭킹 히스토리 페이지 응답이에요.");
         assertThat(RankingHistoryItemResponse.class.getAnnotation(Schema.class).description())
-                .isEqualTo("주간 랭킹 히스토리 항목");
+                .isEqualTo("주간 랭킹 히스토리 항목이에요.");
         assertThat(schemaDescription(RankingHistoryItemResponse.class, "endsAt"))
-                .isEqualTo("시즌 종료 시각");
+                .isEqualTo("시즌 종료 시각이에요.");
         assertThat(schemaDescription(RankingHistoryResponse.class, "nextCursor"))
-                .isEqualTo("다음 페이지 조회에 전달할 커서입니다. 다음 페이지가 없으면 null입니다.");
+                .isEqualTo("다음 페이지 조회에 전달할 커서예요. 다음 페이지가 없으면 null이에요.");
     }
 
     @Test

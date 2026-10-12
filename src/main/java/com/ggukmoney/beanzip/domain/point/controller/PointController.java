@@ -28,17 +28,17 @@ import java.time.Instant;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/points")
-@Tag(name = "Points", description = "포인트 잔액 및 원장 API")
+@Tag(name = "Points", description = "포인트 잔액과 원장을 조회하는 API예요.")
 @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class PointController {
 
     private final PointStatusService pointStatusService;
 
-    @Operation(summary = "내 포인트 상태 조회")
+    @Operation(summary = "내 포인트 상태 조회", description = "내 포인트 잔액과 누적 적립, 누적 사용 포인트를 조회해요. 출금 가능 여부와 예상 출금 금액도 함께 돌려줘요.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "포인트 계정 없음", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "포인트 계정이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PointMeResponse>> me(@Parameter(hidden = true) HttpServletRequest httpServletRequest) {
@@ -46,25 +46,25 @@ public class PointController {
         return ResponseEntity.ok(ApiResponse.success(pointStatusService.getMyPoints(userId)));
     }
 
-    @Operation(summary = "포인트 원장 조회", description = "커서, 유형, 사유, 기간으로 내 포인트 원장을 조회합니다.")
+    @Operation(summary = "포인트 원장 조회", description = "커서, 유형, 사유, 기간으로 내 포인트 원장을 조회해요. 최신 항목부터 정렬해요.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 cursor 또는 query 값", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "`cursor` 값이나 쿼리 파라미터 값이 올바르지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping("/ledger")
     public ResponseEntity<ApiResponse<PointLedgerPageResponse>> ledger(
-            @Parameter(description = "다음 페이지 커서", example = "MTIz")
+            @Parameter(description = "다음 페이지 커서예요. 이전 응답의 `nextCursor` 값을 그대로 보내요. 보내지 않으면 첫 페이지를 조회해요.", example = "MTIz")
             @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기. 1보다 작으면 1, 최대값보다 크면 최대값으로 보정됩니다.", example = "20")
+            @Parameter(description = "페이지 크기예요. 기본값은 20, 최대값은 100이에요. 1보다 작으면 1, 최대값보다 크면 최대값으로 보정돼요.", example = "20")
             @RequestParam(required = false) Integer size,
-            @Parameter(description = "원장 항목 유형", example = "CREDIT")
+            @Parameter(description = "원장 항목 유형 필터예요. `CREDIT`은 적립, `DEBIT`은 차감, `REVERSAL`은 출금 실패에 따른 환불이에요.", example = "CREDIT")
             @RequestParam(required = false) PointLedger.EntryType entryType,
-            @Parameter(description = "원장 사유 필터", example = "TAP")
+            @Parameter(description = "원장 사유 필터예요. 사유 코드가 정확히 같은 항목만 조회해요.", example = "TAP_REWARD")
             @RequestParam(required = false) String reason,
-            @Parameter(description = "조회 시작 시각", example = "2026-07-15T00:00:00Z")
+            @Parameter(description = "조회 시작 시각이에요. 이 시각에 발생한 항목도 포함해요.", example = "2026-07-15T00:00:00Z")
             @RequestParam(required = false) Instant from,
-            @Parameter(description = "조회 종료 시각", example = "2026-07-16T00:00:00Z")
+            @Parameter(description = "조회 종료 시각이에요. 이 시각에 발생한 항목도 포함해요.", example = "2026-07-16T00:00:00Z")
             @RequestParam(required = false) Instant to,
             @Parameter(hidden = true) HttpServletRequest httpServletRequest
     ) {
