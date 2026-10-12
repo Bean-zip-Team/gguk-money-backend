@@ -157,6 +157,10 @@ public class CashoutService {
         }
 
         AppUser user = userService.getById(userId);
+        // 어뷰징으로 정지한 계정은 잔액이 남아 있어도 현금화하지 못하게 한다.
+        if (user.getStatus() == AppUser.Status.SUSPENDED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ACCOUNT_SUSPENDED");
+        }
         BigDecimal rate = cashoutPolicyConfig.pointToKrwRate();
         long tossPointAmount = toTossPointAmount(balance, rate);
         long redeemablePoint = toRedeemablePoint(tossPointAmount, rate);
