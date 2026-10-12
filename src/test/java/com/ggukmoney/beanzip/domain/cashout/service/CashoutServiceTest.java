@@ -341,6 +341,24 @@ class CashoutServiceTest {
     }
 
     @Test
+    void rejectsSuspendedUserWithoutDebiting() {
+        when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
+        when(cashoutRequestRepository.existsByUserIdAndStatusIn(any(), anyCollection())).thenReturn(false);
+        when(pointAccountService.getBalance(userId)).thenReturn(10_842L);
+        AppUser user = mock(AppUser.class);
+        when(user.getStatus()).thenReturn(AppUser.Status.SUSPENDED);
+        when(userService.getById(userId)).thenReturn(user);
+
+        assertThatThrownBy(() -> cashoutService.submit(userId, idempotencyKey))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("ACCOUNT_SUSPENDED");
+
+        verify(pointAccountService, never()).debit(any(), anyLong());
+        verify(cashoutRequestRepository, never()).save(any());
+        verify(tossPromotionClient, never()).getKey(any());
+    }
+
+    @Test
     void throwsAlreadyProcessingWhenActiveRequestExists() {
         when(cashoutRequestRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)).thenReturn(Optional.empty());
         when(cashoutRequestRepository.existsByUserIdAndStatusIn(

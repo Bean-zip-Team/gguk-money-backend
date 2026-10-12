@@ -57,6 +57,7 @@ public class CashoutController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "202", description = "출금 신청 접수 또는 멱등 재응답"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키 누락/형식 오류 또는 최소 포인트 미달", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 오류", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "정지된 계정(ACCOUNT_SUSPENDED)", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "처리 중인 출금 존재", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping
