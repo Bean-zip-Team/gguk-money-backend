@@ -108,7 +108,7 @@ public class KeycapController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "뽑기에 성공했어요. 같은 멱등키로 다시 호출한 경우에도 처음 결과와 함께 200을 돌려줘요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키가 없거나 조각이 부족해요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "조각 지갑이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "사용자나 정산에 필요한 포인트 계정, 조각 지갑, 탭 진행 정보가 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "뽑을 수 있는 상시 키캡이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "자동 클릭 정산에 필요한 패시브 정책을 확인할 수 없어요. `PASSIVE_POLICY_UNAVAILABLE` 오류로 응답하며 뽑기와 지급은 함께 롤백돼요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
@@ -129,7 +129,7 @@ public class KeycapController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "장착에 성공했어요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "진행 중이라 아직 보유하지 않은 키캡이에요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보유한 키캡 중에 해당 키캡이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보유한 키캡 중에 해당 키캡이 없거나 사용자, 포인트 계정, 조각 지갑, 탭 진행 정보가 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "자동 클릭 정산에 필요한 패시브 정책을 확인할 수 없어요. `PASSIVE_POLICY_UNAVAILABLE` 오류로 응답하며 장착 상태와 잔액은 변경하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PutMapping("/{keycapId}/equip")

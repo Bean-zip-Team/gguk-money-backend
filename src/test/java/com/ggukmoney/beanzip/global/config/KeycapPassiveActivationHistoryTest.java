@@ -98,4 +98,3 @@ class KeycapPassiveActivationHistoryTest {
         assertThat(calculated.grantedClicks()).isEqualTo(initiallyEnabled?120:60);
     }
 }
-
