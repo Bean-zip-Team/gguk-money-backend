@@ -15,6 +15,7 @@ import java.util.UUID;
 public class KeycapBoxAccountService {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private final com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository userKeycaps;
 
     public KeycapBoxAccount createFor(AppUser user) {
         return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
@@ -29,8 +30,19 @@ public class KeycapBoxAccountService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
     }
 
+    /** Caller holds the common user row lock in its transaction. */
     public KeycapBoxAccount getForUserForUpdate(UUID userId) {
-        return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
+        KeycapBoxAccount wallet = keycapBoxAccountRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+        var progress = userKeycaps.findLegacyInProgressForUpdate(userId);
+        int shards = Math.toIntExact(progress.stream().mapToLong(k -> k.getShardCount()).sum());
+        if (shards > 0) wallet.addShards(shards);
+        if (!progress.isEmpty()) { userKeycaps.deleteAll(progress); userKeycaps.flush(); }
+        return wallet;
+    }
+
+    public int getAvailableShardBalance(UUID userId) {
+        return Math.toIntExact(keycapBoxAccountRepository.findAvailableShardBalance(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND")));
     }
 }

@@ -65,6 +65,7 @@ class KeycapBoxQueryServiceTest {
         AppUser user = wallet.getUser();
         when(userService.getById(userId)).thenReturn(user);
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
+        when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
         when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig))
                 .thenReturn(new BoxProgressSnapshot(45, 100));
@@ -93,6 +94,7 @@ class KeycapBoxQueryServiceTest {
         KeycapBoxAccount wallet = wallet(userId, 4);
         when(userService.getById(userId)).thenReturn(wallet.getUser());
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
+        when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
         when(userTapSessionService.getBoxProgress(any(), any(), any())).thenReturn(new BoxProgressSnapshot(0, 25));
 

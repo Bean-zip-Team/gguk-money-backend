@@ -109,7 +109,7 @@ class TapBatchServiceTest {
                 .thenReturn(farAwaySession());
         // 배치 응답이 항상 담는 상태라 어떤 경로에서도 한 번씩 조회된다.
         lenient().when(pointAccountService.getForUser(userId)).thenReturn(pointAccount);
-        lenient().when(keycapBoxAccountService.getForUser(userId)).thenReturn(boxAccount);
+        lenient().when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(boxAccount);
         lenient().when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(accountOwner));
         // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
         lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
@@ -347,7 +347,7 @@ class TapBatchServiceTest {
         assertThat(response.canFreeOpen()).isFalse();
         assertThat(response.canAdOpen()).isFalse();
         // 계정은 루프 밖에서 한 번만 조회·저장한다.
-        verify(keycapBoxAccountService).getForUser(userId);
+        verify(keycapBoxAccountService).getForUserForUpdate(userId);
         verify(keycapBoxAccountService).save(boxAccount);
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(userTapSessionService).save(session);

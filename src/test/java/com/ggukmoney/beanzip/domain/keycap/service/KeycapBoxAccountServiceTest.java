@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 class KeycapBoxAccountServiceTest {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
-    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository);
+    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository, mock(com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository.class));
 
     @Test
     void createsEmptyWalletForNewUser() {

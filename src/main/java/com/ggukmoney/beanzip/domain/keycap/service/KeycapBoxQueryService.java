@@ -53,7 +53,7 @@ public class KeycapBoxQueryService {
         AppUser user = userService.getById(userId);
         BoxProgressSnapshot progress = userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig);
         return KeycapBoxStatusResponse.of(
-                account.getShardBalance(),
+                keycapBoxAccountService.getAvailableShardBalance(userId),
                 keycapBoxPolicyConfig.drawPrice(),
                 progress.cumulativeValidTapCount(),
                 progress.nextBoxTarget()

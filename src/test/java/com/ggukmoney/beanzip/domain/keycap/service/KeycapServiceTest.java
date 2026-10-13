@@ -265,7 +265,7 @@ class KeycapServiceTest {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap(keycapId, code, name, Keycap.Grade.COMMON, 10, 1, true, 1));
-        ReflectionTestUtils.setField(userKeycap, "level", level);
+        ReflectionTestUtils.setField(userKeycap, "shardCount", userKeycap.getKeycap().getRequiredShardCount() + (level) - 1);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;

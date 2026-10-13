@@ -47,6 +47,13 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
      */
     long countByUserIdAndStatusAndCompletedAtAfter(UUID userId, UserKeycap.Status status, Instant completedAt);
 
+    @Query("select coalesce(sum(k.shardCount), 0) from UserKeycap k where k.user.id = :userId and k.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS")
+    long sumLegacyShardCount(@Param("userId") UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select k from UserKeycap k where k.user.id = :userId and k.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS")
+    List<UserKeycap> findLegacyInProgressForUpdate(@Param("userId") UUID userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select userKeycap
@@ -88,9 +95,6 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
             @Param("keycapId") Long keycapId
     );
 
-    /**
-     * 내 키캡 목록. 구 코드가 남긴 {@code IN_PROGRESS} 행은 미보유이므로 내려주지 않는다(BEA-329 무중단 배포 구간).
-     */
     @Query("""
             select userKeycap
             from UserKeycap userKeycap
@@ -100,11 +104,4 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
             order by keycap.sortOrder asc, keycap.code asc
             """)
     List<UserKeycap> findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(@Param("userId") UUID userId);
-
-    /**
-     * 구 코드가 진행 중 행에 남긴 종별 조각 수. 엔티티는 이 컬럼을 더 매핑하지 않으므로(정리 SQL C 가 지운다)
-     * 뽑기가 진행 중 행을 보유로 바꿀 때만 직접 읽어 지갑에 더한다. B 가 쓸어 담을 몫을 먼저 옮기는 것이라 합계가 맞는다.
-     */
-    @Query(value = "select coalesce(shard_count, 0) from user_keycap where id = :id", nativeQuery = true)
-    int findLegacyShardCount(@Param("id") Long id);
 }

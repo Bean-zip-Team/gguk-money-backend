@@ -42,6 +42,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     @Autowired UserTapProgressRepository progress;
     @Autowired UserTapSessionRepository sessions;
     @Autowired UserTapDailyRepository dailies;
+    @Autowired TapBatchRepository batches;
     @Autowired AppConfigRepository configs;
     @Autowired KeycapPassivePolicyConfig policy;
     @Autowired TapPolicyConfig tapPolicy;
@@ -120,6 +121,36 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(replay.autoClicksGranted()).isZero();
         assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeRankingTapCount()).isEqualTo(110);
         assertThat(jdbcTemplate.queryForObject("select count(*) from tap_batch where user_id=?",Long.class,user.getId())).isEqualTo(1);
+    }
+
+    @Test void positiveAutomaticSettlementConvertsLegacyProgressOnlyOnce() {
+        seasons.ensureCurrentWeeklySeason(Instant.now());
+        var user=user("cheer"); elapsed(user,1);
+        var pending=UserKeycap.createInProgress(user,catalog.findByCode("pinkjelly").orElseThrow());
+        pending.addShard(3,Instant.now()); owned.saveAndFlush(pending);
+        var result=passive.settle(user.getId(),"legacy-positive");
+        assertThat(result.autoClicksGranted()).isEqualTo(60);
+        // Existing100 + legacy3 + the two drops at session boundaries10 and45.
+        assertThat(result.shardBalance()).isEqualTo(105);
+        assertThat(owned.sumLegacyShardCount(user.getId())).isZero();
+        assertThat(passive.settle(user.getId(),"legacy-positive")).isEqualTo(result);
+        assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(105);
+    }
+
+    @Test void preRolloutTapRetryConvertsLegacyProgressWithoutAnotherAward() {
+        var user=user(null);
+        var pending=UserKeycap.createInProgress(user,catalog.findByCode("pinkjelly").orElseThrow());
+        pending.addShard(3,Instant.now()); owned.saveAndFlush(pending);
+        var sessionId=UUID.randomUUID();
+        var saved=TapBatch.createFor(user,sessionId,1L,42,"legacy-hash"); saved.markAccepted(42);
+        batches.saveAndFlush(saved);
+        var result=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(sessionId,1L,99));
+        assertThat(result.pointsAwarded()).isZero();
+        assertThat(result.autoClicksGranted()).isZero();
+        assertThat(result.shardsDropped()).isZero();
+        assertThat(result.shardBalance()).isEqualTo(103);
+        assertThat(owned.sumLegacyShardCount(user.getId())).isZero();
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(sessionId,1L,5)).shardBalance()).isEqualTo(103);
     }
 
     @Test void disabledPolicyPaysPreviouslyEarnedClicksAndExcludesAllInactiveTime() {

@@ -46,7 +46,7 @@ class TapRewardServiceTest {
         when(progressService.getForUser(any())).thenReturn(progress);
         when(sessionService.getOrCreateActiveSession(any(),any(),any())).thenReturn(session);
         when(points.getForUser(any())).thenReturn(account);
-        when(wallets.getForUser(any())).thenReturn(wallet);
+        when(wallets.getForUserForUpdate(any())).thenReturn(wallet);
         when(tap.maxPerDay()).thenReturn(3000);
         when(tap.pointDailyCap()).thenReturn(150);
         when(tap.boxSessionIdleTimeoutSeconds()).thenReturn(3600);
@@ -117,5 +117,16 @@ class TapRewardServiceTest {
         var result = rewards.award(user,now,Effects.NONE,59,false,UUID.randomUUID(),new KeycapPassiveRoller());
         assertThat(result.shardsDropped()).isEqualTo(1);
         assertThat(session.getNextBoxTarget()).isEqualTo(60);
+    }
+    @ParameterizedTest
+    @ValueSource(ints = {0, 30})
+    void zeroAndPositiveAutomaticBatchesIncludeConvertedLegacyBalance(int count) {
+        prepare(); wallet.addShards(9);
+        when(wallets.getForUserForUpdate(any())).thenAnswer(i -> {wallet.addShards(3); return wallet;});
+        var result=rewards.award(user,now,Effects.NONE,count,true,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.wallet().getShardBalance()).isEqualTo(12);
+        assertThat(result.shardsDropped()).isZero();
+        assertThat(progress.getCumulativeMissionTapCount()).isZero();
+        if(count==0) assertThat(result.pointsAwarded()).isZero();
     }
 }

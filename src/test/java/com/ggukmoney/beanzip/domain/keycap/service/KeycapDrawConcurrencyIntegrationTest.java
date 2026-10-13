@@ -77,24 +77,6 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
         assertThat(keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow().getShardBalance()).isZero();
     }
 
-    /**
-     * 무중단 배포 구간에 구 코드가 남긴 진행 중 행의 종별 조각을 읽는 네이티브 쿼리. 테스트 스키마는 엔티티에서
-     * 만들어져 옛 컬럼이 없으므로, 운영 DB(정리 SQL C 실행 전) 상태를 흉내 내어 컬럼을 추가한 뒤 확인한다.
-     */
-    @Test
-    void readsLegacyShardCountFromTheOldColumnOnPostgres() {
-        AppUser user = registerUserWithShards(0);
-        Keycap keycap = keycapRepository.save(Keycap.createFor("DRAW_LEGACY_001", "Legacy", Keycap.Grade.COMMON, 10, 1, null, null, 9));
-        UserKeycap legacy = UserKeycap.createOwned(user, keycap, java.time.Instant.now());
-        org.springframework.test.util.ReflectionTestUtils.setField(legacy, "status", UserKeycap.Status.IN_PROGRESS);
-        legacy = userKeycapRepository.saveAndFlush(legacy);
-        jdbcTemplate.execute("alter table user_keycap add column if not exists shard_count integer not null default 0");
-        jdbcTemplate.update("update user_keycap set shard_count = 4 where id = ?", legacy.getId());
-
-        assertThat(userKeycapRepository.findLegacyShardCount(legacy.getId())).isEqualTo(4);
-        assertThat(userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(user.getId())).isEmpty();
-    }
-
     private List<Object> drawConcurrently(UUID userId, String firstKey, String secondKey) throws Exception {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -122,7 +104,7 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
     }
 
     private long drawCount(UUID userId) {
-        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM keycap_draw WHERE user_id = ?", Long.class, userId);
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM keycap_box_open WHERE user_id = ? AND request_hash LIKE 'draw-v1:%'", Long.class, userId);
     }
 
     private AppUser registerUserWithShards(int shards) {

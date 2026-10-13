@@ -42,7 +42,7 @@ import java.util.UUID;
  * 이미 보유한 키캡이 나오면 레벨이 오른다. 광고는 붙지 않는다.
  *
  * <p>멱등: 같은 {@code Idempotency-Key} 재호출은 처음 결과를 그대로 돌려준다. 동시 호출은
- * {@code uq_keycap_draw_user_idempotency} 가 막고, 진 쪽은 이긴 쪽 결과를 재생한다.
+ * {@code uq_keycap_box_open_user_idempotency} 가 막고, 진 쪽은 이긴 쪽 결과를 재생한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -115,14 +115,7 @@ public class KeycapDrawService {
         if (existing.isEmpty()) {
             userKeycap = userKeycapRepository.save(UserKeycap.createOwned(user, selected, drawnAt));
         } else if (existing.get().isLegacyInProgress()) {
-            // 무중단 배포 구간: 구 코드가 남긴 진행 중 행이다. 그 자리에서 보유로 바꾸고, 행에 남은 종별 조각은
-            // 지갑으로 옮긴다. 마이그레이션 B 가 쓸어 담을 몫을 먼저 옮기는 것이라 합계가 어긋나지 않는다.
-            userKeycap = existing.get();
-            int legacyShards = userKeycapRepository.findLegacyShardCount(userKeycap.getId());
-            userKeycap.convertLegacyToOwned(drawnAt);
-            if (legacyShards > 0) {
-                wallet.addShards(legacyShards);
-            }
+            throw new IllegalStateException("Legacy progress must be converted to wallet before drawing.");
         } else {
             userKeycap = existing.get();
             userKeycap.levelUp();

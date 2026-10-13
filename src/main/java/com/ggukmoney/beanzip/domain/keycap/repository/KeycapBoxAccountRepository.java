@@ -23,4 +23,12 @@ public interface KeycapBoxAccountRepository extends JpaRepository<KeycapBoxAccou
             where account.user.id = :userId
             """)
     Optional<KeycapBoxAccount> findByUserIdForUpdate(@Param("userId") UUID userId);
+    /** One database snapshot includes pending legacy shards without changing state. */
+    @Query("""
+            select account.boxBalance + coalesce((select sum(k.shardCount) from UserKeycap k
+                where k.user.id = :userId
+                  and k.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS), 0)
+            from KeycapBoxAccount account where account.user.id = :userId
+            """)
+    Optional<Long> findAvailableShardBalance(@Param("userId") UUID userId);
 }

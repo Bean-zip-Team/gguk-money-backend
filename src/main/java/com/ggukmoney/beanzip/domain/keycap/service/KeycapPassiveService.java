@@ -66,7 +66,7 @@ public class KeycapPassiveService {
                 json.writeValueAsString(current.effects()),snapshot.capDays());
         return new KeycapPassiveSettleResponse(calculated.grantedClicks(),award==null?0:award.pointsAwarded(),award==null?0:award.shardsDropped(),
                 award==null?pointAccounts.getForUser(user.getId()).getBalance():award.account().getBalance(),
-                award==null?wallets.getForUser(user.getId()).getShardBalance():award.wallet().getShardBalance(),calculated.capped(),now);
+                award==null?wallets.getForUserForUpdate(user.getId()).getShardBalance():award.wallet().getShardBalance(),calculated.capped(),now);
     }
 
     @Transactional(propagation=Propagation.MANDATORY)

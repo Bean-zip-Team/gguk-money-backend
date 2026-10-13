@@ -45,7 +45,7 @@ public class TapRewardService {
         var progress = progressService.getForUser(user.getId());
         var session = sessionService.getOrCreateActiveSession(user, now, tap);
         var account = points.getForUser(user.getId());
-        var wallet = wallets.getForUser(user.getId());
+        var wallet = wallets.getForUserForUpdate(user.getId());
         if (count==0) return new Award(0,0,0,daily,progress,session,account,wallet);
         int eligible = Math.min(count, Math.max(tap.maxPerDay() - daily.getValidTapCount(), 0));
         var clicks = automatic ? new KeycapPassiveRoller.ClickResult(count,count,eligible)

@@ -1,4 +1,5 @@
--- BEA-349: run after BEA-329 migration, with old application writers stopped.
+-- BEA-349: run after the schema-compatible BEA-329 implementation, with old writers stopped.
+-- BEA-329 reuses box_balance and needs no manual SQL; legacy shards move inside user transactions.
 -- Apply before deploying this branch (ddl-auto=validate). No existing counters or scores are reset.
 -- Repeatable: only NULL new counters are backfilled; later increments survive repeated execution.
 -- Run manual-bea-349-passive-preflight.sql first and record actual row counts/table sizes.
