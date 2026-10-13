@@ -70,10 +70,11 @@ public enum ErrorCode {
     KEYCAP_NOT_FOUND("KEYCAP_NOT_FOUND", "키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     USER_KEYCAP_NOT_FOUND("USER_KEYCAP_NOT_FOUND", "보유한 키캡을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     KEYCAP_NOT_COMPLETED("KEYCAP_NOT_COMPLETED", "완성한 키캡만 장착할 수 있습니다.", HttpStatus.BAD_REQUEST),
-    KEYCAP_BOX_ACCOUNT_NOT_FOUND("KEYCAP_BOX_ACCOUNT_NOT_FOUND", "키캡 상자 계정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    KEYCAP_BOX_ACCOUNT_NOT_FOUND("KEYCAP_BOX_ACCOUNT_NOT_FOUND", "키캡 조각 지갑을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     IDEMPOTENCY_KEY_REQUIRED("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key가 필요합니다.", HttpStatus.BAD_REQUEST),
     IDEMPOTENCY_KEY_REUSED("IDEMPOTENCY_KEY_REUSED", "같은 멱등키로 다른 요청을 처리할 수 없습니다.", HttpStatus.CONFLICT),
     KEYCAP_BOX_NOT_AVAILABLE("KEYCAP_BOX_NOT_AVAILABLE", "개봉할 수 있는 키캡 상자가 없습니다.", HttpStatus.BAD_REQUEST),
+    KEYCAP_SHARD_INSUFFICIENT("KEYCAP_SHARD_INSUFFICIENT", "뽑기에 필요한 조각이 부족합니다.", HttpStatus.BAD_REQUEST),
     @Deprecated
     FREE_OPEN_TICKET_NOT_AVAILABLE("FREE_OPEN_TICKET_NOT_AVAILABLE", "사용 가능한 무료 개봉권이 없습니다.", HttpStatus.BAD_REQUEST),
     @Deprecated

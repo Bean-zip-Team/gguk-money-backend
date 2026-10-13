@@ -37,6 +37,7 @@ public interface KeycapBoxOpenRepository extends JpaRepository<KeycapBoxOpen, Lo
             from KeycapBoxOpen boxOpen
             join fetch boxOpen.keycap
             where boxOpen.user.id = :userId
+              and boxOpen.requestHash not like 'draw-v1:%'
               and boxOpen.openMethod = :openMethod
             order by boxOpen.id asc
             """)
@@ -50,6 +51,7 @@ public interface KeycapBoxOpenRepository extends JpaRepository<KeycapBoxOpen, Lo
             from KeycapBoxOpen boxOpen
             join fetch boxOpen.keycap keycap
             where boxOpen.user.id = :userId
+              and boxOpen.requestHash not like 'draw-v1:%'
               and (
                     :cursorOpenedAt is null
                     or boxOpen.openedAt < :cursorOpenedAt

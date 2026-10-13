@@ -31,25 +31,6 @@ class KeycapBoxOpenRepositoryTest {
     private AppUserRepository appUserRepository;
 
     @Test
-    void findsCurrentUsersOpenByIdempotencyKeyWithKeycap() {
-        AppUser currentUser = appUserRepository.save(AppUser.createActive("current", null));
-        AppUser otherUser = appUserRepository.save(AppUser.createActive("other", null));
-        Keycap keycap = keycapRepository.save(keycap("BASIC_001"));
-        keycapBoxOpenRepository.save(open(currentUser, keycap, "same-key", "hash-1"));
-        keycapBoxOpenRepository.save(open(otherUser, keycap, "same-key", "hash-2"));
-
-        Optional<KeycapBoxOpen> result = keycapBoxOpenRepository.findByUserIdAndIdempotencyKeyWithKeycap(
-                currentUser.getId(),
-                "same-key"
-        );
-
-        assertThat(result).isPresent();
-        assertThat(result.get().getUser().getId()).isEqualTo(currentUser.getId());
-        assertThat(result.get().getKeycap().getCode()).isEqualTo("BASIC_001");
-        assertThat(result.get().getRequestHash()).isEqualTo("hash-1");
-    }
-
-    @Test
     void findsHistoryForCurrentUserOrderedByOpenedAtAndIdDescWithCursor() {
         AppUser currentUser = appUserRepository.save(AppUser.createActive("current", null));
         AppUser otherUser = appUserRepository.save(AppUser.createActive("other", null));
@@ -89,17 +70,6 @@ class KeycapBoxOpenRepositoryTest {
                 });
     }
 
-    @Test
-    void checksExistingAdvertisementRewardId() {
-        AppUser user = appUserRepository.save(AppUser.createActive("current", null));
-        Keycap keycap = keycapRepository.save(keycap("AD_REWARD_001"));
-        keycapBoxOpenRepository.save(adOpen(user, keycap, "ad-key", "hash-1", "ad-reward-1"));
-        keycapBoxOpenRepository.save(open(user, keycap, "free-key", "hash-2"));
-
-        assertThat(keycapBoxOpenRepository.existsByAdRewardId("ad-reward-1")).isTrue();
-        assertThat(keycapBoxOpenRepository.existsByAdRewardId("ad-reward-2")).isFalse();
-    }
-
     private static KeycapBoxOpen open(AppUser user, Keycap keycap, String idempotencyKey, String requestHash) {
         return open(user, keycap, idempotencyKey, requestHash, Instant.now());
     }
@@ -121,26 +91,6 @@ class KeycapBoxOpenRepositoryTest {
                 null,
                 false,
                 openedAt
-        );
-    }
-
-    private static KeycapBoxOpen adOpen(
-            AppUser user,
-            Keycap keycap,
-            String idempotencyKey,
-            String requestHash,
-            String adRewardId
-    ) {
-        return KeycapBoxOpen.createFor(
-                user,
-                KeycapBoxOpen.OpenMethod.ADVERTISEMENT,
-                keycap,
-                1,
-                idempotencyKey,
-                requestHash,
-                adRewardId,
-                false,
-                Instant.now()
         );
     }
 

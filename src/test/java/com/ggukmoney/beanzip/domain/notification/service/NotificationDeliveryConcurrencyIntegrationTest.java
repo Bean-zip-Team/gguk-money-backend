@@ -1,7 +1,5 @@
 package com.ggukmoney.beanzip.domain.notification.service;
 
-import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationDeliveryRepository;
@@ -48,9 +46,6 @@ class NotificationDeliveryConcurrencyIntegrationTest extends FullStackIntegratio
 
     @Autowired
     private AppUserRepository appUserRepository;
-
-    @Autowired
-    private KeycapBoxAccountRepository keycapBoxAccountRepository;
 
     @Autowired
     private NotificationPreferenceRepository preferenceRepository;
@@ -181,69 +176,12 @@ class NotificationDeliveryConcurrencyIntegrationTest extends FullStackIntegratio
         assertThat(deliveryRepository.findByDedupeKey(dedupeKey)).isPresent();
     }
 
-    @Test
-    void concurrentKeycapPreparationCreatesOneDeliveryAndRefreshesOneCycle() throws Exception {
-        AppUser user = appUserRepository.save(AppUser.createActive("keycap-concurrent", null));
-        Instant cycleStartedAt = Instant.parse("2026-08-03T00:00:00Z");
-        Instant now = Instant.parse("2026-08-03T01:00:01Z");
-        KeycapBoxAccount account = KeycapBoxAccount.createFor(user, cycleStartedAt);
-        ReflectionTestUtils.setField(account, "boxBalance", 1);
-        ReflectionTestUtils.setField(account, "freeOpenUsedCount", 2);
-        ReflectionTestUtils.setField(account, "adOpenUsedCount", 6);
-        keycapBoxAccountRepository.saveAndFlush(account);
-        NotificationPreference preference = NotificationPreference.defaultOf(
-                user.getId(), NotificationType.KEYCAP_BOX_OPEN_AVAILABLE
-        );
-        preference.applyAgreement("newAgreement");
-        preferenceRepository.saveAndFlush(preference);
-        CountDownLatch ready = new CountDownLatch(2);
-        CountDownLatch start = new CountDownLatch(1);
-
-        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            List<Future<Optional<?>>> futures = List.of(
-                    executor.submit(() -> prepareKeycapAfterStart(ready, start, user.getId(), now)),
-                    executor.submit(() -> prepareKeycapAfterStart(ready, start, user.getId(), now))
-            );
-            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
-            start.countDown();
-
-            long createdCount = 0;
-            for (Future<Optional<?>> future : futures) {
-                if (future.get(10, TimeUnit.SECONDS).isPresent()) {
-                    createdCount++;
-                }
-            }
-            assertThat(createdCount).isEqualTo(1);
-        }
-
-        KeycapBoxAccount refreshed = keycapBoxAccountRepository.findByUserId(user.getId()).orElseThrow();
-        assertThat(refreshed.getOpenCycleStartedAt()).isEqualTo(Instant.parse("2026-08-03T01:00:00Z"));
-        assertThat(refreshed.getFreeOpenUsedCount()).isZero();
-        assertThat(refreshed.getAdOpenUsedCount()).isZero();
-        assertThat(deliveryRepository.findByDedupeKey(
-                "KEYCAP_BOX_OPEN_AVAILABLE:" + user.getId() + ":2026-08-03T01:00:00Z"
-        )).isPresent();
-    }
-
     private Optional<?> createPendingAfterStart(CountDownLatch ready, CountDownLatch start, UUID userId, String dedupeKey) throws Exception {
         ready.countDown();
         if (!start.await(10, TimeUnit.SECONDS)) {
             throw new IllegalStateException("concurrent test did not start");
         }
         return persistenceService.createPending(userId, NotificationType.WEEKLY_REWARD_AVAILABLE, dedupeKey, "WEEKLY_SET");
-    }
-
-    private Optional<?> prepareKeycapAfterStart(
-            CountDownLatch ready,
-            CountDownLatch start,
-            UUID userId,
-            Instant now
-    ) throws Exception {
-        ready.countDown();
-        if (!start.await(10, TimeUnit.SECONDS)) {
-            throw new IllegalStateException("concurrent test did not start");
-        }
-        return persistenceService.prepareKeycapBoxOpenAvailable(userId, now);
     }
 
     private int insertBatchAfterStart(

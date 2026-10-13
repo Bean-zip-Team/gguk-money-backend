@@ -18,7 +18,6 @@ public class NotificationScheduler {
 
     private static final long MORNING_LOCK_KEY = 1_920_830L;
     private static final long EVENING_LOCK_KEY = 1_920_190L;
-    private static final long KEYCAP_BOX_LOCK_KEY = 1_590_001L;
     private static final long WEEKLY_RANKING_RESET_LOCK_KEY = 1_580_309L;
     private static final long DAILY_MISSION_LOCK_KEY = 2_990_021L;
 
@@ -77,17 +76,6 @@ public class NotificationScheduler {
 
         advisoryLockRunner.runExclusively(
                 DAILY_MISSION_LOCK_KEY, () -> notificationDeliveryService.sendDailyMissionNotifications(today()));
-    }
-
-    @Scheduled(
-            cron = "${app.smart-message.schedule.keycap-box-cron:0 * * * * *}",
-            zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
-    )
-    public void scheduleKeycapBoxOpenAvailableNotifications() {
-        advisoryLockRunner.runExclusively(
-                KEYCAP_BOX_LOCK_KEY,
-                () -> notificationDeliveryService.sendKeycapBoxOpenAvailableNotifications(clock.instant())
-        );
     }
 
     @Scheduled(

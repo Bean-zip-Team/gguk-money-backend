@@ -3,7 +3,6 @@ package com.ggukmoney.beanzip.domain.notification.service;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
-import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.mission.service.DailyMissionNudgeService;
 import com.ggukmoney.beanzip.domain.notification.client.TossSmartMessageClient;
 import com.ggukmoney.beanzip.domain.notification.config.NotificationTemplateProperties;
@@ -14,11 +13,9 @@ import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.event.WeeklyRewardAvailableEvent;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
-import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.data.domain.PageRequest;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -37,7 +34,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NotificationDeliveryService {
 
-    private static final int KEYCAP_BOX_BATCH_SIZE = 200;
     private static final int WEEKLY_RESET_SENDS_PER_MINUTE = 100;
 
     private final NotificationDeliveryPersistenceService persistenceService;
@@ -45,8 +41,6 @@ public class NotificationDeliveryService {
     private final AuthIdentityRepository authIdentityRepository;
     private final BoosterGrantRepository boosterGrantRepository;
     private final TapPolicyConfig tapPolicyConfig;
-    private final KeycapBoxAccountRepository keycapBoxAccountRepository;
-    private final KeycapBoxPolicyConfig keycapBoxPolicyConfig;
     private final NotificationTemplateProperties templateProperties;
     private final TossSmartMessageClient smartMessageClient;
     private final NotificationBatchReadService batchReadService;
@@ -415,59 +409,6 @@ public class NotificationDeliveryService {
                 break;
             }
         }
-    }
-
-    public List<NotificationDelivery> sendKeycapBoxOpenAvailableNotifications(Instant now) {
-        NotificationType type = NotificationType.KEYCAP_BOX_OPEN_AVAILABLE;
-        if (!templateProperties.isConfigured(type)) {
-            return List.of();
-        }
-
-        Duration cycleDuration = keycapBoxPolicyConfig.openCycleDuration();
-        int freeOpenLimit = keycapBoxPolicyConfig.freeOpenLimit();
-        int adOpenLimit = keycapBoxPolicyConfig.adOpenLimit();
-        if (freeOpenLimit == 0 && adOpenLimit == 0) {
-            return List.of();
-        }
-
-        Instant cutoff = now.minus(cycleDuration);
-        long lastAccountId = 0L;
-        List<NotificationDelivery> deliveries = new ArrayList<>();
-        while (true) {
-            List<KeycapBoxAccountRepository.KeycapBoxOpenAvailableCandidate> candidates =
-                    keycapBoxAccountRepository.findKeycapBoxOpenAvailableCandidates(
-                            type,
-                            lastAccountId,
-                            freeOpenLimit,
-                            adOpenLimit,
-                            cutoff,
-                            PageRequest.of(0, KEYCAP_BOX_BATCH_SIZE)
-                    );
-            if (candidates.isEmpty()) {
-                break;
-            }
-
-            for (KeycapBoxAccountRepository.KeycapBoxOpenAvailableCandidate candidate : candidates) {
-                lastAccountId = candidate.getAccountId();
-                try {
-                    dispatch(persistenceService.prepareKeycapBoxOpenAvailable(candidate.getUserId(), now))
-                            .ifPresent(deliveries::add);
-                } catch (Exception exception) {
-                    log.error(
-                            "Failed to process keycap box open available notification. userId={}, accountId={}, now={}",
-                            candidate.getUserId(),
-                            candidate.getAccountId(),
-                            now,
-                            exception
-                    );
-                }
-            }
-
-            if (candidates.size() < KEYCAP_BOX_BATCH_SIZE) {
-                break;
-            }
-        }
-        return deliveries;
     }
 
     private Optional<NotificationDelivery> send(UUID userId, NotificationType type, String dedupeKey, String contextJson) {

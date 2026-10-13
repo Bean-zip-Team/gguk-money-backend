@@ -63,7 +63,6 @@ public class OpsSettings {
             plain("프로모션 코드", "app.promotion.toss.tap-thousand-code", null, "1,000번 누르기"),
 
             plain("알림 캠페인 코드", "app.smart-message.templates.rank-change.campaign-code", null, "비어 있으면 발송 안 함"),
-            plain("알림 캠페인 코드", "app.smart-message.templates.keycap-box-open-available.campaign-code", null, "비어 있으면 발송 안 함"),
             plain("알림 캠페인 코드", "app.smart-message.templates.booster-recharged.campaign-code", null, "비어 있으면 발송 안 함"),
             plain("알림 캠페인 코드", "app.smart-message.templates.booster-unused.campaign-code", null, "비어 있으면 발송 안 함"),
             plain("알림 캠페인 코드", "app.smart-message.templates.daily-mission.campaign-code", null, "비어 있으면 발송 안 함"),
@@ -72,7 +71,6 @@ public class OpsSettings {
 
             plain("스케줄", "app.smart-message.schedule.morning-cron", "0 30 8 * * *", "아침 알림"),
             plain("스케줄", "app.smart-message.schedule.evening-cron", "0 0 19 * * *", "저녁 알림"),
-            plain("스케줄", "app.smart-message.schedule.keycap-box-cron", "0 * * * * *", "상자 개봉 알림"),
             plain("스케줄", "app.smart-message.schedule.daily-mission-cron", "0 0 21 * * *", "데일리 미션 알림"),
             plain("스케줄", "app.smart-message.schedule.weekly-reset-cron", "0 * * * * *", "주간 리셋 알림"),
             plain("스케줄", "app.mission.rank-snapshot-cron", "0 55 23 * * *", "일일 순위 스냅샷"),

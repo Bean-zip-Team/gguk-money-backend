@@ -13,7 +13,7 @@ public record NotificationPreferenceResponse(
                 + "`DAILY_REMINDER`는 비활동 사용자를 부르는 아침 리마인드예요. "
                 + "`DAILY_MISSION`은 데일리 미션 저녁 리마인드예요(BEA-299). "
                 + "`BOOSTER_UNUSED`는 부스터를 다 쓰지 않은 사용자에게 저녁에 보내는 알림이에요. "
-                + "`KEYCAP_BOX_OPEN_AVAILABLE`은 키캡 상자 개봉 가능 알림이에요.",
+                + "`KEYCAP_BOX_OPEN_AVAILABLE`은 키캡 상자 개봉 가능 알림이에요. BEA-329에서 상자가 사라져 더 이상 발송하지 않아요.",
                 example = "RANK_CHANGE")
         NotificationType type,
         @Schema(description = "알림이 켜져 있는지 여부예요. 알림은 켜져 있고 동의 상태가 `AGREED`일 때만 보내요. 설정 기록이 없으면 false예요.", example = "true")
