@@ -120,7 +120,7 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
     private AppUser registerUserWithShards(int shards) {
         AppUser user = appUserRepository.save(AppUser.createActive("draw-" + UUID.randomUUID(), null));
         pointAccountRepository.save(PointAccount.createFor(user));
-        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user, java.time.Instant.now());
         if (shards > 0) {
             wallet.addShards(shards);
         }

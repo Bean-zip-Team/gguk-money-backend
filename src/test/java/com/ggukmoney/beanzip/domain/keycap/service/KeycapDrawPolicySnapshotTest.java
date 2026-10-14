@@ -34,7 +34,7 @@ class KeycapDrawPolicySnapshotTest {
         }).when(policy).isShardEconomyEnabled();
         var user=mock(AppUser.class); var userId=UUID.randomUUID(); when(user.getId()).thenReturn(userId);
         var lock=mock(UserRewardLock.class); when(lock.acquire(userId)).thenReturn(user);
-        var wallets=mock(KeycapBoxAccountService.class); var wallet=KeycapBoxAccount.createFor(user); wallet.addShards(20);
+        var wallets=mock(KeycapBoxAccountService.class); var wallet=KeycapBoxAccount.createFor(user, Instant.parse("2026-10-14T00:00:00Z")); wallet.addShards(20);
         when(wallets.getForUserForUpdate(userId)).thenReturn(wallet);
         var draws=mock(KeycapDrawRepository.class); when(draws.save(any())).thenAnswer(i->i.getArgument(0));
         var catalog=mock(KeycapRepository.class); var selected=Keycap.createFor("PRICE_RACE","Price",Keycap.Grade.COMMON,10,1,null,null,1);

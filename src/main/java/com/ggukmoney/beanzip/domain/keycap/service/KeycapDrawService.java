@@ -111,7 +111,7 @@ public class KeycapDrawService {
         Keycap selected = keycapRewardSelector.select(candidates);
 
         Optional<UserKeycap> existing = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId());
-        boolean newlyAcquired = existing.isEmpty() || existing.get().isLegacyInProgress();
+        boolean newlyAcquired = existing.isEmpty();
         UserKeycap userKeycap;
         if (existing.isEmpty()) {
             userKeycap = userKeycapRepository.save(UserKeycap.createOwned(user, selected, drawnAt));

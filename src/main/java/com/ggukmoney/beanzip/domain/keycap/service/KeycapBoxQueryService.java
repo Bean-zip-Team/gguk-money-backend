@@ -55,10 +55,8 @@ public class KeycapBoxQueryService {
         if (!keycapBoxPolicyConfig.isShardEconomyEnabled()) {
             var cycle=account.calculateOpenCycleSnapshot(clock.instant(),keycapBoxPolicyConfig.openCycleDuration(),
                     keycapBoxPolicyConfig.freeOpenLimit(),keycapBoxPolicyConfig.adOpenLimit());
-            return new KeycapBoxStatusResponse(0,keycapBoxPolicyConfig.drawPrice(),false,
-                    progress.cumulativeValidTapCount(),progress.nextBoxTarget(),account.getBoxBalance(),
-                    cycle.canFreeOpen(),cycle.canAdOpen(),cycle.charging(),cycle.nextRechargeAt(),
-                    progress.cumulativeValidTapCount(),progress.nextBoxTarget());
+            return keycapBoxMapper.mapToStatusResponse(
+                    account, cycle, progress, keycapBoxPolicyConfig.drawPrice());
         }
         return KeycapBoxStatusResponse.of(
                 keycapBoxAccountService.getAvailableShardBalance(userId),

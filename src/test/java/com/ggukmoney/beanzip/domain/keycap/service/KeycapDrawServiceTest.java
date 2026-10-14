@@ -81,7 +81,7 @@ class KeycapDrawServiceTest {
     private final UUID userId = UUID.randomUUID();
     private final AppUser user = user(userId);
     private final Keycap keycap = keycap(1L, "BASIC_001");
-    private final KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
+    private final KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user, NOW);
 
     @BeforeEach
     void stubHappyPath() {

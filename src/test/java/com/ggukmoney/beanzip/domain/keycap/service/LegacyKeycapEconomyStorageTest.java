@@ -15,7 +15,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import tools.jackson.databind.ObjectMapper;
 import java.sql.DriverManager;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -98,16 +100,16 @@ class LegacyKeycapEconomyStorageTest {
             var users = repos.getRepository(AppUserRepository.class);
             var keys = repos.getRepository(UserKeycapRepository.class);
             var wallets = repos.getRepository(KeycapBoxAccountRepository.class);
-            var service = new KeycapBoxAccountService(wallets, keys, shardPolicy());
+            var service = new KeycapBoxAccountService(wallets, Clock.fixed(ACQUIRED, ZoneOffset.UTC), keys, shardPolicy());
             assertThat(service.getAvailableShardBalance(user.getId())).isEqualTo(12);
             assertThat(wallet.getBoxBalance()).isEqualTo(9);
             new UserRewardLock(users).acquire(user.getId());
             var locked=service.getForUserForUpdate(user.getId());
             assertThat(locked.getShardBalance()).isEqualTo(9);
-            assertThat(keys.sumLegacyShardCount(user.getId())).isEqualTo(3);
+            assertThat(pendingShardCount(session, user.getId())).isEqualTo(3);
             service.convertLegacyProgressForDraw(user.getId(),locked);
             assertThat(locked.getShardBalance()).isEqualTo(12);
-            assertThat(keys.sumLegacyShardCount(user.getId())).isZero();
+            assertThat(pendingShardCount(session, user.getId())).isZero();
             wallet.consumeShards(5); wallet.addShards(2); owned.levelUp();
             assertThat(service.getForUserForUpdate(user.getId()).getShardBalance()).isEqualTo(9);
             assertThat(owned.getLevel()).isEqualTo(2);
@@ -158,7 +160,7 @@ class LegacyKeycapEconomyStorageTest {
             var repos = new JpaRepositoryFactory(session);
             new UserRewardLock(repos.getRepository(AppUserRepository.class)).acquire(userId);
             var service = new KeycapBoxAccountService(repos.getRepository(KeycapBoxAccountRepository.class),
-                    repos.getRepository(UserKeycapRepository.class), shardPolicy());
+                    Clock.fixed(ACQUIRED, ZoneOffset.UTC), repos.getRepository(UserKeycapRepository.class), shardPolicy());
             var locked=service.getForUserForUpdate(userId);
             service.convertLegacyProgressForDraw(userId,locked);
             assertThat(locked.getShardBalance()).isEqualTo(12);
@@ -167,8 +169,14 @@ class LegacyKeycapEconomyStorageTest {
         try (Session session = factory.openSession()) {
             var repos = new JpaRepositoryFactory(session);
             assertThat(repos.getRepository(KeycapBoxAccountRepository.class).findByUserId(userId).orElseThrow().getShardBalance()).isEqualTo(9);
-            assertThat(repos.getRepository(UserKeycapRepository.class).sumLegacyShardCount(userId)).isEqualTo(3);
+            assertThat(pendingShardCount(session, userId)).isEqualTo(3);
         }
+    }
+
+    private static long pendingShardCount(Session session, UUID userId) {
+        return session.createQuery("select coalesce(sum(k.shardCount), 0) from UserKeycap k "
+                        + "where k.user.id = :userId and k.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS", Long.class)
+                .setParameter("userId", userId).getSingleResult();
     }
 
     private static Keycap keycap(String prefix) {

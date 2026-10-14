@@ -8,6 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -15,11 +18,12 @@ import java.util.UUID;
 public class KeycapBoxAccountService {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
+    private final Clock clock;
     private final com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository userKeycaps;
     private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig policy;
 
     public KeycapBoxAccount createFor(AppUser user) {
-        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user));
+        return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
     }
 
     public KeycapBoxAccount save(KeycapBoxAccount account) {
@@ -33,9 +37,8 @@ public class KeycapBoxAccountService {
 
     /** Caller holds the common user row lock in its transaction. */
     public KeycapBoxAccount getForUserForUpdate(UUID userId) {
-        KeycapBoxAccount wallet = keycapBoxAccountRepository.findByUserIdForUpdate(userId)
+        return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
-        return wallet;
     }
 
     /** Draw calls this after phase confirmation, before affordability and candidate lookup. */
@@ -59,9 +62,9 @@ public class KeycapBoxAccountService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
     }
 
-    public KeycapBoxAccount refreshOpenCycleForUpdate(UUID userId, java.time.Instant now, java.time.Duration duration) {
-        KeycapBoxAccount account=getLegacyAccountForUpdate(userId);
-        account.refreshOpenCycle(now,duration);
+    public KeycapBoxAccount refreshOpenCycleForUpdate(UUID userId, Instant now, Duration cycleDuration) {
+        KeycapBoxAccount account = getLegacyAccountForUpdate(userId);
+        account.refreshOpenCycle(now, cycleDuration);
         return account;
     }
 }

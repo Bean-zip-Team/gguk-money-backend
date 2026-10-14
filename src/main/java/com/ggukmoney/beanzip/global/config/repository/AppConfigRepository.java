@@ -52,5 +52,4 @@ public interface AppConfigRepository extends JpaRepository<AppConfig, Long> {
 
     @Query("select distinct c.configKey from AppConfig c")
     List<String> findDistinctConfigKeys();
-
 }

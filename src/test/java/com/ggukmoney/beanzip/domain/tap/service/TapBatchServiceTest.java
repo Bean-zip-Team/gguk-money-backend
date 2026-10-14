@@ -89,7 +89,7 @@ class TapBatchServiceTest {
     private final UUID sessionId = UUID.randomUUID();
     private final AppUser accountOwner = mock(AppUser.class);
     private final PointAccount pointAccount = PointAccount.createFor(accountOwner);
-    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner);
+    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner, acceptedAt);
 
     @BeforeEach
     void allowRateLimitByDefault() {

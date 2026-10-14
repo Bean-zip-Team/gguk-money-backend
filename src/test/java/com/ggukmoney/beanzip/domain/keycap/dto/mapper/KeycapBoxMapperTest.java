@@ -27,7 +27,7 @@ class KeycapBoxMapperTest {
                 new KeycapBoxAccount.OpenCycleSnapshot(true, false, false, null);
         BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
 
-        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress);
+        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress, 5);
 
         assertThat(response.boxBalance()).isEqualTo(2);
         assertThat(response.canFreeOpen()).isTrue();
@@ -42,7 +42,7 @@ class KeycapBoxMapperTest {
     void statusResponseDoesNotExposeInternalIdsOrExcludedFields() {
         var account=keycapBoxAccount(UUID.randomUUID(),2);
         var response=keycapBoxMapper.mapToStatusResponse(account,
-                new KeycapBoxAccount.OpenCycleSnapshot(true,false,false,null),new BoxProgressSnapshot(45,100));
+                new KeycapBoxAccount.OpenCycleSnapshot(true,false,false,null),new BoxProgressSnapshot(45,100),5);
         var json=new tools.jackson.databind.ObjectMapper();
         var payload=json.readTree(json.writeValueAsString(response));
         assertThat(payload.path("boxBalance").asInt()).isEqualTo(2);

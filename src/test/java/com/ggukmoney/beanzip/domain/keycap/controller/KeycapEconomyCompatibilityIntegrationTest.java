@@ -53,7 +53,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
     @Test void inFlightLegacyOpenAndNewDrawSerializeAcrossCutoverWithoutLosingProgress() throws Exception {
         var user=users.save(AppUser.createActive("compat-race-"+UUID.randomUUID(),null));
         points.save(PointAccount.createFor(user));
-        var wallet=KeycapBoxAccount.createFor(user); wallet.addBoxes(10); wallets.save(wallet);
+        var wallet=KeycapBoxAccount.createFor(user, Instant.now()); wallet.addBoxes(10); wallets.save(wallet);
         progress.createFor(user,tapPolicy);
         var key=catalog.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX).getFirst();
         var collecting=UserKeycap.createInProgress(user,key); collecting.addShard(3,Instant.EPOCH); keycaps.save(collecting);
@@ -96,7 +96,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
             int expected=10-1+3+opened.get("shardCount").asInt()-5;
             assertThat(drawn.get("shardBalance").asInt()).isEqualTo(expected);
             assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(expected);
-            assertThat(keycaps.sumLegacyShardCount(user.getId())).isZero();
+            assertThat(pendingShardCount(user.getId())).isZero();
             assertThat(keycaps.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(user.getId()).getFirst().getLevel()).isEqualTo(1);
         } finally { releaseOldRequest.countDown(); executor.shutdownNow(); }
     }
@@ -104,7 +104,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
     @Test void publishedClientsPreserveProgressAndReplayAcrossOneWayCutover() throws Exception {
         AppUser user=users.save(AppUser.createActive("compat-"+UUID.randomUUID(),null));
         points.save(PointAccount.createFor(user));
-        KeycapBoxAccount wallet=KeycapBoxAccount.createFor(user); wallet.addBoxes(10); wallets.save(wallet);
+        KeycapBoxAccount wallet=KeycapBoxAccount.createFor(user, Instant.now()); wallet.addBoxes(10); wallets.save(wallet);
         progress.createFor(user,tapPolicy);
         var key=catalog.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX).getFirst();
         var collecting=UserKeycap.createInProgress(user,key); collecting.addShard(3,Instant.EPOCH); keycaps.save(collecting);
@@ -126,7 +126,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
         mockMvc.perform(post("/api/tap/batches").header("Authorization",auth).contentType(MediaType.APPLICATION_JSON).content(batch))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.boxesDropped").value(1))
                 .andExpect(jsonPath("$.data.boxBalance").value(11)).andExpect(jsonPath("$.data.canFreeOpen").value(true));
-        assertThat(keycaps.sumLegacyShardCount(user.getId())).isEqualTo(3);
+        assertThat(pendingShardCount(user.getId())).isEqualTo(3);
         mockMvc.perform(post("/api/tap/batches").header("Authorization",auth).contentType(MediaType.APPLICATION_JSON).content(batch))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.pointsAwarded").value(0))
                 .andExpect(jsonPath("$.data.boxBalance").value(11));
@@ -136,7 +136,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
                         .contentType(MediaType.APPLICATION_JSON).content(free))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.shardCount").isNumber()).andReturn();
         assertThat(wallets.findByUserId(user.getId()).orElseThrow().getBoxBalance()).isEqualTo(10);
-        long pending=keycaps.sumLegacyShardCount(user.getId());
+        long pending=pendingShardCount(user.getId());
         assertThat(pending).isBetween(4L,5L);
         int available=Math.toIntExact(10+pending);
 
@@ -147,7 +147,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
         mockMvc.perform(get("/api/keycap-boxes/status").header("Authorization",auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.shardBalance").value(available))
                 .andExpect(jsonPath("$.data.boxBalance").value(0));
-        assertThat(keycaps.sumLegacyShardCount(user.getId())).isEqualTo(pending);
+        assertThat(pendingShardCount(user.getId())).isEqualTo(pending);
         mockMvc.perform(post("/api/keycap-boxes/open").header("Authorization",auth).header("Idempotency-Key","new-old-open")
                         .contentType(MediaType.APPLICATION_JSON).content(free))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("KEYCAP_BOX_OPEN_RETIRED"));
@@ -159,7 +159,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
         var drawn=mockMvc.perform(post("/api/keycaps/draw").header("Authorization",auth).header("Idempotency-Key","draw"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.shardsSpent").value(5))
                 .andExpect(jsonPath("$.data.shardBalance").value(available-5)).andExpect(jsonPath("$.data.level").value(1)).andReturn();
-        assertThat(keycaps.sumLegacyShardCount(user.getId())).isZero();
+        assertThat(pendingShardCount(user.getId())).isZero();
         var drawReplay=mockMvc.perform(post("/api/keycaps/draw").header("Authorization",auth).header("Idempotency-Key","draw"))
                 .andExpect(status().isOk()).andReturn();
         assertThat(drawReplay.getResponse().getContentAsString()).isEqualTo(drawn.getResponse().getContentAsString());
@@ -178,7 +178,7 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
     @Test void progressFundsDrawBeforeAffordabilityAndSelectedProgressBecomesNewLevelOne() throws Exception {
         var user=users.save(AppUser.createActive("progress-funds-"+UUID.randomUUID(),null));
         points.save(PointAccount.createFor(user)); progress.createFor(user,tapPolicy);
-        var wallet=KeycapBoxAccount.createFor(user); wallet.addBoxes(2); wallets.save(wallet);
+        var wallet=KeycapBoxAccount.createFor(user, Instant.now()); wallet.addBoxes(2); wallets.save(wallet);
         var key=catalog.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX).getFirst();
         var pending=UserKeycap.createInProgress(user,key); pending.addShard(3,Instant.EPOCH); keycaps.save(pending);
         configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",Instant.now()));
@@ -190,13 +190,13 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
         mockMvc.perform(post("/api/keycaps/draw").header("Authorization",auth).header("Idempotency-Key","funded"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.level").value(1))
                 .andExpect(jsonPath("$.data.shardBalance").value(0));
-        assertThat(keycaps.sumLegacyShardCount(user.getId())).isZero();
+        assertThat(pendingShardCount(user.getId())).isZero();
         assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isZero();
     }
     @Test void zeroOpenLimitsKeepLegacyEconomyAndNeverConsumePendingProgress() throws Exception {
         var user=users.save(AppUser.createActive("zero-limits-"+UUID.randomUUID(),null));
         points.save(PointAccount.createFor(user)); progress.createFor(user,tapPolicy);
-        var wallet=KeycapBoxAccount.createFor(user); wallet.addBoxes(6); wallets.save(wallet);
+        var wallet=KeycapBoxAccount.createFor(user, Instant.now()); wallet.addBoxes(6); wallets.save(wallet);
         var at=Instant.now();
         configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,"0",at));
         configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,"0",at));
@@ -222,4 +222,10 @@ class KeycapEconomyCompatibilityIntegrationTest extends FullStackIntegrationTest
         assertThat(jdbcTemplate.queryForObject("select count(*) from app_config where config_key=? and config_value='true'::jsonb",Long.class,
                 KeycapBoxPolicyConfig.KEY_SHARD_ENABLED)).isEqualTo(1);
     }
+    private long pendingShardCount(UUID userId) {
+        return jdbcTemplate.queryForObject(
+                "select coalesce(sum(shard_count), 0) from user_keycap where user_id = ? and status = 'IN_PROGRESS'",
+                Long.class, userId);
+    }
+
 }

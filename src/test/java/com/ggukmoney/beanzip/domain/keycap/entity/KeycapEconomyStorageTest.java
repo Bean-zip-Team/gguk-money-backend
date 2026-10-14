@@ -21,14 +21,12 @@ class KeycapEconomyStorageTest {
         assertThat(owned.getLevel()).isEqualTo(102);
     }
 
-    @Test void progressIsNotOwnedAndConversionStartsAtOne() {
+    @Test void progressIsNotOwned() {
         UserKeycap progress = UserKeycap.createInProgress(user, keycap);
         progress.addShard(3, acquiredAt);
         assertThat(progress.getLevel()).isZero();
         assertThat(progress.isLegacyInProgress()).isTrue();
-        progress.convertLegacyToOwned(acquiredAt);
-        assertThat(progress.getLevel()).isEqualTo(1);
-        assertThat(progress.getShardCount()).isEqualTo(20);
+        assertThat(progress.getShardCount()).isEqualTo(3);
     }
 
     @Test void shardOperationsUseExistingBoxBalanceAndKeepLegacyInsertFields() {
