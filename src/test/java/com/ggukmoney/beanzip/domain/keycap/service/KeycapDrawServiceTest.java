@@ -87,7 +87,8 @@ class KeycapDrawServiceTest {
     void stubHappyPath() {
         when(rewardLock.acquire(any())).thenReturn(user);
         when(transactionManager.getTransaction(any(TransactionDefinition.class))).thenReturn(new SimpleTransactionStatus());
-        when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        when(keycapBoxPolicyConfig.requestSnapshot()).thenReturn(
+                new KeycapBoxPolicyConfig.Snapshot(KeycapBoxPolicyConfig.DEFAULT_VALUES,true));
         when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(wallet);
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
         when(keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX))

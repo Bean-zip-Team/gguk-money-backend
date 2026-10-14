@@ -83,7 +83,7 @@ class TapBatchServiceTest {
             keycapBoxAccountService, redisService, tapPolicyConfig,
             promotionPolicyConfig, promotionGrantIssuer, tapThousandCompletionTrigger, userService,
             eventPublisher, clock, businessZoneId, rewardLock
-    );
+    , shardPolicy());
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -102,6 +102,7 @@ class TapBatchServiceTest {
         // 배치 응답이 항상 담는 상태라 어떤 경로에서도 한 번씩 조회된다.
         lenient().when(pointAccountService.getForUser(userId)).thenReturn(pointAccount);
         lenient().when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(boxAccount);
+        lenient().when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenAnswer(i -> boxAccount.getShardBalance());
         lenient().when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(accountOwner));
         // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
         lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
@@ -540,5 +541,10 @@ class TapBatchServiceTest {
     private UserTapSession farAwaySession() {
         AppUser sessionUser = mock(AppUser.class);
         return UserTapSession.createFor(sessionUser, acceptedAt, acceptedAt.plusSeconds(3600), FAR_AWAY_TARGET);
+    }
+    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardPolicy() {
+        var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+        org.mockito.Mockito.lenient().when(policy.isShardEconomyEnabled()).thenReturn(true);
+        return policy;
     }
 }

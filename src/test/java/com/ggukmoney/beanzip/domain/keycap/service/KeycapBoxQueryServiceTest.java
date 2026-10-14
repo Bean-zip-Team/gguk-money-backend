@@ -67,6 +67,7 @@ class KeycapBoxQueryServiceTest {
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
         when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        org.mockito.Mockito.lenient().when(keycapBoxPolicyConfig.isShardEconomyEnabled()).thenReturn(true);
         when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig))
                 .thenReturn(new BoxProgressSnapshot(45, 100));
 
@@ -96,6 +97,7 @@ class KeycapBoxQueryServiceTest {
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
         when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        org.mockito.Mockito.lenient().when(keycapBoxPolicyConfig.isShardEconomyEnabled()).thenReturn(true);
         when(userTapSessionService.getBoxProgress(any(), any(), any())).thenReturn(new BoxProgressSnapshot(0, 25));
 
         assertThat(service.getStatus(userId).canDraw()).isFalse();

@@ -40,9 +40,10 @@ public class KeycapController {
     private final KeycapService keycapService;
     private final KeycapDrawService keycapDrawService;
 
-    @Operation(summary = "키캡 목록 조회", description = "상시(`BOX`) 키캡 카탈로그를 조회해요. 시즌(`EVENT`) 키캡은 내려주지 않아요. 보유한 시즌 키캡은 내 키캡 목록에서만 보여요. 도감 진행도의 분모는 이 목록의 길이예요.", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @Operation(summary = "키캡 목록 조회", description = "경제 전환 전에는 기존 활성 키캡 목록을, 전환 후에는 상시(`BOX`) 키캡 카탈로그를 조회해요. 전환 후 미보유 시즌(`EVENT`) 키캡은 내려주지 않아요. 보유한 시즌 키캡은 내 키캡 목록에서만 보여요. 도감 진행도의 분모는 이 목록의 길이예요.", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "경제 정책을 조회할 수 없어요(KEYCAP_ECONOMY_POLICY_UNAVAILABLE).", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping
@@ -50,9 +51,10 @@ public class KeycapController {
         return ResponseEntity.ok(ApiResponse.success(keycapService.getKeycaps()));
     }
 
-    @Operation(summary = "내 키캡 목록 조회", description = "보유한 키캡과 레벨을 조회해요. 보유한 시즌 키캡도 포함돼요.", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @Operation(summary = "내 키캡 목록 조회", description = "경제 전환 전에는 수집 중 카드와 종별 조각도 포함하고, 전환 후에는 보유한 키캡과 레벨을 조회해요. 보유한 시즌 키캡도 포함돼요.", security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "경제 정책을 조회할 수 없어요(KEYCAP_ECONOMY_POLICY_UNAVAILABLE).", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping("/me")
@@ -63,18 +65,19 @@ public class KeycapController {
     }
 
     @Operation(summary = "키캡 뽑기",
-            description = "조각을 뽑기 가격만큼 차감하고 상시 키캡 중 하나를 등급 가중치로 뽑아요. "
+            description = "경제 전환 후 조각을 뽑기 가격만큼 차감하고 상시 키캡 중 하나를 등급 가중치로 뽑아요. "
                     + "뽑기 가격은 `keycap.draw.price` 설정으로 정하고 기본값은 5예요. "
                     + "등급 가중치는 `COMMON` 60%, `RARE` 28%, `EPIC` 10%, `LEGENDARY` 2%예요. "
                     + "이미 보유한 키캡이 나오면 레벨이 1 올라요. "
-                    + "같은 `Idempotency-Key` 헤더로 다시 호출하면 처음 결과를 그대로 돌려줘요.",
+                    + "같은 `Idempotency-Key`로 다시 호출하면 뽑기 결과는 최초 결과를, 조각 잔액은 조회 시점 값을 돌려줘요.",
             security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "뽑기에 성공했어요. 같은 멱등키로 다시 호출한 경우에도 처음 결과와 함께 200을 돌려줘요."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "뽑기에 성공했어요. 같은 멱등키로 다시 호출하면 뽑기 결과는 최초 결과를, 잔액은 조회 시점 값을 돌려줘요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키가 없거나 조각이 부족해요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "경제 정책을 조회할 수 없어요(KEYCAP_ECONOMY_POLICY_UNAVAILABLE).", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "조각 지갑이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "뽑을 수 있는 상시 키캡이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "경제 전환 전에는 뽑기를 사용할 수 없거나 뽑을 수 있는 상시 키캡이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/draw")
     public ResponseEntity<ApiResponse<KeycapDrawResponse>> draw(
@@ -92,6 +95,7 @@ public class KeycapController {
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "장착에 성공했어요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "진행 중이라 아직 보유하지 않은 키캡이에요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "경제 정책을 조회할 수 없어요(KEYCAP_ECONOMY_POLICY_UNAVAILABLE).", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "보유한 키캡 중에 해당 키캡이 없어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })

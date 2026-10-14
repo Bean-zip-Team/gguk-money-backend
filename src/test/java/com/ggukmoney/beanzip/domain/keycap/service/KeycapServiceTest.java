@@ -35,7 +35,7 @@ class KeycapServiceTest {
     private final KeycapMapper keycapMapper = Mappers.getMapper(KeycapMapper.class);
     private final OnboardingRewardConfig onboardingRewardConfig = mock(OnboardingRewardConfig.class);
     private final KeycapService keycapService =
-            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig, mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class));
+            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig, mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class), shardPolicy());
 
     @Test
     void getsActiveBoxKeycapCatalogInRepositoryOrder() {
@@ -298,5 +298,10 @@ class KeycapServiceTest {
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to create test entity " + type.getSimpleName(), exception);
         }
+    }
+    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardPolicy() {
+        var policy=org.mockito.Mockito.mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+        org.mockito.Mockito.lenient().when(policy.isShardEconomyEnabled()).thenReturn(true);
+        return policy;
     }
 }

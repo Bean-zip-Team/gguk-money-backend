@@ -219,4 +219,18 @@ class OpsConfigPageIntegrationTest extends FullStackIntegrationTestSupport {
     private long rowCount() {
         return jdbcTemplate.queryForObject("SELECT count(*) FROM app_config WHERE config_key = ?", Long.class, KEY);
     }
+    @Test void missingEconomySeedIsVisibleAndActivationIsRejected() throws Exception {
+        var key=com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_SHARD_ENABLED;
+        jdbcTemplate.update("delete from app_config where config_key=?",key);
+        try {
+            var cookie=login();
+            mockMvc.perform(sameOrigin(post("/ops/config/"+key)).cookie(cookie)
+                            .param("basedOn","missing").param("value","true").param("changedBy","test").param("reason","activate"))
+                    .andExpect(status().isBadRequest()).andExpect(content().string(containsString("시더 상태를 확인하세요")));
+            assertThat(jdbcTemplate.queryForObject("select count(*) from app_config where config_key=?",Long.class,key)).isZero();
+        } finally {
+            jdbcTemplate.update("insert into app_config(public_id,config_key,config_value,effective_at,created_at,updated_at) values (?,?,'false'::jsonb,?,?,?)",
+                    java.util.UUID.randomUUID(),key,java.sql.Timestamp.from(java.time.Instant.EPOCH),java.sql.Timestamp.from(java.time.Instant.now()),java.sql.Timestamp.from(java.time.Instant.now()));
+        }
+    }
 }

@@ -32,6 +32,7 @@ public class KeycapService {
     private final KeycapMapper keycapMapper;
     private final OnboardingRewardConfig onboardingRewardConfig;
     private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     /**
      * 공개 도감은 상시({@code BOX}) 키캡만 내려준다 (BEA-329). 시즌 키캡은 보유자의 내 키캡 목록에서만 보인다.
@@ -39,15 +40,15 @@ public class KeycapService {
      * 뽑아도 절대 안 나오는 키캡이 목록과 진행도 분모에 남는다.
      */
     public KeycapListResponse getKeycaps() {
-        return keycapMapper.mapToKeycapListResponse(
-                keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
-        );
+        return keycapMapper.mapToKeycapListResponse(economy.isShardEconomyEnabled()
+                ? keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+                : keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc());
     }
 
     public MyKeycapListResponse getMyKeycaps(UUID userId) {
-        return keycapMapper.mapToMyKeycapListResponse(
-                userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId)
-        );
+        var owned=userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId);
+        return keycapMapper.mapToMyKeycapListResponse(economy.isShardEconomyEnabled()
+                ? owned.stream().filter(UserKeycap::isCompleted).toList() : owned);
     }
 
     public EquippedKeycapResponse getEquippedKeycap(UUID userId) {

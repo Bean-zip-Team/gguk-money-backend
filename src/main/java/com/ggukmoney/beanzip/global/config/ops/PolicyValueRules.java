@@ -96,17 +96,23 @@ public class PolicyValueRules {
         integer(TapPolicyConfig.KEY_BOOSTER_DURATION_SECONDS, 1, "지속 시간 (초)");
         integer(TapPolicyConfig.KEY_BOOSTER_LIMIT_WINDOW_SECONDS, 1, "사용 횟수를 세는 기간 (초)");
 
-        group = "조각";
-        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_1, 1, "세션 1번째 조각까지 필요한 탭 수");
-        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_2, 1, "세션 2번째 조각까지 필요한 탭 수");
-        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_3, 1, "세션 3번째 조각까지 필요한 탭 수");
-        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_4, 1, "세션 4번째 조각까지 필요한 탭 수");
-        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_5, 1, "세션 5번째 조각까지 필요한 탭 수");
-        integer(TapPolicyConfig.KEY_BOX_SESSION_TAIL_STEP, 1, "6번째 조각부터 조각 간격 (탭)");
+        group = "상자";
+        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_1, 1, "세션 1번째 상자까지 필요한 탭 수");
+        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_2, 1, "세션 2번째 상자까지 필요한 탭 수");
+        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_3, 1, "세션 3번째 상자까지 필요한 탭 수");
+        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_4, 1, "세션 4번째 상자까지 필요한 탭 수");
+        integer(TapPolicyConfig.KEY_BOX_SESSION_STEP_5, 1, "세션 5번째 상자까지 필요한 탭 수");
+        integer(TapPolicyConfig.KEY_BOX_SESSION_TAIL_STEP, 1, "6번째 상자부터 상자 간격 (탭)");
         integer(TapPolicyConfig.KEY_BOX_SESSION_IDLE_TIMEOUT_SECONDS, 1, "이 시간 동안 쉬면 세션 초기화 (초)");
-        integer(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, 1, "뽑기 1회 가격 (조각)");
+        integer(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, 0, "무료 개봉 횟수");
+        integer(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, 0, "광고 보고 여는 개봉 한도");
+        integer(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, 0, "한 번에 일괄 개봉할 수 있는 최대 개수");
+        integer(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, 1, "개봉 주기 (초)");
 
         // 온보딩: 로더가 매 요청 직접 읽고 대체값이 없다. 잘못되면 온보딩 지급이 바로 막힌다.
+        bool(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED, "조각 경제로 한 번만 전환합니다. 전환 후 변경·해제할 수 없어요.");
+        integer(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, 1, "경제 전환 후 뽑기 1회 가격 (조각)");
+
         group = "온보딩";
         add(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, Kind.INTEGER, "0 이상 " + MAX_MONEY_AMOUNT + " 이하의 정수",
                 raw -> { int value = Integer.parseInt(raw); return value >= 0 && value <= MAX_MONEY_AMOUNT; },

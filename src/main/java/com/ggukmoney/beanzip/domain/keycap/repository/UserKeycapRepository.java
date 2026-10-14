@@ -100,7 +100,7 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
             from UserKeycap userKeycap
             join fetch userKeycap.keycap keycap
             where userKeycap.user.id = :userId
-              and userKeycap.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.COMPLETED
+
             order by keycap.sortOrder asc, keycap.code asc
             """)
     List<UserKeycap> findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(@Param("userId") UUID userId);

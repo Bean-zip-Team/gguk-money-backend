@@ -119,7 +119,7 @@ class KeycapControllerTest {
         stubAuthenticatedAccessToken("access-token");
         UUID keycapId = UUID.randomUUID();
         when(keycapService.getMyKeycaps(authenticatedUserId())).thenReturn(new MyKeycapListResponse(List.of(
-                new MyKeycapItemResponse(keycapId, "BASIC_001", "Basic", 10, "COMPLETED", true, "COMMON", "BOX", "https://example.com/keycap.png", null)
+                new MyKeycapItemResponse(keycapId, "BASIC_001", "Basic", 10, "COMPLETED", true, "COMMON", "BOX", "https://example.com/keycap.png", null, 0)
         )));
 
         mockMvc.perform(get("/api/keycaps/me")
@@ -129,7 +129,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycaps[0].keycapId").value(keycapId.toString()))
                 .andExpect(jsonPath("$.data.keycaps[0].code").value("BASIC_001"))
                 .andExpect(jsonPath("$.data.keycaps[0].level").value(10))
-                .andExpect(jsonPath("$.data.keycaps[0].shardCount").doesNotExist())
+                .andExpect(jsonPath("$.data.keycaps[0].shardCount").value(0))
                 .andExpect(jsonPath("$.data.keycaps[0].grade").value("COMMON"))
                 .andExpect(jsonPath("$.data.keycaps[0].acquisitionType").value("BOX"))
                 .andExpect(jsonPath("$.data.keycaps[0].imageUrl").value("https://example.com/keycap.png"))

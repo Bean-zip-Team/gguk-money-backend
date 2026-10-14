@@ -70,6 +70,7 @@ public class TapBatchService {
     private final Clock clock;
     private final ZoneId businessZoneId;
     private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig keycapBoxPolicyConfig;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId, TapBatchSubmitRequest request) {
@@ -81,6 +82,7 @@ public class TapBatchService {
         }
 
         AppUser user = rewardLock.acquire(userId);
+        boolean shardEconomy = keycapBoxPolicyConfig.isShardEconomyEnabled();
 
         // 보상 상태는 지급 여부와 무관하게 응답에 담기므로 여기서 한 번만 조회한다.
         // 지급 루프 안에서 다시 조회하면 파생 쿼리라 1차 캐시로 대체되지 않고
@@ -93,7 +95,7 @@ public class TapBatchService {
 
         Optional<TapBatch> existing = tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, request.tapSessionId(), request.sequence());
         if (existing.isPresent()) {
-            return buildResponse(existing.get().getAcceptedCount(), 0, 0, acceptedAt, daily, session, progress, pointAccount, boxAccount);
+            return buildResponse(existing.get().getAcceptedCount(), 0, 0, acceptedAt, daily, session, progress, pointAccount, boxAccount, shardEconomy, userId);
         }
 
         int acceptedCount = request.submittedCount();
@@ -166,7 +168,7 @@ public class TapBatchService {
             eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         }
 
-        return buildResponse(acceptedCount, pointsAwarded, shardsDropped, acceptedAt, daily, session, progress, pointAccount, boxAccount);
+        return buildResponse(acceptedCount, pointsAwarded, shardsDropped, acceptedAt, daily, session, progress, pointAccount, boxAccount, shardEconomy, userId);
     }
 
     /**
@@ -214,18 +216,22 @@ public class TapBatchService {
             UserTapSession session,
             UserTapProgress progress,
             PointAccount pointAccount,
-            KeycapBoxAccount shardWallet
+            KeycapBoxAccount shardWallet,
+            boolean shardEconomy,
+            UUID userId
     ) {
         int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
         int remainingToNextShard = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
 
+        var cycle=shardEconomy ? null : shardWallet.calculateOpenCycleSnapshot(now,keycapBoxPolicyConfig.openCycleDuration(),
+                keycapBoxPolicyConfig.freeOpenLimit(),keycapBoxPolicyConfig.adOpenLimit());
         // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
         // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
         return new TapBatchSubmitResponse(
                 acceptedCount,
                 daily.getTotalValidTapCount(),
                 pointsAwarded,
-                0,
+                shardEconomy ? 0 : shardsDropped,
                 pointAccount.getBalance(),
                 daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap(),
                 session.getSessionValidTapCount(),
@@ -234,13 +240,13 @@ public class TapBatchService {
                 daily.getPointEarnedAmount(),
                 remainingToNextPoint,
                 remainingToNextShard,
-                0,
-                false,
-                false,
-                false,
-                null,
-                shardsDropped,
-                shardWallet.getShardBalance(),
+                shardEconomy ? 0 : shardWallet.getBoxBalance(),
+                !shardEconomy && cycle.canFreeOpen(),
+                !shardEconomy && cycle.canAdOpen(),
+                !shardEconomy && cycle.charging(),
+                shardEconomy ? null : cycle.nextRechargeAt(),
+                shardEconomy ? shardsDropped : 0,
+                shardEconomy ? keycapBoxAccountService.getAvailableShardBalance(userId) : 0,
                 remainingToNextShard
         );
     }

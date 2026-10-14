@@ -91,9 +91,13 @@ public class KeycapDrawService {
             return replay.get();
         }
 
+        var economy=keycapBoxPolicyConfig.requestSnapshot();
+        if (!economy.shardEconomy())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"KEYCAP_DRAW_NOT_ACTIVE");
         Instant drawnAt = clock.instant();
-        int price = keycapBoxPolicyConfig.drawPrice();
+        int price = economy.drawPrice();
         KeycapBoxAccount wallet = keycapBoxAccountService.getForUserForUpdate(userId);
+        keycapBoxAccountService.convertLegacyProgressForDraw(userId,wallet);
         if (!wallet.canAfford(price)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_SHARD_INSUFFICIENT");
         }

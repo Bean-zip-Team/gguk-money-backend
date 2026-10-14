@@ -43,7 +43,7 @@ public class TapController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "탭 진행도가 없어요. 가입할 때 만들어지는 진행도 행이 없는 경우예요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "탭 제출 속도 제한에 걸렸어요. 속도 제한(`tap.rateLimit.enabled`)이 켜져 있을 때 짧은 시간에 너무 자주 제출하면 이 응답을 받아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "탭 처리 저장소(Redis)에 일시적으로 접근할 수 없어요. 속도 제한을 확인하다 Redis 오류가 나면 이 응답을 받아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "Redis 오류(TAP_REDIS_UNAVAILABLE) 또는 요청당 한 번 읽는 경제 정책 조회 실패(KEYCAP_ECONOMY_POLICY_UNAVAILABLE)예요. 정책 조회 실패 시 탭 지급과 저장은 롤백돼요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping("/batches")
     public ResponseEntity<ApiResponse<TapBatchSubmitResponse>> submitBatch(

@@ -50,6 +50,16 @@ class KeycapDrawConcurrencyIntegrationTest extends FullStackIntegrationTestSuppo
     @Autowired
     private UserKeycapRepository userKeycapRepository;
 
+    @Autowired private com.ggukmoney.beanzip.global.config.repository.AppConfigRepository economyConfigs;
+    @org.junit.jupiter.api.BeforeEach void enableShardEconomy() {
+        var now=java.time.Instant.now();
+        economyConfigs.save(com.ggukmoney.beanzip.global.config.entity.AppConfig.createFor(
+                com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,"0",now));
+        economyConfigs.save(com.ggukmoney.beanzip.global.config.entity.AppConfig.createFor(
+                com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,"0",now));
+        economyConfigs.save(com.ggukmoney.beanzip.global.config.entity.AppConfig.createFor(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",now));
+    }
+
     @Test
     void sameIdempotencyKeyFromTwoThreadsDrawsOnceAndSpendsOnce() throws Exception {
         AppUser user = registerUserWithShards(10);

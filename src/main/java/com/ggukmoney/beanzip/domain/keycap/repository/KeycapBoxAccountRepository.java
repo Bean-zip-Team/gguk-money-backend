@@ -1,6 +1,10 @@
 package com.ggukmoney.beanzip.domain.keycap.repository;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import org.springframework.data.domain.Pageable;
+import java.time.Instant;
+import java.util.List;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -31,4 +35,32 @@ public interface KeycapBoxAccountRepository extends JpaRepository<KeycapBoxAccou
             from KeycapBoxAccount account where account.user.id = :userId
             """)
     Optional<Long> findAvailableShardBalance(@Param("userId") UUID userId);
+    @Query("""
+            select account.id as accountId, account.user.id as userId
+            from KeycapBoxAccount account, NotificationPreference preference
+            where preference.userId = account.user.id
+              and preference.type = :type
+              and preference.enabled = true
+              and preference.agreementStatus = com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementStatus.AGREED
+              and account.id > :lastAccountId
+              and account.boxBalance > 0
+              and account.freeOpenUsedCount >= :freeOpenLimit
+              and account.adOpenUsedCount >= :adOpenLimit
+              and account.openCycleStartedAt <= :cutoff
+            order by account.id asc
+            """)
+    List<KeycapBoxOpenAvailableCandidate> findKeycapBoxOpenAvailableCandidates(
+            @Param("type") NotificationType type,
+            @Param("lastAccountId") long lastAccountId,
+            @Param("freeOpenLimit") int freeOpenLimit,
+            @Param("adOpenLimit") int adOpenLimit,
+            @Param("cutoff") Instant cutoff,
+            Pageable pageable
+    );
+
+    interface KeycapBoxOpenAvailableCandidate {
+        Long getAccountId();
+
+        UUID getUserId();
+    }
 }

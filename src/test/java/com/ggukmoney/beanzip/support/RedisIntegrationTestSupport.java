@@ -50,7 +50,7 @@ public abstract class RedisIntegrationTestSupport {
                 null, null, null, null, null,
                 Clock.fixed(Instant.parse("2026-07-20T15:00:00Z"), ZoneOffset.UTC),
                 ZoneId.of("Asia/Seoul"), null
-        );
+        , org.mockito.Mockito.mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class));
         flushRedis();
     }
 

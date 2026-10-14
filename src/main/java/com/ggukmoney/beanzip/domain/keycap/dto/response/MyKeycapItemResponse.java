@@ -14,7 +14,7 @@ public record MyKeycapItemResponse(
         String name,
         @Schema(description = "키캡 레벨이에요. 처음 얻으면 1이고, 같은 키캡을 다시 뽑을 때마다 1씩 올라요. 상한은 없어요.", example = "9")
         int level,
-        @Schema(description = "[deprecated] 보유 키캡은 항상 `COMPLETED`예요.", example = "COMPLETED", deprecated = true)
+        @Schema(description = "기존 앱에서는 IN_PROGRESS와 COMPLETED를 사용해요. 경제 전환 후 보유 목록에는 COMPLETED만 내려가요.", example = "COMPLETED", deprecated = true)
         String status,
         @Schema(description = "현재 장착 중인지 여부예요.", example = "false")
         boolean equipped,
@@ -25,6 +25,8 @@ public record MyKeycapItemResponse(
         @Schema(description = "이미지 URL이에요.", example = "https://example.com/keycap.png")
         String imageUrl,
         @Schema(description = "사운드 URL이에요.", example = "https://example.com/keycap.mp3")
-        String soundUrl
+        String soundUrl,
+        @Schema(description = "기존 앱의 종별 수집 진행도예요. 경제 전환 후에는 레벨 저장에 사용되는 기존 값이며 새 앱은 level을 사용해요.", example = "3", deprecated = true)
+        int shardCount
 ) {
 }

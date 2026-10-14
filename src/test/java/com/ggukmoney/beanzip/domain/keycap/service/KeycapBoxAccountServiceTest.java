@@ -19,7 +19,8 @@ import static org.mockito.Mockito.when;
 class KeycapBoxAccountServiceTest {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
-    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository, mock(com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository.class));
+    private final com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository userKeycaps = mock(com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository.class);
+    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository, userKeycaps, org.mockito.Mockito.mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class));
 
     @Test
     void createsEmptyWalletForNewUser() {
@@ -57,5 +58,31 @@ class KeycapBoxAccountServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getReason())
                 .isEqualTo("KEYCAP_BOX_ACCOUNT_NOT_FOUND");
+    }
+
+    @Test
+    void legacyTapDoesNotConvertOrDeletePerKeycapProgress() {
+        UUID userId = UUID.randomUUID();
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null);
+        wallet.addBoxes(7);
+        var collecting = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.createInProgress(null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(collecting, "shardCount", 3);
+        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(wallet));
+        org.mockito.Mockito.lenient().when(userKeycaps.findLegacyInProgressForUpdate(userId))
+                .thenReturn(java.util.List.of(collecting));
+
+        var result = keycapBoxAccountService.getForUserForUpdate(userId);
+
+        assertThat(result.getBoxBalance()).isEqualTo(7);
+        assertThat(collecting.getShardCount()).isEqualTo(3);
+        verify(userKeycaps, org.mockito.Mockito.never()).deleteAll(any());
+    }
+    @Test void rawWalletLockDoesNotReadEconomicPolicyOrLegacyProgress() {
+        UUID userId=UUID.randomUUID();
+        var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+        var service=new KeycapBoxAccountService(keycapBoxAccountRepository,userKeycaps,policy);
+        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(KeycapBoxAccount.createFor(null)));
+        service.getForUserForUpdate(userId);
+        org.mockito.Mockito.verifyNoInteractions(policy,userKeycaps);
     }
 }
