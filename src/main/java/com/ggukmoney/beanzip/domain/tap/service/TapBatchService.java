@@ -17,7 +17,6 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import tools.jackson.databind.ObjectMapper;
 import java.time.*;
 import java.util.*;
 
@@ -32,8 +31,8 @@ public class TapBatchService {
     private final UserTapProgressService progressService;
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
-    private final ObjectMapper json;
     private final Clock clock;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId,TapBatchSubmitRequest request) {
@@ -42,39 +41,44 @@ public class TapBatchService {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"TAP_RATE_LIMITED");
         var user=lock.acquire(userId);
         var now=clock.instant();
+        boolean shard=economy.isShardEconomyEnabled();
         var existing=tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId,request.tapSessionId(),request.sequence());
         String hash=requestHash(request);
         if(existing.isPresent()) {
             var saved=existing.get();
             // Existing apps identify a batch by session/sequence, even if a retry changes count.
-            // Keep the stored confirmed outcome for audit; return current state with zero awards.
+            // Return current state with zero awards; no result JSON is persisted.
             // Replaying neither settles new automatic clicks nor rolls another reward.
             var state=rewards.award(user,now,com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE,
                     0,true,saved.getPublicId(),new KeycapPassiveRoller());
-            return response(saved.getAcceptedCount(),0,0,0,0,state);
+            return response(saved.getAcceptedCount(),0,0,0,0,state,shard,userId,now);
         }
         var batch=TapBatch.createFor(user,request.tapSessionId(),request.sequence(),request.submittedCount(),hash);
         batch.markAccepted(request.submittedCount());
         batch=tapBatchRepository.save(batch);
+        var context=passive.requestPolicy(now,shard);
         // The request owns one roller; automatic clicks bypass axis ②.
         var roller=new KeycapPassiveRoller();
-        var automatic=passive.settleLocked(user,now,"tap:"+batch.getPublicId(),roller);
-        var effects=passive.activeEffects(userId);
+        var automatic=passive.settleLocked(user,now,"tap:"+batch.getPublicId(),roller,context);
+        var effects=passive.activeEffects(userId,context);
         var award=rewards.award(user,now,effects,request.submittedCount(),false,batch.getPublicId(),roller);
         var result=response(request.submittedCount(),award.effectiveCount(),automatic.autoClicksGranted(),
-                automatic.pointsAwarded(),automatic.shardsDropped(),award);
-        batch.confirmResult(json.writeValueAsString(effects),json.writeValueAsString(result));
+                automatic.pointsAwarded(),automatic.shardsDropped(),award,shard,userId,now);
         return result;
     }
 
-    private TapBatchSubmitResponse response(int accepted,int effective,int automatic,int autoPoints,int autoShards,TapRewardService.Award award) {
+    private TapBatchSubmitResponse response(int accepted,int effective,int automatic,int autoPoints,int autoShards,TapRewardService.Award award,boolean shard,UUID userId,Instant now) {
         var daily=award.daily(); var session=award.session();
         int remainingShard=(int)Math.max(session.getNextBoxTarget()-session.getSessionValidTapCount(),0);
+        var cycle=shard ? null : award.wallet().calculateOpenCycleSnapshot(now,economy.openCycleDuration(),
+                economy.freeOpenLimit(),economy.adOpenLimit());
+        int drops=award.shardsDropped()+autoShards;
         return new TapBatchSubmitResponse(accepted,daily.getTotalValidTapCount(),award.pointsAwarded()+autoPoints,
-                0,award.account().getBalance(),daily.getPointEarnedAmount()>=tapPolicyConfig.pointDailyCap(),
+                shard?0:drops,award.account().getBalance(),daily.getPointEarnedAmount()>=tapPolicyConfig.pointDailyCap(),
                 session.getSessionValidTapCount(),session.getNextBoxTarget(),daily.getTapDate(),daily.getPointEarnedAmount(),
-                progressService.remainingTapsToNextPoint(award.progress(),daily,tapPolicyConfig),remainingShard,0,
-                false,false,false,null,award.shardsDropped()+autoShards,award.wallet().getShardBalance(),remainingShard,
+                progressService.remainingTapsToNextPoint(award.progress(),daily,tapPolicyConfig),remainingShard,shard?0:award.wallet().getBoxBalance(),
+                !shard && cycle.canFreeOpen(),!shard && cycle.canAdOpen(),!shard && cycle.charging(),shard?null:cycle.nextRechargeAt(),
+                shard?drops:0,shard?rewards.availableShardBalance(userId):0,remainingShard,
                 effective,automatic,daily.getTotalEffectiveTapCount());
     }
 

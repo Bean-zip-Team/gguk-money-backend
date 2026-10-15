@@ -36,6 +36,7 @@ public class OpsConfigService {
     private final AppConfigValueValidator validator;
     private final PolicyValueRules rules;
     private final KeycapPassivePolicyConfig passiveConfig;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     @Transactional(readOnly = true)
     public List<AppConfig> currentValues() {
@@ -69,6 +70,18 @@ public class OpsConfigService {
             repository.findFirstByConfigKeyOrderByIdAsc(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED)
                     .orElseThrow(() -> new IllegalArgumentException("패시브 기본 설정을 먼저 등록하세요."));
         }
+        boolean economyKey=com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key);
+        if (economyKey) {
+            repository.findFirstByConfigKeyOrderByIdAsc(key).orElseThrow(() ->
+                    new IllegalArgumentException("전환 설정 기본 행이 없습니다. 시더 상태를 확인하세요"));
+            var history=repository.findLatestEffectiveWithHistory(java.util.Set.of(key),key,Instant.now());
+            for (AppConfig row:history) {
+                String flag=row.getConfigValue().trim();
+                if (!"true".equals(flag) && !"false".equals(flag))
+                    throw new IllegalArgumentException("전환 설정 이력이 잘못됐습니다. 점검 후 다시 시도하세요.");
+                if ("true".equals(flag)) throw new IllegalArgumentException("이미 경제가 전환됐습니다. 변경·해제할 수 없습니다.");
+            }
+        }
         AppConfig current = current(key);
         PolicyValueRules.Rule rule = rules.find(key)
                 .orElseThrow(() -> new IllegalArgumentException("이 키는 화면에서 바꿀 수 없습니다. SQL 로 바꾸세요."));
@@ -79,6 +92,10 @@ public class OpsConfigService {
         String why = required(reason, MAX_REASON, "변경 사유");
         String next = validator.normalize(rule, current.getConfigValue(), input);
 
+        if (economyKey && !"true".equals(next)) throw new IllegalArgumentException("경제 전환은 활성화만 할 수 있습니다.");
+        if (KeycapPassivePolicyConfig.KEY_ENABLED.equals(key) && "true".equals(next)
+                && !economy.isShardEconomyEnabled())
+            throw new IllegalArgumentException("조각 경제로 전환한 후 패시브를 활성화하세요.");
         Instant effectiveAt = Instant.now();
         if (key.startsWith("keycap.passive.")) {
             var passive = new java.util.HashMap<String,String>();

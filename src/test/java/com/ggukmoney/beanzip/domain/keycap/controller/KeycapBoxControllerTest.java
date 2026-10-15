@@ -41,7 +41,7 @@ class KeycapBoxControllerTest {
 
     private final AuthService authService = mock(AuthService.class);
     private final KeycapBoxQueryService keycapBoxQueryService = mock(KeycapBoxQueryService.class);
-    private final KeycapBoxController keycapBoxController = new KeycapBoxController(keycapBoxQueryService);
+    private final KeycapBoxController keycapBoxController = new KeycapBoxController(keycapBoxQueryService, mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxOpenService.class), mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxBulkOpenService.class));
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(keycapBoxController)
             .addInterceptors(new AuthInterceptor(authService))
             .setControllerAdvice(new GlobalExceptionHandler())
@@ -113,15 +113,6 @@ class KeycapBoxControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("TAP_PROGRESS_NOT_FOUND"));
-    }
-
-    @Test
-    void boxOpenEndpointsAreGone() {
-        // 개봉·일괄 개봉은 BEA-329 로 사라졌다. 뽑기는 /api/keycaps/draw 다.
-        assertThat(KeycapBoxController.class.getDeclaredMethods())
-                .extracting(Method::getName)
-                .doesNotContain("open", "bulkOpen")
-                .contains("getStatus", "getHistory");
     }
 
     @Test
@@ -220,5 +211,15 @@ class KeycapBoxControllerTest {
         when(authService.isAccessDenied("access-jti")).thenReturn(false);
         when(authService.findUserRevokedAtMillis(userId)).thenReturn(Optional.empty());
         when(authService.findBySessionId(sessionId)).thenReturn(Optional.of(session));
+    }
+
+    @Test
+    void authenticatedLegacyOpenMustKeepPublishedRoute() throws Exception {
+        stubAuthenticatedAccessToken("access-token");
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/keycap-boxes/open")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"openMethod\":\"FREE\"}"))
+                .andExpect(status().isOk());
     }
 }

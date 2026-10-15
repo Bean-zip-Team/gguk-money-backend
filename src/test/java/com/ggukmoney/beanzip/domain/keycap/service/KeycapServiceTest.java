@@ -34,12 +34,17 @@ class KeycapServiceTest {
     private final UserKeycapRepository userKeycapRepository = mock(UserKeycapRepository.class);
     private final KeycapMapper keycapMapper = Mappers.getMapper(KeycapMapper.class);
     private final OnboardingRewardConfig onboardingRewardConfig = mock(OnboardingRewardConfig.class);
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy=shardEconomy();
     private final KeycapService keycapService =
             new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig,
                     mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class),mock(KeycapPassiveService.class),
                     java.time.Clock.systemUTC(),new com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig(
-                    mock(com.ggukmoney.beanzip.global.config.AppConfigBatchLoader.class)));
+                    mock(com.ggukmoney.beanzip.global.config.AppConfigBatchLoader.class)),economy);
 
+    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardEconomy() {
+        var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+        when(policy.isShardEconomyEnabled()).thenReturn(true); return policy;
+    }
     @Test
     void getsActiveBoxKeycapCatalogInRepositoryOrder() {
         Keycap first = keycap(UUID.randomUUID(), "BASIC_001", "Basic", Keycap.Grade.COMMON, 10, 1, true, 1);

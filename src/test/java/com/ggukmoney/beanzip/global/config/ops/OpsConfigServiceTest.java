@@ -22,8 +22,9 @@ class OpsConfigServiceTest {
         when(repository.findFirstByConfigKeyOrderByIdAsc(anyString())).thenReturn(Optional.of(current));
         when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(anyString(),any())).thenReturn(Optional.of(current));
         when(repository.findLatestEffectiveByConfigKeys(any(),any())).thenReturn(List.of(current));
+        when(repository.findLatestEffectiveWithHistory(any(),eq(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED),any())).thenReturn(List.of(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",Instant.EPOCH)));
         var service=new OpsConfigService(repository,new AppConfigValueValidator(mapper),
-                new PolicyValueRules(mock(KeycapRepository.class),mapper),config);
+                new PolicyValueRules(mock(KeycapRepository.class),mapper),config,new KeycapBoxPolicyConfig(new AppConfigBatchLoader(repository)));
         TransactionSynchronizationManager.initSynchronization();
         try {
             service.change(KeycapPassivePolicyConfig.KEY_ENABLED,id.toString(),"true","test","activate");

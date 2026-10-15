@@ -106,6 +106,12 @@ public class PolicyValueRules {
         integer(TapPolicyConfig.KEY_BOX_SESSION_IDLE_TIMEOUT_SECONDS, 1, "이 시간 동안 쉬면 세션 초기화 (초)");
         integer(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, 1, "뽑기 1회 가격 (조각)");
 
+        group = "상자 개봉 (전환 전)";
+        integer(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, 1, "개봉 충전 주기 (초)");
+        integer(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, 0, "무료 개봉 한도; 0이면 개봉과 관련 알림을 중단");
+        integer(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, 0, "광고 개봉 한도; 경제 전환과 별개");
+        integer(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, 0, "알림 동의 일괄 개봉 한도");
+
         group = "키캡 패시브";
         var passiveDefaults = com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.DEFAULT_VALUES;
         passiveDefaults.keySet().stream().sorted().forEach(key -> {
@@ -126,6 +132,8 @@ public class PolicyValueRules {
                 .filter(key -> key.endsWith("Strength")).sorted().forEach(key ->
                     add(key,Kind.DECIMAL,"읽기 전용: 같은 등급의 startRatio를 사용하세요",raw -> false,
                             "이전 보간 기준값 (실제 캡 아님, 기존 이력 보존): "+key,null));
+
+        bool(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED, "조각 경제로 한 번만 전환합니다. 전환 후 변경·해제할 수 없어요.");
 
         // 온보딩: 로더가 매 요청 직접 읽고 대체값이 없다. 잘못되면 온보딩 지급이 바로 막힌다.
         group = "온보딩";

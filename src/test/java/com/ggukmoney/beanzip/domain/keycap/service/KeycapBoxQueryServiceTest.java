@@ -67,6 +67,7 @@ class KeycapBoxQueryServiceTest {
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
         when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        org.mockito.Mockito.lenient().when(keycapBoxPolicyConfig.isShardEconomyEnabled()).thenReturn(true);
         when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig))
                 .thenReturn(new BoxProgressSnapshot(45, 100));
 
@@ -90,12 +91,42 @@ class KeycapBoxQueryServiceTest {
     }
 
     @Test
+    void preservesAllLegacyStatusFieldsForAvailableAndExhaustedOpenCycles() {
+        AppUser user = AppUser.createActive("Bean", null);
+        KeycapBoxAccount account = KeycapBoxAccount.createFor(user, clock.instant());
+        account.addBoxes(12);
+        when(keycapBoxAccountService.getForUser(userId)).thenReturn(account);
+        when(userService.getById(userId)).thenReturn(user);
+        when(userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(45, 100));
+        when(keycapBoxPolicyConfig.drawPrice()).thenReturn(7);
+        when(keycapBoxPolicyConfig.openCycleDuration()).thenReturn(java.time.Duration.ofMinutes(30));
+        when(keycapBoxPolicyConfig.freeOpenLimit()).thenReturn(2);
+        when(keycapBoxPolicyConfig.adOpenLimit()).thenReturn(6);
+        KeycapBoxQueryService realMappingService = new KeycapBoxQueryService(
+                keycapBoxAccountService, userTapSessionService, userService, tapPolicyConfig,
+                org.mapstruct.factory.Mappers.getMapper(KeycapBoxMapper.class), keycapBoxPolicyConfig,
+                clock, keycapBoxOpenRepository, cursorCodec);
+
+        assertThat(realMappingService.getStatus(userId)).isEqualTo(new KeycapBoxStatusResponse(
+                0, 7, false, 45, 100, 12, true, true, false, null, 45, 100));
+
+        for (int i = 0; i < 2; i++) account.consumeFreeOpen(2);
+        for (int i = 0; i < 6; i++) account.consumeAdOpen(6);
+
+        assertThat(realMappingService.getStatus(userId)).isEqualTo(new KeycapBoxStatusResponse(
+                0, 7, false, 45, 100, 4, false, false, true,
+                Instant.parse("2026-07-16T00:40:00Z"), 45, 100));
+    }
+
+    @Test
     void cannotDrawWhenBalanceIsBelowPrice() {
         KeycapBoxAccount wallet = wallet(userId, 4);
         when(userService.getById(userId)).thenReturn(wallet.getUser());
         when(keycapBoxAccountService.getForUser(userId)).thenReturn(wallet);
         when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenReturn(wallet.getShardBalance());
         when(keycapBoxPolicyConfig.drawPrice()).thenReturn(5);
+        org.mockito.Mockito.lenient().when(keycapBoxPolicyConfig.isShardEconomyEnabled()).thenReturn(true);
         when(userTapSessionService.getBoxProgress(any(), any(), any())).thenReturn(new BoxProgressSnapshot(0, 25));
 
         assertThat(service.getStatus(userId).canDraw()).isFalse();
@@ -195,7 +226,7 @@ class KeycapBoxQueryServiceTest {
     private static KeycapBoxAccount wallet(UUID userId, int shardBalance) {
         AppUser user = AppUser.createActive("Bean", null);
         ReflectionTestUtils.setField(user, "id", userId);
-        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user, Instant.parse("2026-07-16T00:10:00Z"));
         if (shardBalance > 0) {
             wallet.addShards(shardBalance);
         }

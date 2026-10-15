@@ -10,6 +10,7 @@ import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
 import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -35,11 +36,15 @@ public class RankingProjectionService {
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
     private final ZoneId businessZoneId;
+    private final UserRewardLock rewardLock;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<RankingEntry> syncLatestWeeklyScore(UUID userId, Instant occurredAt) {
         return seasonService.findWeeklySeasonContaining(occurredAt)
-                .flatMap(season -> syncWeeklyScore(season, userId, weeklyScore(userId, season), occurredAt, true));
+                .flatMap(season -> {
+                    rewardLock.acquire(userId);
+                    return upsertScore(season, userId, weeklyScore(userId, season), occurredAt, true);
+                });
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -56,12 +61,14 @@ public class RankingProjectionService {
                 || !season.contains(occurredAt)) {
             return Optional.empty();
         }
+        rewardLock.acquire(userId);
         return upsertScore(season, userId, score, occurredAt, publishRedisEvent);
     }
 
     @Deprecated
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RankingEntry syncLatestAllTimeScore(UUID userId) {
+        rewardLock.acquire(userId);
         UserTapProgress progress = userTapProgressService.getForUser(userId);
         return upsertAllTimeScore(userId, progress.getCumulativeRankingTapCount());
     }
@@ -69,6 +76,7 @@ public class RankingProjectionService {
     @Deprecated
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RankingEntry syncAllTimeScore(UUID userId, long cumulativeValidTapCount) {
+        rewardLock.acquire(userId);
         return upsertAllTimeScore(userId, cumulativeValidTapCount);
     }
 

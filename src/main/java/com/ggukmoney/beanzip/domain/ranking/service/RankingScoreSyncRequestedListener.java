@@ -15,6 +15,7 @@ public class RankingScoreSyncRequestedListener {
     private static final Logger log = LoggerFactory.getLogger(RankingScoreSyncRequestedListener.class);
 
     private final RankingProjectionService rankingProjectionService;
+    private final RankingSeasonService rankingSeasonService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RankingScoreSyncRequestedEvent event) {
@@ -24,6 +25,7 @@ public class RankingScoreSyncRequestedListener {
             log.error("Failed to synchronize ranking projection userId={}", event.userId(), exception);
         }
         try {
+            rankingSeasonService.getOrCreateActiveAllTimeSeason();
             rankingProjectionService.syncLatestAllTimeScore(event.userId());
         } catch (RuntimeException exception) {
             log.error("Failed to synchronize all-time ranking userId={}", event.userId(), exception);

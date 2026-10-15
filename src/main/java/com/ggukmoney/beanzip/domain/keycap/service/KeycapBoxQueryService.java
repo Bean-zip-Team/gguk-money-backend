@@ -52,6 +52,12 @@ public class KeycapBoxQueryService {
         KeycapBoxAccount account = keycapBoxAccountService.getForUser(userId);
         AppUser user = userService.getById(userId);
         BoxProgressSnapshot progress = userTapSessionService.getBoxProgress(user, clock.instant(), tapPolicyConfig);
+        if (!keycapBoxPolicyConfig.isShardEconomyEnabled()) {
+            var cycle=account.calculateOpenCycleSnapshot(clock.instant(),keycapBoxPolicyConfig.openCycleDuration(),
+                    keycapBoxPolicyConfig.freeOpenLimit(),keycapBoxPolicyConfig.adOpenLimit());
+            return keycapBoxMapper.mapToStatusResponse(
+                    account, cycle, progress, keycapBoxPolicyConfig.drawPrice());
+        }
         return KeycapBoxStatusResponse.of(
                 keycapBoxAccountService.getAvailableShardBalance(userId),
                 keycapBoxPolicyConfig.drawPrice(),

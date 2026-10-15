@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean AppConfigBatchLoader requestLoader;
     @Autowired KeycapPassiveService passive;
     @Autowired TapBatchService taps;
     @Autowired KeycapService keycaps;
@@ -49,11 +50,23 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     @Autowired KeycapPassiveCheckpointRepository checkpoints;
     @Autowired PlatformTransactionManager tx;
     @Autowired com.ggukmoney.beanzip.global.config.ops.OpsConfigService ops;
-    @Autowired com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService seasons;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService seasons;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.ggukmoney.beanzip.domain.user.service.UserRewardLock requestLock;
+    @Autowired javax.sql.DataSource dataSource;
+    @Autowired KeycapBoxPolicyConfig economy;
+    @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager projectionEntityManager;
+    @Autowired com.ggukmoney.beanzip.domain.ranking.service.RankingProjectionService projection;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository rankingEntries;
     @MockitoBean KeycapRewardSelector selector;
+    // Feature load excludes independent scheduled jobs that retain their own DB connections.
+    // Their lifecycle is exercised by separate scheduler/ranking tests.
+    @MockitoBean com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner scheduledJobs;
 
     @BeforeEach void enable() {
         var now=Instant.now();
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,"0",now));
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,"0",now));
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",now));
         jdbcTemplate.update("delete from app_config where config_key=?",KeycapPassivePolicyConfig.KEY_ENABLED);
         configs.saveAll(KeycapPassivePolicyConfig.DEFAULT_VALUES.entrySet().stream().map(entry ->
                 AppConfig.createFor(entry.getKey(),entry.getKey().equals(KeycapPassivePolicyConfig.KEY_ENABLED)?"true":entry.getValue(),
@@ -65,7 +78,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     private AppUser user(String code) {
         var user=users.save(AppUser.createActive("passive-"+UUID.randomUUID(),null));
         accounts.save(PointAccount.createFor(user));
-        var wallet=KeycapBoxAccount.createFor(user); wallet.addShards(100); wallets.save(wallet);
+        var wallet=KeycapBoxAccount.createFor(user, Instant.now()); wallet.addShards(100); wallets.save(wallet);
         progress.save(UserTapProgress.createFor(user,20));
         var now=Instant.now();
         sessions.save(UserTapSession.createFor(user,now,now.plusSeconds(3600),10));
@@ -123,21 +136,22 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(jdbcTemplate.queryForObject("select count(*) from tap_batch where user_id=?",Long.class,user.getId())).isEqualTo(1);
     }
 
-    @Test void positiveAutomaticSettlementConvertsLegacyProgressOnlyOnce() {
+    @Test void positiveAutomaticSettlementProjectsUnconvertedLegacyProgress() {
         seasons.ensureCurrentWeeklySeason(Instant.now());
         var user=user("cheer"); elapsed(user,1);
         var pending=UserKeycap.createInProgress(user,catalog.findByCode("pinkjelly").orElseThrow());
         pending.addShard(3,Instant.now()); owned.saveAndFlush(pending);
         var result=passive.settle(user.getId(),"legacy-positive");
         assertThat(result.autoClicksGranted()).isEqualTo(60);
-        // Existing100 + legacy3 + the two drops at session boundaries10 and45.
-        assertThat(result.shardBalance()).isEqualTo(105);
-        assertThat(owned.sumLegacyShardCount(user.getId())).isZero();
+        // Existing100 + legacy3 + one base drop, paced from the automatic batch end.
+        assertThat(result.shardsDropped()).isEqualTo(1);
+        assertThat(result.shardBalance()).isEqualTo(104);
+        assertThat(pendingShardCount(user.getId())).isEqualTo(3);
         assertThat(passive.settle(user.getId(),"legacy-positive")).isEqualTo(result);
-        assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(105);
+        assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(101);
     }
 
-    @Test void preRolloutTapRetryConvertsLegacyProgressWithoutAnotherAward() {
+    @Test void preRolloutTapRetryProjectsLegacyProgressWithoutAnotherAward() {
         var user=user(null);
         var pending=UserKeycap.createInProgress(user,catalog.findByCode("pinkjelly").orElseThrow());
         pending.addShard(3,Instant.now()); owned.saveAndFlush(pending);
@@ -149,7 +163,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(result.autoClicksGranted()).isZero();
         assertThat(result.shardsDropped()).isZero();
         assertThat(result.shardBalance()).isEqualTo(103);
-        assertThat(owned.sumLegacyShardCount(user.getId())).isZero();
+        assertThat(pendingShardCount(user.getId())).isEqualTo(3);
         assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(sessionId,1L,5)).shardBalance()).isEqualTo(103);
     }
 
@@ -162,7 +176,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(passive.status(user.getId()).pendingAutoClicks()).isEqualTo(180);
         assertThat(passive.settle(user.getId(),"closed-periods").autoClicksGranted()).isEqualTo(180);
         assertThat(passive.settle(user.getId(),"still-disabled").autoClicksGranted()).isZero();
-        assertThat(policy.snapshot().enabled()).isFalse();
+        assertThat(policy.settlementSnapshot(Instant.now()).enabled()).isFalse();
     }
 
     @Test void repeatedOnOffTransitionsDoNotEraseEarlierUnclaimedPeriods() {
@@ -175,7 +189,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(passive.settle(user.getId(),"multiple-periods").autoClicksGranted()).isEqualTo(240);
         assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeRankingTapCount()).isEqualTo(240);
         assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isZero();
-        assertThat(policy.snapshot().activePeriods()).hasSize(3);
+        assertThat(policy.settlementSnapshot(Instant.now()).activePeriods()).hasSize(3);
     }
 
     private void activationHistory(Instant start,boolean reopen) {
@@ -282,4 +296,274 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
             return List.of(futures.get(0).get(30,TimeUnit.SECONDS),futures.get(1).get(30,TimeUnit.SECONDS));
         }
     }
+    @Test void legacySettlementDoesNotReserveKeyAndSameKeyWorksAfterCutover() {
+        jdbcTemplate.update("delete from app_config where config_key=?",KeycapBoxPolicyConfig.KEY_SHARD_ENABLED);
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"false",Instant.EPOCH));
+        var user=user("cheer");
+        assertThat(passive.settle(user.getId(),"cross-phase").autoClicksGranted()).isZero();
+        assertThat(checkpoints.findById(user.getId())).isEmpty();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from keycap_passive_settlement where user_id=?",Long.class,user.getId())).isZero();
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",Instant.now()));
+        var first=passive.settle(user.getId(),"cross-phase");
+        assertThat(checkpoints.findById(user.getId())).isPresent();
+        assertThat(passive.settle(user.getId(),"cross-phase")).isEqualTo(first);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from keycap_passive_settlement where user_id=?",Long.class,user.getId())).isEqualTo(1);
+    }
+
+    @Test void sameUserTapDrawEquipAndSettleSerializeAndKeepCheckpointConsistent() throws Exception {
+        try(var rankingErrors=new RankingErrorCapture()) {
+        seasons.ensureCurrentWeeklySeason(Instant.now());
+        var user=user("cheer");
+        var selected=catalog.findByCode("main").orElseThrow();
+        var pending=UserKeycap.createInProgress(user,selected); pending.addShard(3,Instant.EPOCH); owned.save(pending);
+        var gearId=catalog.findByCode("cheer").orElseThrow().getPublicId();
+        elapsed(user,1);
+        assertThat(wallets.findAvailableShardBalance(user.getId()).orElseThrow()).isEqualTo(103L);
+        org.mockito.Mockito.doReturn(selected).when(selector).select(org.mockito.ArgumentMatchers.anyList());
+        var ready=new CountDownLatch(4); var start=new CountDownLatch(1);
+        List<Callable<?>> work=List.of(
+                ()->taps.submitBatch(user.getId(),new TapBatchSubmitRequest(UUID.randomUUID(),1L,25)),
+                ()->draws.draw(user.getId(),"mixed-draw"),
+                ()->keycaps.equipKeycap(user.getId(),gearId),
+                ()->passive.settle(user.getId(),"mixed-settle"));
+        try(var executor=Executors.newFixedThreadPool(4)) {
+            var futures=work.stream().map(call->executor.submit(()->{ready.countDown();start.await();return call.call();})).toList();
+            assertThat(ready.await(5,TimeUnit.SECONDS)).isTrue();start.countDown();
+            for(var future:futures) assertThat(future.get(30,TimeUnit.SECONDS)).isNotNull();
+        }
+        assertThat(pendingShardCount(user.getId())).isZero();
+        assertThat(owned.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(user.getId()).stream().filter(k->k.getKeycap().getId().equals(selected.getId())).findFirst().orElseThrow().getLevel()).isEqualTo(1);
+        var checkpoint=checkpoints.findById(user.getId()).orElseThrow();
+        assertThat(checkpoint.getEquippedKeycapCode()).isEqualTo("cheer");
+        assertThat(owned.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(user.getId()).stream().filter(UserKeycap::isEquipped).findFirst().orElseThrow().getKeycap().getCode()).isEqualTo("cheer");
+        assertThat(checkpoint.getClicksPerDay()).isEqualTo(60);
+        assertThat(checkpoint.getRemainderNumerator()).isBetween(0L,86_399_999_999_999L);
+        var today=dailies.findByUserIdAndTapDate(user.getId(),LocalDate.now(ZoneId.of("Asia/Seoul"))).orElseThrow();
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getCumulativeMissionTapCount()).isEqualTo(25);
+        assertThat(accounts.findByUserId(user.getId()).orElseThrow().getBalance()).isEqualTo((long)today.getPointEarnedAmount());
+        assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(100);
+        assertThat(today.getTotalEffectiveTapCount()).isEqualTo(85);
+        var scores=jdbcTemplate.queryForList("select e.score-coalesce(e.ranking_boost_score,0) from ranking_entry e join ranking_season s on s.id=e.season_id where e.user_id=? and s.status='ACTIVE' and s.ranking_type in ('ALL_TIME','WEEKLY')",Long.class,user.getId());
+        assertThat(scores).hasSize(2).allMatch(score->score==85L);
+        assertThat(passive.settle(user.getId(),"mixed-settle")).isNotNull();
+        rankingErrors.assertNone();
+        }
+    }
+
+    @Test void localLoad32Users20Batches8WorkersHasOnePhaseAndPassiveReadPerBatch() throws Exception {
+        try(var rankingErrors=new RankingErrorCapture()) {
+        // Steady-state feature load; cold initialization is tested separately with the same pool of ten.
+        seasons.ensureCurrentWeeklySeason(Instant.now());
+        seasons.getOrCreateActiveAllTimeSeason();
+        var usersUnderLoad=new ArrayList<AppUser>();for(int i=0;i<32;i++)usersUnderLoad.add(user(null));
+        var economicReads=new java.util.concurrent.atomic.LongAdder();var passiveReads=new java.util.concurrent.atomic.LongAdder();
+        org.mockito.Mockito.doAnswer(invocation->{
+            if(Thread.currentThread().getName().startsWith("local-load-")) {
+                String historyKey=invocation.getArgument(1);
+                if(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(historyKey))economicReads.increment();
+                if(KeycapPassivePolicyConfig.KEY_ENABLED.equals(historyKey))passiveReads.increment();
+            }
+            return invocation.callRealMethod();
+        }).when(requestLoader).loadWithHistory(any(),any(),any());
+        var durations=new java.util.concurrent.ConcurrentLinkedQueue<Long>();var threadIds=new java.util.concurrent.atomic.AtomicInteger();
+        try(var executor=Executors.newFixedThreadPool(8,job->new Thread(job,"local-load-"+threadIds.incrementAndGet()))) {
+            var futures=usersUnderLoad.stream().map(user->executor.submit(()->{
+                UUID session=UUID.randomUUID();
+                for(long sequence=1;sequence<=20;sequence++) {
+                    long before=System.nanoTime();
+                    var response=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,sequence,1));
+                    durations.add(System.nanoTime()-before);
+                    assertThat(response.effectiveCount()).isEqualTo(1);
+                }
+                return true;
+            })).toList();
+            for(var future:futures)assertThat(future.get(90,TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(economicReads.sum()).isEqualTo(640);assertThat(passiveReads.sum()).isEqualTo(640);
+        for(var user:usersUnderLoad) {
+            var totals=progress.findByUserId(user.getId()).orElseThrow();
+            assertThat(totals.getCumulativeMissionTapCount()).isEqualTo(20);
+            assertThat(totals.getCumulativeRankingTapCount()).isEqualTo(20);
+            assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(101);
+            assertThat(accounts.findByUserId(user.getId()).orElseThrow().getBalance()).isEqualTo(1);
+            var actualScores=jdbcTemplate.queryForList("select e.score-coalesce(e.ranking_boost_score,0) from ranking_entry e join ranking_season s on s.id=e.season_id where e.user_id=? and s.status='ACTIVE' and s.ranking_type in ('ALL_TIME','WEEKLY')",Long.class,user.getId());
+            assertThat(actualScores).hasSize(2).allMatch(score->score==20L);
+        }
+        var sorted=durations.stream().sorted().toList();
+        System.out.printf("LOCAL_LOAD users=32 batches=640 workers=8 p50Ms=%.3f p95Ms=%.3f p99Ms=%.3f maxMs=%.3f economicReads=%d passiveReads=%d%n",
+                sorted.get(320)/1e6,sorted.get(608)/1e6,sorted.get(633)/1e6,sorted.get(639)/1e6,economicReads.sum(),passiveReads.sum());
+        rankingErrors.assertNone();
+        }
+    }
+    @Test void exhaustedDailyPointCapPreservesTargetForFirstBatchOfNextDay() {
+        var user=user(null); var date=LocalDate.now(ZoneId.of("Asia/Seoul"));
+        var daily=UserTapDaily.createFor(user,date);daily.addPointEarned(150);dailies.save(daily);
+        var session=UUID.randomUUID();
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,1L,20)).pointsAwarded()).isZero();
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getNextPointTarget()).isEqualTo(20);
+        jdbcTemplate.update("update user_tap_daily set tap_date=? where user_id=? and tap_date=?",date.minusDays(1),user.getId(),date);
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,2L,1)).pointsAwarded()).isEqualTo(1);
+        assertThat(progress.findByUserId(user.getId()).orElseThrow().getNextPointTarget()).isGreaterThan(21);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false,true})
+    void hundredTapBatchKeeps329DropPacingInLegacyAndShardEconomies(boolean shard) {
+        seasons.ensureCurrentWeeklySeason(Instant.now());
+        seasons.getOrCreateActiveAllTimeSeason();
+        jdbcTemplate.update("delete from app_config where config_key=?",KeycapBoxPolicyConfig.KEY_SHARD_ENABLED);
+        configs.save(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,Boolean.toString(shard),Instant.EPOCH));
+        var now=Instant.now();
+        configs.save(AppConfig.createFor(TapPolicyConfig.KEY_BOX_SESSION_STEP_1,"25",now));
+        configs.save(AppConfig.createFor(TapPolicyConfig.KEY_BOX_SESSION_STEP_2,"35",now));
+        configs.save(AppConfig.createFor(TapPolicyConfig.KEY_BOX_SESSION_STEP_3,"50",now));
+        tapPolicy.refresh(); economy.refresh();
+        var user=user(null);
+        jdbcTemplate.update("update user_tap_session set next_box_target=25 where user_id=?",user.getId());
+
+        var result=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(UUID.randomUUID(),1L,100));
+
+        assertThat(result.effectiveCount()).isEqualTo(100);
+        assertThat(result.boxesDropped()).isEqualTo(shard?0:1);
+        assertThat(result.shardsDropped()).isEqualTo(shard?1:0);
+        assertThat(result.pointsAwarded()).isEqualTo(1);
+        assertThat(wallets.findByUserId(user.getId()).orElseThrow().getBoxBalance()).isEqualTo(101);
+        assertThat(sessions.findByUserId(user.getId()).orElseThrow().getNextBoxTarget()).isEqualTo(125);
+    }
+
+    @Test void coldStartAllTimeSeasonWithTenConnectionsCompletes32UserLoadWithoutRankingErrors() throws Exception {
+        seasons.ensureCurrentWeeklySeason(Instant.now());
+        jdbcTemplate.update("delete from ranking_entry where season_id in (select id from ranking_season where ranking_type='ALL_TIME')");
+        jdbcTemplate.update("delete from ranking_season where ranking_type='ALL_TIME'");
+        var pool=dataSource.unwrap(com.zaxxer.hikari.HikariDataSource.class);
+        assertThat(pool.getMaximumPoolSize()).isEqualTo(10);
+        long originalTimeout=pool.getConnectionTimeout();
+        pool.setConnectionTimeout(3000);
+        var log=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(
+                com.ggukmoney.beanzip.domain.ranking.service.RankingScoreSyncRequestedListener.class);
+        var errors=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        errors.start();log.addAppender(errors);
+        try {
+            var usersUnderLoad=new ArrayList<AppUser>();for(int i=0;i<32;i++)usersUnderLoad.add(user(null));
+            var ready=new CountDownLatch(8);var firstTransactions=new java.util.concurrent.atomic.AtomicInteger();
+            doAnswer(invocation->{
+                Object value=invocation.callRealMethod();
+                if(Thread.currentThread().getName().startsWith("cold-load-") && firstTransactions.getAndIncrement()<8) {
+                    ready.countDown();assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue();
+                }
+                return value;
+            }).when(org.springframework.test.util.AopTestUtils.<com.ggukmoney.beanzip.domain.user.service.UserRewardLock>getUltimateTargetObject(requestLock)).acquire(any());
+            // Hold the first two empty-season projection reads together: in the broken version
+            // they already own two extra connections above the eight committed tap transactions.
+            var emptyProjectionReads=new CountDownLatch(2);
+            doAnswer(invocation->{
+                Object value=invocation.callRealMethod();
+                String transaction=org.springframework.transaction.support.TransactionSynchronizationManager.getCurrentTransactionName();
+                if(Thread.currentThread().getName().startsWith("cold-load-")
+                        && ((Optional<?>)value).isEmpty() && transaction!=null && transaction.endsWith(".syncLatestAllTimeScore")) {
+                    emptyProjectionReads.countDown();assertThat(emptyProjectionReads.await(10,TimeUnit.SECONDS)).isTrue();
+                }
+                return value;
+            }).when(org.springframework.test.util.AopTestUtils.<com.ggukmoney.beanzip.domain.ranking.service.RankingSeasonService>getUltimateTargetObject(seasons)).findActiveAllTimeSeason();
+            var economicReads=new java.util.concurrent.atomic.LongAdder();var passiveReads=new java.util.concurrent.atomic.LongAdder();
+            doAnswer(invocation->{
+                if(Thread.currentThread().getName().startsWith("cold-load-")) {
+                    String key=invocation.getArgument(1);
+                    if(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))economicReads.increment();
+                    if(KeycapPassivePolicyConfig.KEY_ENABLED.equals(key))passiveReads.increment();
+                }
+                return invocation.callRealMethod();
+            }).when(requestLoader).loadWithHistory(any(),any(),any());
+            var durations=new java.util.concurrent.ConcurrentLinkedQueue<Long>();var threadIds=new java.util.concurrent.atomic.AtomicInteger();
+            try(var executor=Executors.newFixedThreadPool(8,job->new Thread(job,"cold-load-"+threadIds.incrementAndGet()))) {
+                var futures=usersUnderLoad.stream().map(user->executor.submit(()->{
+                    UUID session=UUID.randomUUID();
+                    for(long sequence=1;sequence<=20;sequence++) {
+                        long before=System.nanoTime();
+                        var result=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,sequence,1));
+                        durations.add(System.nanoTime()-before);
+                        assertThat(result.effectiveCount()).isEqualTo(1);
+                    }
+                    return true;
+                })).toList();
+                for(var future:futures)assertThat(future.get(90,TimeUnit.SECONDS)).isTrue();
+            }
+            assertThat(errors.list).filteredOn(event->event.getLevel().isGreaterOrEqual(ch.qos.logback.classic.Level.ERROR))
+                    .as("cold startup must not swallow ranking synchronization failures").isEmpty();
+            assertThat(economicReads.sum()).isEqualTo(640);assertThat(passiveReads.sum()).isEqualTo(640);
+            assertThat(jdbcTemplate.queryForObject("select count(*) from ranking_season where ranking_type='ALL_TIME' and status='ACTIVE'",Long.class)).isEqualTo(1);
+            for(var user:usersUnderLoad) {
+                var totals=progress.findByUserId(user.getId()).orElseThrow();
+                assertThat(totals.getCumulativeMissionTapCount()).isEqualTo(20);
+                assertThat(totals.getCumulativeRankingTapCount()).isEqualTo(20);
+                assertThat(wallets.findByUserId(user.getId()).orElseThrow().getShardBalance()).isEqualTo(101);
+                assertThat(accounts.findByUserId(user.getId()).orElseThrow().getBalance()).isEqualTo(1);
+                var scores=jdbcTemplate.queryForList("select e.score-coalesce(e.ranking_boost_score,0) from ranking_entry e join ranking_season s on s.id=e.season_id where e.user_id=? and s.status='ACTIVE' and s.ranking_type in ('ALL_TIME','WEEKLY')",Long.class,user.getId());
+                assertThat(scores).hasSize(2).allMatch(score->score==20L);
+            }
+            var sorted=durations.stream().sorted().toList();
+            System.out.printf("COLD_LOCAL_LOAD users=32 batches=640 workers=8 pool=10 rankingErrors=0 p50Ms=%.3f p95Ms=%.3f p99Ms=%.3f maxMs=%.3f economicReads=%d passiveReads=%d%n",
+                    sorted.get(320)/1e6,sorted.get(608)/1e6,sorted.get(633)/1e6,sorted.get(639)/1e6,economicReads.sum(),passiveReads.sum());
+        } finally {
+            log.detachAppender(errors);errors.stop();pool.setConnectionTimeout(originalTimeout);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void sameUserConcurrentAllTimeProjectionsNeverLoseTheHigherCommittedScore(boolean existingEntry) throws Exception {
+        seasons.getOrCreateActiveAllTimeSeason();
+        var user=user(null); if(existingEntry) projection.syncAllTimeScore(user.getId(),0);
+        var lowRead=new CountDownLatch(1);var releaseLow=new CountDownLatch(1);
+        var highRead=new CountDownLatch(1);var lowCommitted=new CountDownLatch(1);
+        doAnswer(invocation->{
+            var season=invocation.getArgument(0,com.ggukmoney.beanzip.domain.ranking.entity.RankingSeason.class);
+            Object value=projectionEntityManager.createQuery(
+                    "select e from RankingEntry e where e.season = :season and e.user.id = :userId",
+                    com.ggukmoney.beanzip.domain.ranking.entity.RankingEntry.class)
+                    .setParameter("season",season).setParameter("userId",user.getId()).getResultList().stream().findFirst();
+            if(Thread.currentThread().getName().equals("projection-low")) {
+                lowRead.countDown();assertThat(releaseLow.await(10,TimeUnit.SECONDS)).isTrue();
+            } else if(Thread.currentThread().getName().equals("projection-high")) {
+                highRead.countDown();assertThat(lowCommitted.await(10,TimeUnit.SECONDS)).isTrue();
+            }
+            return value;
+        }).when(rankingEntries).findBySeasonAndUserId(any(),eq(user.getId()));
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var low=executor.submit(()->{
+                Thread.currentThread().setName("projection-low");
+                try {return projection.syncAllTimeScore(user.getId(),20);} finally {lowCommitted.countDown();}
+            });
+            if (!lowRead.await(10,TimeUnit.SECONDS)) low.get(1,TimeUnit.SECONDS);
+            assertThat(lowRead.getCount()).isZero();
+            var high=executor.submit(()->{
+                Thread.currentThread().setName("projection-high");
+                return projection.syncAllTimeScore(user.getId(),40);
+            });
+            // Give the second transaction time to read the old entry in the broken version.
+            // With user serialization it stays before the entry read until the first commit.
+            highRead.await(2,TimeUnit.SECONDS);releaseLow.countDown();
+            assertThat(low.get(15,TimeUnit.SECONDS).getRealScore()).isEqualTo(20);
+            assertThat(high.get(15,TimeUnit.SECONDS).getRealScore()).isEqualTo(40);
+        } finally {releaseLow.countDown();lowCommitted.countDown();}
+        assertThat(jdbcTemplate.queryForObject("select e.score from ranking_entry e join ranking_season s on s.id=e.season_id where e.user_id=? and s.ranking_type='ALL_TIME'",Long.class,user.getId())).isEqualTo(40);
+    }
+
+    private static final class RankingErrorCapture implements AutoCloseable {
+        private final ch.qos.logback.classic.Logger log=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(
+                com.ggukmoney.beanzip.domain.ranking.service.RankingScoreSyncRequestedListener.class);
+        private final ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> events=new ch.qos.logback.core.read.ListAppender<>();
+        RankingErrorCapture() {events.start();log.addAppender(events);}
+        void assertNone() {
+            assertThat(events.list).filteredOn(event->event.getLevel().isGreaterOrEqual(ch.qos.logback.classic.Level.ERROR))
+                    .as("ranking synchronization errors must not be swallowed").isEmpty();
+        }
+        @Override public void close() {log.detachAppender(events);events.stop();}
+    }
+
+    private long pendingShardCount(UUID userId) {
+        return jdbcTemplate.queryForObject(
+                "select coalesce(sum(shard_count), 0) from user_keycap where user_id = ? and status = 'IN_PROGRESS'",
+                Long.class, userId);
+    }
+
 }

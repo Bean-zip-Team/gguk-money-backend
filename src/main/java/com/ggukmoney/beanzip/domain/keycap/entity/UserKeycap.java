@@ -129,15 +129,6 @@ public class UserKeycap {
 
     public boolean isLegacyInProgress() { return status == Status.IN_PROGRESS; }
 
-    public void convertLegacyToOwned(Instant acquiredAt) {
-        if (!isLegacyInProgress()) throw new IllegalStateException("Keycap is already owned.");
-        Objects.requireNonNull(acquiredAt, "acquiredAt must not be null.");
-        shardCount = keycap.getRequiredShardCount();
-        status = Status.COMPLETED;
-        completedAt = acquiredAt;
-        equipped = false;
-    }
-
     public int levelUp() {
         if (!isCompleted()) throw new IllegalStateException("Only owned keycaps can level up.");
         shardCount = Math.addExact(Math.max(shardCount, keycap.getRequiredShardCount()), 1);

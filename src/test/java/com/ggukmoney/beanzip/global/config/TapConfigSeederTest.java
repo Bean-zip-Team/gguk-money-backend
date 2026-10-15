@@ -74,4 +74,10 @@ class TapConfigSeederTest {
         new TapConfigSeeder(repository,true).run();
         verify(repository,never()).save(argThat(row -> key.equals(row.getConfigKey())));
     }
+    @Test void neverRevertsActivatedEconomyEvenWhenDefaultReversionIsOn() {
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED),any()))
+                .thenReturn(Optional.of(AppConfig.createFor(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED,"true",Instant.EPOCH)));
+        new TapConfigSeeder(repository,true).run();
+        verify(repository,never()).save(argThat(row->KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(row.getConfigKey())));
+    }
 }

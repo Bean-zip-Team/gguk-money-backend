@@ -186,4 +186,16 @@ class KeycapMapperTest {
             throw new IllegalStateException("Failed to create test entity " + type.getSimpleName(), exception);
         }
     }
+
+    @Test
+    void legacyCollectingKeycapKeepsShardCountInJson() {
+        var key=keycap(UUID.randomUUID(), "legacy", "Legacy", Keycap.Grade.COMMON, 20, 1, true, 1);
+        var collecting=UserKeycap.createInProgress(null,key);
+        collecting.addShard(3, java.time.Instant.EPOCH);
+        var response=keycapMapper.mapToMyKeycapItemResponse(collecting);
+        var json=new tools.jackson.databind.ObjectMapper();
+        var payload=json.readTree(json.writeValueAsString(response));
+        assertThat(payload.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(payload.path("shardCount").asInt(-1)).isEqualTo(3);
+    }
 }

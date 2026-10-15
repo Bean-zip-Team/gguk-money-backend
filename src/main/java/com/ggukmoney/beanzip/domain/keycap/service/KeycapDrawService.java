@@ -92,11 +92,16 @@ public class KeycapDrawService {
             return replay.get();
         }
 
+        var economy=keycapBoxPolicyConfig.requestSnapshot();
+        if (!economy.shardEconomy())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"KEYCAP_DRAW_NOT_ACTIVE");
         Instant drawnAt = clock.instant();
+        var context=passiveService.requestPolicy(drawnAt,true);
         passiveService.settleLocked(user, drawnAt, "draw:"+idempotencyKey,
-                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller());
-        int price = keycapBoxPolicyConfig.drawPrice();
+                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller(),context);
+        int price = economy.drawPrice();
         KeycapBoxAccount wallet = keycapBoxAccountService.getForUserForUpdate(userId);
+        keycapBoxAccountService.convertLegacyProgressForDraw(userId,wallet);
         if (!wallet.canAfford(price)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_SHARD_INSUFFICIENT");
         }
@@ -110,7 +115,7 @@ public class KeycapDrawService {
         Keycap selected = keycapRewardSelector.select(candidates);
 
         Optional<UserKeycap> existing = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, selected.getId());
-        boolean newlyAcquired = existing.isEmpty() || existing.get().isLegacyInProgress();
+        boolean newlyAcquired = existing.isEmpty();
         UserKeycap userKeycap;
         if (existing.isEmpty()) {
             userKeycap = userKeycapRepository.save(UserKeycap.createOwned(user, selected, drawnAt));
@@ -123,7 +128,7 @@ public class KeycapDrawService {
 
         wallet.consumeShards(price);
         userKeycapRepository.flush();
-        passiveService.refreshEquipmentLocked(userId);
+        passiveService.refreshEquipmentLocked(userId,context);
 
         if (newlyAcquired) {
             long completedCount = userKeycapRepository.countByUserIdAndStatus(userId, UserKeycap.Status.COMPLETED);

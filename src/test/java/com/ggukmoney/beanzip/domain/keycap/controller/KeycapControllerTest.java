@@ -132,7 +132,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycaps[0].keycapId").value(keycapId.toString()))
                 .andExpect(jsonPath("$.data.keycaps[0].code").value("BASIC_001"))
                 .andExpect(jsonPath("$.data.keycaps[0].level").value(10))
-                .andExpect(jsonPath("$.data.keycaps[0].shardCount").doesNotExist())
+                .andExpect(jsonPath("$.data.keycaps[0].shardCount").value(0))
                 .andExpect(jsonPath("$.data.keycaps[0].grade").value("COMMON"))
                 .andExpect(jsonPath("$.data.keycaps[0].acquisitionType").value("BOX"))
                 .andExpect(jsonPath("$.data.keycaps[0].imageUrl").value("https://example.com/keycap.png"))

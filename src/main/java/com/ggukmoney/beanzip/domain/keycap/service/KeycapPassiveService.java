@@ -31,6 +31,7 @@ public class KeycapPassiveService {
     private final Clock clock;
     private final com.ggukmoney.beanzip.domain.point.service.PointAccountService pointAccounts;
     private final KeycapBoxAccountService wallets;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
     private final KeycapAutoClickAccrual calculator=new KeycapAutoClickAccrual();
 
     @Transactional
@@ -41,15 +42,24 @@ public class KeycapPassiveService {
         String storedKey="api:"+key;
         var existing=settlements.findByUserIdAndIdempotencyKey(userId,storedKey);
         if(existing.isPresent()) return json.readValue(existing.get().getResultJson(),KeycapPassiveSettleResponse.class);
-        var outcome=settleLocked(user,clock.instant(),storedKey,new KeycapPassiveRoller());
-        settlements.save(KeycapPassiveSettlement.create(user,storedKey,json.writeValueAsString(outcome),outcome.settledAt()));
+        var now=clock.instant();
+        var context=requestPolicy(now,economy.isShardEconomyEnabled());
+        var outcome=settleLocked(user,now,storedKey,new KeycapPassiveRoller(),context);
+        if (context.shard()) settlements.save(KeycapPassiveSettlement.create(user,storedKey,json.writeValueAsString(outcome),outcome.settledAt()));
         return outcome;
     }
 
     /** All hooks enter after locking AppUser, before locking wallets/equipment or changing levels. */
     @Transactional(propagation=Propagation.MANDATORY)
     public KeycapPassiveSettleResponse settleLocked(AppUser user,Instant now,String operationKey,KeycapPassiveRoller roller) {
-        var snapshot=requireLoaded(config.settlementSnapshot(now));
+        return settleLocked(user,now,operationKey,roller,requestPolicy(now,economy.isShardEconomyEnabled()));
+    }
+
+    @Transactional(propagation=Propagation.MANDATORY)
+    public KeycapPassiveSettleResponse settleLocked(AppUser user,Instant now,String operationKey,KeycapPassiveRoller roller,RequestPolicy context) {
+        if (!context.shard())
+            return new KeycapPassiveSettleResponse(0,0,0,pointAccounts.getForUser(user.getId()).getBalance(),0,false,now);
+        var snapshot=requireLoaded(context.passive());
         var row=checkpoints.findById(user.getId()).orElseGet(() -> {
             var current=currentEquipment(user.getId(),snapshot);
             return checkpoints.save(KeycapPassiveCheckpoint.create(user,
@@ -66,12 +76,18 @@ public class KeycapPassiveService {
                 json.writeValueAsString(current.effects()),snapshot.capDays());
         return new KeycapPassiveSettleResponse(calculated.grantedClicks(),award==null?0:award.pointsAwarded(),award==null?0:award.shardsDropped(),
                 award==null?pointAccounts.getForUser(user.getId()).getBalance():award.account().getBalance(),
-                award==null?wallets.getForUserForUpdate(user.getId()).getShardBalance():award.wallet().getShardBalance(),calculated.capped(),now);
+                wallets.getAvailableShardBalance(user.getId()),calculated.capped(),now);
     }
 
     @Transactional(propagation=Propagation.MANDATORY)
     public void refreshEquipmentLocked(UUID userId) {
-        var snapshot=requireLoaded(config.snapshot());
+        refreshEquipmentLocked(userId,requestPolicy(clock.instant(),economy.isShardEconomyEnabled()));
+    }
+
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void refreshEquipmentLocked(UUID userId,RequestPolicy context) {
+        if (!context.shard()) return;
+        var snapshot=requireLoaded(context.passive());
         var row=checkpoints.findById(userId).orElseThrow();
         var current=currentEquipment(userId,snapshot);
         row.update(row.value().withEquipment(current.code(),current.level(),current.effects().autoClicksPerDay()),
@@ -79,15 +95,24 @@ public class KeycapPassiveService {
     }
 
     public Effects activeEffects(UUID userId) {
-        var snapshot=config.snapshot();
+        return activeEffects(userId,requestPolicy(clock.instant(),economy.isShardEconomyEnabled()));
+    }
+
+    public Effects activeEffects(UUID userId,RequestPolicy context) {
+        if (!context.shard()) return Effects.NONE;
+        var snapshot=requireLoaded(context.passive());
         return snapshot.enabled()?currentEquipment(userId,snapshot).effects():Effects.NONE;
     }
 
     @Transactional(readOnly=true)
     public KeycapPassiveStatusResponse status(UUID userId) {
         var now=clock.instant();
-        var snapshot=requireLoaded(config.settlementSnapshot(now));
+        var context=requestPolicy(now,economy.isShardEconomyEnabled());
+        var snapshot=context.passive();
         var current=currentEquipment(userId,snapshot);
+        if (!context.shard())
+            return new KeycapPassiveStatusResponse(false,current.code(),current.code()==null?null:current.level(),
+                    KeycapPassiveEffectResponse.from(current.effects(),false,null),0,0,false,null,now);
         var row=checkpoints.findById(userId);
         var value=row.map(KeycapPassiveCheckpoint::value).orElse(Checkpoint.initial(now,current.code(),current.level(),current.effects().autoClicksPerDay()));
         int capDays=row.map(KeycapPassiveCheckpoint::getCapDays).orElse(snapshot.capDays());
@@ -108,5 +133,11 @@ public class KeycapPassiveService {
         if (!snapshot.loaded()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"PASSIVE_POLICY_UNAVAILABLE");
         return snapshot;
     }
+    public RequestPolicy requestPolicy(Instant now,boolean shard) {
+        // Legacy economy never queries passive activation history.
+        return new RequestPolicy(shard,shard?requireLoaded(config.settlementSnapshot(now)):
+                KeycapPassivePolicyConfig.decode(java.util.Map.of()));
+    }
+    public record RequestPolicy(boolean shard,KeycapPassivePolicyConfig.Snapshot passive) {}
     private record Equipment(String code,int level,Effects effects) {}
 }

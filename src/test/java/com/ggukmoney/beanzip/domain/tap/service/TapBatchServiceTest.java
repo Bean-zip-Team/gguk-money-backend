@@ -80,21 +80,29 @@ class TapBatchServiceTest {
     private final Clock clock = Clock.fixed(acceptedAt, ZoneOffset.UTC);
     private final LocalDate tapDate = LocalDate.of(2026, 7, 21);
 
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, new TapRewardService(userTapDailyService,userTapProgressService,userTapSessionService,
                     pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
                     promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId),
-            passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,new tools.jackson.databind.ObjectMapper(),clock
-    );
+            passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,clock
+    ,economy);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
     private final AppUser accountOwner = mock(AppUser.class);
     private final PointAccount pointAccount = PointAccount.createFor(accountOwner);
-    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner);
+    private final KeycapBoxAccount boxAccount = KeycapBoxAccount.createFor(accountOwner, acceptedAt);
 
     @BeforeEach
     void allowRateLimitByDefault() {
+        lenient().when(passive.requestPolicy(any(),org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(
+                new com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.RequestPolicy(true,
+                        com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.decode(java.util.Map.of())));
+        lenient().when(passive.activeEffects(any(),any())).thenAnswer(i->passive.activeEffects(i.getArgument(0)));
+        lenient().when(passive.settleLocked(any(),any(),anyString(),any(),any())).thenAnswer(i->
+                passive.settleLocked(i.getArgument(0),i.getArgument(1),i.getArgument(2),i.getArgument(3)));
+        when(economy.isShardEconomyEnabled()).thenReturn(true);
         when(rewardLock.acquire(any())).thenAnswer(i -> userService.getById(i.getArgument(0)));
         when(passive.activeEffects(any())).thenReturn(com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE);
         when(passive.settleLocked(any(),any(),anyString(),any())).thenReturn(
@@ -110,6 +118,7 @@ class TapBatchServiceTest {
         // 배치 응답이 항상 담는 상태라 어떤 경로에서도 한 번씩 조회된다.
         lenient().when(pointAccountService.getForUser(userId)).thenReturn(pointAccount);
         lenient().when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(boxAccount);
+        lenient().when(keycapBoxAccountService.getAvailableShardBalance(userId)).thenAnswer(i -> boxAccount.getShardBalance());
         lenient().when(userTapProgressService.getForUser(userId)).thenReturn(farAwayProgress(accountOwner));
         // 남은 탭 계산은 상한 상태까지 반영하는 실제 구현을 그대로 쓴다.
         lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
@@ -134,9 +143,6 @@ class TapBatchServiceTest {
         AppUser user = stubUser();
         TapBatch existing = mock(TapBatch.class);
         when(existing.getAcceptedCount()).thenReturn(42);
-        when(existing.getResultJson()).thenReturn(new tools.jackson.databind.ObjectMapper().writeValueAsString(
-                new TapBatchSubmitResponse(42,75,2,0,98L,false,0,1000,tapDate,2,30,1000,0,
-                        false,false,false,null,0,0,1000,42,0,75)));
         when(existing.getRequestHash()).thenAnswer(i -> com.ggukmoney.beanzip.global.util.TokenHash.sha256Base64Url(sessionId+":1:50"));
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         pointAccount.credit(100L);
@@ -325,7 +331,7 @@ class TapBatchServiceTest {
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
-        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(1), eq(tapPolicyConfig))).thenReturn(450);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
@@ -455,7 +461,7 @@ class TapBatchServiceTest {
 
         UserTapSession session = UserTapSession.createFor(user, acceptedAt, acceptedAt.plusSeconds(3600), 200);
         when(userTapSessionService.getOrCreateActiveSession(eq(user), eq(acceptedAt), eq(tapPolicyConfig))).thenReturn(session);
-        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(1), eq(tapPolicyConfig))).thenReturn(450);
+        when(userTapSessionService.drawNextBoxTargetInSession(eq(200L), eq(0), eq(tapPolicyConfig))).thenReturn(450);
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 200);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);

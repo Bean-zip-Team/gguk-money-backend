@@ -97,7 +97,7 @@ public class KeycapBoxOpen {
         open.requestHash = requestHash;
         open.adRewardId = adRewardId;
         open.completed = completed;
-        open.openedAt = openedAt;
+        open.openedAt = openedAt == null ? null : openedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         return open;
     }
 
@@ -108,7 +108,7 @@ public class KeycapBoxOpen {
             publicId = UUID.randomUUID();
         }
         if (openedAt == null) {
-            openedAt = now;
+            openedAt = now.truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         }
         if (createdAt == null) {
             createdAt = now;

@@ -87,7 +87,7 @@ public class TapConfigSeeder implements CommandLineRunner {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
             boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
-            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive."))) {
+            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive.") && !KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))) {
                 String seedValue=codeValue;
                 if (key.startsWith("keycap.passive.") && key.endsWith(".startRatio")) {
                     String prefix=key.substring(0,key.lastIndexOf('.')+1);

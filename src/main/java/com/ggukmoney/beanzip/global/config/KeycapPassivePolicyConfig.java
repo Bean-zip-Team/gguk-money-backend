@@ -42,13 +42,28 @@ public class KeycapPassivePolicyConfig {
         this.loader = Objects.requireNonNull(loader);
     }
 
+    private final Object refreshMonitor = new Object();
+    private boolean refreshing;
+    private boolean refreshAgain;
+
     @PostConstruct
     @Scheduled(fixedRate = 60_000)
-    public synchronized void refresh() {
-        try {
-            publish(loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,Instant.now()));
-        } catch (RuntimeException exception) {
-            log.warn("Failed to refresh keycap passive policy; fallback=last-known-good", exception);
+    public void refresh() {
+        synchronized (refreshMonitor) {
+            if (refreshing) { refreshAgain=true; return; }
+            refreshing=true;
+        }
+        for (;;) {
+            try {
+                cache=decodeRows(loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,Instant.now()));
+            } catch (RuntimeException exception) {
+                log.warn("Failed to refresh passive preview; keep last known good",exception);
+            }
+            synchronized (refreshMonitor) {
+                if (refreshAgain) { refreshAgain=false; continue; }
+                refreshing=false;
+                return;
+            }
         }
     }
 
@@ -57,21 +72,14 @@ public class KeycapPassivePolicyConfig {
     }
 
     /** Refresh at settlement so another pod's committed on/off changes cannot be missed. */
-    public synchronized Snapshot settlementSnapshot(Instant now) {
-        List<AppConfig> rows;
+    public Snapshot settlementSnapshot(Instant now) {
         try {
-            rows=loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,now);
+            // Request-local immutable result; never publish into the display cache.
+            return decodeRows(loader.loadWithHistory(CONFIG_KEYS,KEY_ENABLED,now)).snapshot();
         } catch (RuntimeException exception) {
-            log.warn("Passive activation history unavailable; settlement must retry",exception);
+            log.warn("Passive settlement policy unavailable; retry without advancing checkpoint",exception);
             return unavailableSnapshot();
         }
-        try {
-            publish(rows);
-        } catch (RuntimeException exception) {
-            log.warn("Invalid passive policy; retain cache and retry settlement without advancing checkpoint",exception);
-            return unavailableSnapshot();
-        }
-        return cache.snapshot();
     }
 
     private Snapshot unavailableSnapshot() {
@@ -80,7 +88,7 @@ public class KeycapPassivePolicyConfig {
                 previous.activePeriods(),false);
     }
 
-    private void publish(List<AppConfig> rows) {
+    private Cached decodeRows(List<AppConfig> rows) {
         Map<String,String> values=new HashMap<>();
         rows.forEach(row -> values.put(row.getConfigKey(),row.getConfigValue().trim()));
         Snapshot decoded=decode(values);
@@ -101,7 +109,7 @@ public class KeycapPassivePolicyConfig {
         if (from!=null) periods.add(new ActivePeriod(from,null));
         // Validate ordering before publishing any part of the policy.
         new com.ggukmoney.beanzip.domain.keycap.passive.KeycapAutoClickAccrual.Policy(periods,decoded.capDays());
-        cache=new Cached(Map.copyOf(values),new Snapshot(decoded.enabled(),decoded.policy(),decoded.enabledAt(),
+        return new Cached(Map.copyOf(values),new Snapshot(decoded.enabled(),decoded.policy(),decoded.enabledAt(),
                 decoded.capDays(),periods,true));
     }
 

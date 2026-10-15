@@ -2,6 +2,7 @@
 -- BEA-329 reuses box_balance and needs no manual SQL; legacy shards move inside user transactions.
 -- Apply before deploying this branch (ddl-auto=validate). No existing counters or scores are reset.
 -- Repeatable: only NULL new counters are backfilled; later increments survive repeated execution.
+-- Apply this schema before BEA-349 application deployment (Hibernate validate).
 -- Run manual-bea-349-passive-preflight.sql first and record actual row counts/table sizes.
 -- Rehearse this entire transaction on a recent production-sized clone with client timing enabled.
 -- ADD COLUMN takes ACCESS EXCLUSIVE, held through the backfills and COMMIT: reads are blocked too.
@@ -34,9 +35,6 @@ ALTER TABLE user_tap_progress ALTER COLUMN cumulative_mission_tap_count SET DEFA
     ALTER COLUMN cumulative_mission_tap_count SET NOT NULL,
     ALTER COLUMN cumulative_ranking_tap_count SET DEFAULT 0,
     ALTER COLUMN cumulative_ranking_tap_count SET NOT NULL;
-
-ALTER TABLE tap_batch ADD COLUMN IF NOT EXISTS result_json TEXT,
-    ADD COLUMN IF NOT EXISTS effects_json TEXT;
 
 CREATE TABLE IF NOT EXISTS keycap_passive_checkpoint (
     user_id UUID PRIMARY KEY REFERENCES app_user(id),

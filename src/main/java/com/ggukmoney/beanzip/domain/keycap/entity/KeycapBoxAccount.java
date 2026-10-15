@@ -70,11 +70,6 @@ public class KeycapBoxAccount {
         return account;
     }
 
-    /** Existing box_balance now stores the single shard currency. */
-    public static KeycapBoxAccount createFor(AppUser user) {
-        return createFor(user, Instant.now());
-    }
-
     public Integer getShardBalance() { return boxBalance; }
 
     public void addShards(int count) {

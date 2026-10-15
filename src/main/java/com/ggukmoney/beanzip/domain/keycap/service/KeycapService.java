@@ -35,6 +35,7 @@ public class KeycapService {
     private final KeycapPassiveService passiveService;
     private final java.time.Clock clock;
     private final com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig passiveConfig;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     /**
      * 공개 도감은 상시({@code BOX}) 키캡만 내려준다 (BEA-329). 시즌 키캡은 보유자의 내 키캡 목록에서만 보인다.
@@ -43,19 +44,23 @@ public class KeycapService {
      */
     public KeycapListResponse getKeycaps() {
         var snapshot = passiveConfig.snapshot();
-        return new KeycapListResponse(keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+        boolean shard=economy.isShardEconomyEnabled();
+        var catalog=shard ? keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+                : keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc();
+        return new KeycapListResponse(catalog
                 .stream().map(keycap -> keycapMapper.mapToKeycapItemResponse(keycap).withPreview(
                         com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveEffectResponse.from(
-                                snapshot.policy().effects(keycap.getCode(),1),snapshot.enabled(),1))).toList());
+                                snapshot.policy().effects(keycap.getCode(),1),snapshot.enabled() && shard,1))).toList());
     }
 
     public MyKeycapListResponse getMyKeycaps(UUID userId) {
         var snapshot = passiveConfig.snapshot();
+        boolean shard=economy.isShardEconomyEnabled();
         return new MyKeycapListResponse(userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId)
-                .stream().map(owned -> keycapMapper.mapToMyKeycapItemResponse(owned).withEffects(
+                .stream().filter(owned -> !shard || owned.isCompleted()).map(owned -> keycapMapper.mapToMyKeycapItemResponse(owned).withEffects(
                         com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveEffectResponse.from(
                                 owned.getLevel()<1 ? com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE
-                                        : snapshot.policy().effects(owned.getKeycap().getCode(),owned.getLevel()),snapshot.enabled(),null))).toList());
+                                        : snapshot.policy().effects(owned.getKeycap().getCode(),owned.getLevel()),snapshot.enabled() && shard,null))).toList());
     }
 
     public EquippedKeycapResponse getEquippedKeycap(UUID userId) {
@@ -103,8 +108,10 @@ public class KeycapService {
     @Transactional
     public KeycapEquipResponse equipKeycap(UUID userId, UUID keycapId) {
         var user = rewardLock.acquire(userId);
-        passiveService.settleLocked(user, clock.instant(), "equip:"+UUID.randomUUID(),
-                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller());
+        var now=clock.instant();
+        var context=passiveService.requestPolicy(now,economy.isShardEconomyEnabled());
+        passiveService.settleLocked(user, now, "equip:"+UUID.randomUUID(),
+                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller(),context);
         userKeycapRepository.findByUserIdForUpdate(userId);
         UserKeycap target = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_KEYCAP_NOT_FOUND"));
@@ -126,7 +133,7 @@ public class KeycapService {
 
         target.equip();
         userKeycapRepository.flush();
-        passiveService.refreshEquipmentLocked(userId);
+        passiveService.refreshEquipmentLocked(userId,context);
         return keycapMapper.mapToKeycapEquipResponse(target);
     }
 }

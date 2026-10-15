@@ -44,7 +44,7 @@ class RankingProjectionServiceTest {
     private final RankingProjectionService service =
             new RankingProjectionService(
                     seasonService, entryRepository, userService, userTapDailyRepository, userTapProgressService,
-                    eventPublisher, clock, businessZoneId
+                    eventPublisher, clock, businessZoneId, mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class)
             );
 
     @Test

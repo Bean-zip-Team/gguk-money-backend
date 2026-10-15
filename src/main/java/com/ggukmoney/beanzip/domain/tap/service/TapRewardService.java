@@ -63,8 +63,8 @@ public class TapRewardService {
 
         int awarded = 0;
         // Manual and automatic batches use the same legacy pacing: one payout, then a target beyond the batch.
-        // Even a capped payout advances the target so it cannot move into tomorrow's rewards.
-        if (progress.hasReachedPointTarget()) {
+        // An already exhausted daily cap preserves the reached target for the next day.
+        if (daily.getPointEarnedAmount()<tap.pointDailyCap() && progress.hasReachedPointTarget()) {
             int amount = roller.rollPoint(effects, 1, Math.max(tap.pointDailyCap()-daily.getPointEarnedAmount(),0));
             if (amount > 0) {
                 account.credit(amount);
@@ -85,9 +85,9 @@ public class TapRewardService {
             int amount = roller.rollShard(effects,1);
             wallet.addShards(amount);
             shards = Math.addExact(shards,amount);
-            int boundary = session.getNextBoxTarget();
-            int next = sessionService.drawNextBoxTargetInSession(boundary,session.getBoxesDroppedInSession()+1,tap);
-            if (next <= boundary) throw new IllegalStateException("Shard target must advance");
+            long batchEnd = session.getSessionValidTapCount();
+            int next = sessionService.drawNextBoxTargetInSession(batchEnd,session.getBoxesDroppedInSession(),tap);
+            if (next <= batchEnd) throw new IllegalStateException("Shard target must advance beyond the batch");
             session.advanceBoxTarget(next);
         }
         dailyService.save(daily);
@@ -98,6 +98,8 @@ public class TapRewardService {
         if (count>0) events.publishEvent(new RankingScoreSyncRequestedEvent(user.getId(),now));
         return new Award(clicks.effectiveCount(),awarded,shards,daily,progress,session,account,wallet);
     }
+
+    public int availableShardBalance(UUID userId) { return wallets.getAvailableShardBalance(userId); }
 
     private void issueMission(AppUser user, UserTapProgress progress, long before, Instant now) {
         if (!thousandTrigger.issuingEnabled()) return;

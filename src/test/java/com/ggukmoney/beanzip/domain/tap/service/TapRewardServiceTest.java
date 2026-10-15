@@ -38,7 +38,7 @@ class TapRewardServiceTest {
     private final UserTapProgress progress = UserTapProgress.createFor(user, 1);
     private final UserTapSession session = UserTapSession.createFor(user, now, now.plusSeconds(3600), 1000);
     private final PointAccount account = PointAccount.createFor(user);
-    private final KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user);
+    private final KeycapBoxAccount wallet = KeycapBoxAccount.createFor(user, now);
 
     private void prepare() {
         when(user.getId()).thenReturn(UUID.randomUUID());
@@ -96,18 +96,18 @@ class TapRewardServiceTest {
         verify(progressService).drawNextTarget(eq(100L),eq(tap));
     }
 
-    @Test void cappedPointBoundaryIsConsumedFromTheBatchEndpointWithoutCredit() {
-        prepare();
+    @Test void cappedPointBoundaryIsPreservedForNextDayWithoutCredit() {
+        prepare(); int originalTarget=progress.getNextPointTarget();
         daily.addPointEarned(150);
-        var result = rewards.award(user,now,Effects.NONE,100,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        var result=rewards.award(user,now,Effects.NONE,100,false,UUID.randomUUID(),new KeycapPassiveRoller());
         assertThat(result.pointsAwarded()).isZero();
-        assertThat(progress.getNextPointTarget()).isEqualTo(101);
-        verify(progressService).drawNextTarget(eq(100L),eq(tap));
+        assertThat(progress.getNextPointTarget()).isEqualTo(originalTarget);
+        verify(progressService,never()).drawNextTarget(anyLong(),any());
         verifyNoInteractions(ledger);
     }
 
     @Test
-    void eachCompletedShardUsesTheFollowingStepAndAwardsOnlyCrossedBoundaries() {
+    void eachCompletedShardAdvancesFromTheBatchEnd() {
         prepare();
         session.resetFor(now,now.plusSeconds(3600),25);
         when(tap.boxSessionStep1()).thenReturn(25);
@@ -116,8 +116,45 @@ class TapRewardServiceTest {
         when(sessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenCallRealMethod();
         var result = rewards.award(user,now,Effects.NONE,59,false,UUID.randomUUID(),new KeycapPassiveRoller());
         assertThat(result.shardsDropped()).isEqualTo(1);
-        assertThat(session.getNextBoxTarget()).isEqualTo(60);
+        assertThat(session.getNextBoxTarget()).isEqualTo(84);
     }
+    @ParameterizedTest @ValueSource(booleans = {false,true})
+    void hundredManualOrAutomaticClicksKeep329ShardPacing(boolean automatic) {
+        prepare();
+        session.resetFor(now,now.plusSeconds(3600),25);
+        when(tap.boxSessionStep1()).thenReturn(25);
+        when(tap.boxSessionStep2()).thenReturn(35);
+        when(tap.boxSessionStep3()).thenReturn(50);
+        when(sessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenCallRealMethod();
+
+        var result=rewards.award(user,now,Effects.NONE,100,automatic,UUID.randomUUID(),new KeycapPassiveRoller());
+
+        assertThat(result.shardsDropped()).isEqualTo(1);
+        assertThat(wallet.getShardBalance()).isEqualTo(1);
+        assertThat(session.getNextBoxTarget()).isEqualTo(125);
+        assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false,true})
+    void criticalsUseEffectiveBatchEndAndMultiplyOnlyTheActualDrop(boolean automatic) {
+        prepare();
+        session.resetFor(now,now.plusSeconds(3600),25);
+        when(tap.boxSessionStep1()).thenReturn(25);
+        when(tap.boxSessionStep2()).thenReturn(35);
+        when(tap.boxSessionStep3()).thenReturn(50);
+        when(sessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenCallRealMethod();
+        var effects=new Effects(new Critical(1,2),new Critical(1,5),Critical.NONE,50,false,0,0,false);
+
+        var result=rewards.award(user,now,effects,automatic?100:20,automatic,UUID.randomUUID(),new KeycapPassiveRoller());
+
+        assertThat(result.effectiveCount()).isEqualTo(100);
+        assertThat(result.shardsDropped()).isEqualTo(2);
+        assertThat(wallet.getShardBalance()).isEqualTo(2);
+        assertThat(session.getNextBoxTarget()).isEqualTo(125);
+        assertThat(progress.getCumulativeRankingTapCount()).isEqualTo(100);
+        assertThat(progress.getCumulativeMissionTapCount()).isEqualTo(automatic?0:20);
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, 30})
     void zeroAndPositiveAutomaticBatchesIncludeConvertedLegacyBalance(int count) {
