@@ -88,7 +88,7 @@ class KeycapBoxOpenServiceTest {
             keycapFiveCompletionTrigger,
             new NoOpTransactionManager(),
             clock
-    );
+    , org.mockito.Mockito.mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class));
 
     private final UUID userId = UUID.randomUUID();
     private final String idempotencyKey = UUID.randomUUID().toString();

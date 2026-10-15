@@ -4,19 +4,29 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.UUID;
 
-@Schema(description = "내 보유 키캡 항목")
+@Schema(description = "내 보유 키캡 항목이에요.")
 public record MyKeycapItemResponse(
-        @Schema(description = "키캡 ID", example = "11111111-1111-1111-1111-111111111111")
+        @Schema(description = "키캡 ID예요.", example = "11111111-1111-1111-1111-111111111111")
         UUID keycapId,
-        @Schema(description = "키캡 코드", example = "BASIC_BEAN")
+        @Schema(description = "키캡 코드예요.", example = "BASIC_BEAN")
         String code,
-        @Schema(description = "키캡 이름", example = "기본 콩")
+        @Schema(description = "키캡 이름이에요.", example = "기본 콩")
         String name,
-        @Schema(description = "보유 조각 수", example = "3")
-        int shardCount,
-        @Schema(description = "보유 키캡 상태", example = "IN_PROGRESS")
+        @Schema(description = "키캡 레벨이에요. 처음 얻으면 1이고, 같은 키캡을 다시 뽑을 때마다 1씩 올라요. 상한은 없어요.", example = "9")
+        int level,
+        @Schema(description = "기존 앱에서는 IN_PROGRESS와 COMPLETED를 사용해요. 경제 전환 후 보유 목록에는 COMPLETED만 내려가요.", example = "COMPLETED", deprecated = true)
         String status,
-        @Schema(description = "현재 장착 여부", example = "false")
-        boolean equipped
+        @Schema(description = "현재 장착 중인지 여부예요.", example = "false")
+        boolean equipped,
+        @Schema(description = "키캡 등급이에요. `COMMON`, `RARE`, `EPIC`, `LEGENDARY` 중 하나예요.", example = "COMMON")
+        String grade,
+        @Schema(description = "획득 경로예요. `BOX`는 상시 뽑기, `EVENT`는 시즌 한정 지급이에요. 시즌 키캡은 카탈로그에 없으므로 이 값으로 구분해요.", example = "BOX")
+        String acquisitionType,
+        @Schema(description = "이미지 URL이에요.", example = "https://example.com/keycap.png")
+        String imageUrl,
+        @Schema(description = "사운드 URL이에요.", example = "https://example.com/keycap.mp3")
+        String soundUrl,
+        @Schema(description = "기존 앱의 종별 수집 진행도예요. 경제 전환 후에는 레벨 저장에 사용되는 기존 값이며 새 앱은 level을 사용해요.", example = "3", deprecated = true)
+        int shardCount
 ) {
 }

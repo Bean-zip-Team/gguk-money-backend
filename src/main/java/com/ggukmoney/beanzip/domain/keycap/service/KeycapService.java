@@ -31,15 +31,24 @@ public class KeycapService {
     private final UserKeycapRepository userKeycapRepository;
     private final KeycapMapper keycapMapper;
     private final OnboardingRewardConfig onboardingRewardConfig;
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
+    /**
+     * 공개 도감은 상시({@code BOX}) 키캡만 내려준다 (BEA-329). 시즌 키캡은 보유자의 내 키캡 목록에서만 보인다.
+     * 안 거르면 미보유 카드에 이름이 노출되는 지금 구조에서 아직 시작도 안 한 이벤트가 새어 나가고,
+     * 뽑아도 절대 안 나오는 키캡이 목록과 진행도 분모에 남는다.
+     */
     public KeycapListResponse getKeycaps() {
-        return keycapMapper.mapToKeycapListResponse(keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc());
+        return keycapMapper.mapToKeycapListResponse(economy.isShardEconomyEnabled()
+                ? keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+                : keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc());
     }
 
     public MyKeycapListResponse getMyKeycaps(UUID userId) {
-        return keycapMapper.mapToMyKeycapListResponse(
-                userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId)
-        );
+        var owned=userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId);
+        return keycapMapper.mapToMyKeycapListResponse(economy.isShardEconomyEnabled()
+                ? owned.stream().filter(UserKeycap::isCompleted).toList() : owned);
     }
 
     public EquippedKeycapResponse getEquippedKeycap(UUID userId) {
@@ -86,10 +95,12 @@ public class KeycapService {
 
     @Transactional
     public KeycapEquipResponse equipKeycap(UUID userId, UUID keycapId) {
+        rewardLock.acquire(userId);
         userKeycapRepository.findByUserIdForUpdate(userId);
         UserKeycap target = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_KEYCAP_NOT_FOUND"));
 
+        // 구 코드가 남긴 진행 중 행은 미보유다 (무중단 배포 구간에만 잠깐 존재한다).
         if (!target.isCompleted()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_NOT_COMPLETED");
         }

@@ -57,8 +57,8 @@ public record MissionListResponse(
             long rewardAmount,
 
             @Schema(description = "현재 진행도예요. 상시 미션은 커트오프가 적용된 값이에요. "
-                    + "키캡 5종 모으기 미션은 커트오프 이후 완성한 키캡 수를 세요. "
-                    + "이 미션의 지급 여부는 상자를 열어 키캡을 완성할 때 판정해요.", example = "2")
+                    + "키캡 5종 모으기 미션은 커트오프 이후 새로 얻은 키캡 수를 세요. "
+                    + "이 미션의 지급 여부는 뽑기로 새 키캡을 처음 얻을 때 판정해요.", example = "2")
             long current,
 
             @Schema(description = "달성에 필요한 값이에요.", example = "5")

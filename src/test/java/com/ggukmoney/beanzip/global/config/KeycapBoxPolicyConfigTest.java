@@ -1,269 +1,49 @@
 package com.ggukmoney.beanzip.global.config;
-
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Collection;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import java.util.List;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 class KeycapBoxPolicyConfigTest {
-
-    private final AppConfigRepository appConfigRepository = mock(AppConfigRepository.class);
-    private final KeycapBoxPolicyConfig config = new KeycapBoxPolicyConfig(new AppConfigBatchLoader(appConfigRepository));
-
-    @BeforeEach
-    void adaptExistingSingleKeyFixturesToBatchQuery() {
-        when(appConfigRepository.findLatestEffectiveByConfigKeys(any(), any(Instant.class)))
-                .thenAnswer(invocation -> {
-                    Collection<String> keys = invocation.getArgument(0);
-                    Instant now = invocation.getArgument(1);
-                    return keys.stream()
-                            .map(key -> appConfigRepository
-                                    .findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now))
-                            .flatMap(Optional::stream)
-                            .toList();
-                });
+    private final AppConfigRepository repository=mock(AppConfigRepository.class);
+    private final KeycapBoxPolicyConfig config=new KeycapBoxPolicyConfig(new AppConfigBatchLoader(repository));
+    private static final String SWITCH="keycap.economy.shard.enabled";
+    private AppConfig row(String key,String value,Instant at){return AppConfig.createFor(key,value,at);}
+    private void rows(AppConfig... rows){when(repository.findLatestEffectiveWithHistory(any(),eq(SWITCH),any())).thenReturn(List.of(rows));}
+    @Test void missingSwitchDefaultsOff(){assertThat(config.isShardEconomyEnabled()).isFalse();assertThat(config.drawPrice()).isEqualTo(5);}
+    @Test void zeroOpenLimitsDoNotActivateShardEconomy(){
+        var rows=List.of(row(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,"0",Instant.EPOCH),row(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,"0",Instant.EPOCH));
+        when(repository.findLatestEffectiveWithHistory(any(),eq(SWITCH),any())).thenReturn(rows);
+        assertThat(config.isShardEconomyEnabled()).isFalse();
     }
-
-    @Test
-    void managesOnlySharedCyclePolicyKeys() {
-        assertThat(KeycapBoxPolicyConfig.DEFAULT_VALUES)
-                .containsOnlyKeys(
-                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                        KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                        KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
-                        KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT
-                )
-                .containsEntry(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, "3600")
-                .containsEntry(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT, "2")
-                .containsEntry(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT, "6")
-                // 일괄 개봉 상한 (BEA-280). 예산 방어값이 아니라 체감·연출 기준으로 고른 값이다.
-                .containsEntry(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, "30");
+    @Test void explicitSwitchActivatesWithoutZeroOpenLimits(){rows(row(SWITCH,"true",Instant.EPOCH));assertThat(config.isShardEconomyEnabled()).isTrue();}
+    @Test void laterFalseCannotReverseActivationEvenAfterRestart(){
+        rows(row(SWITCH,"true",Instant.EPOCH),row(SWITCH,"false",Instant.EPOCH.plusSeconds(10)));
+        assertThat(new KeycapBoxPolicyConfig(new AppConfigBatchLoader(repository)).isShardEconomyEnabled()).isTrue();
     }
-
-    @Test
-    void usesDefaultsWhenRowsAreMissing() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(any(), any()))
-                .thenReturn(Optional.empty());
-
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
-        assertThat(config.freeOpenLimit()).isEqualTo(2);
-        assertThat(config.adOpenLimit()).isEqualTo(6);
-        verify(appConfigRepository).findLatestEffectiveByConfigKeys(
-                org.mockito.ArgumentMatchers.eq(KeycapBoxPolicyConfig.DEFAULT_VALUES.keySet()),
-                any(Instant.class)
-        );
+    @Test void invalidActivationHistoryFailsClosed(){
+        rows(row(SWITCH,"yes",Instant.EPOCH));
+        assertThatThrownBy(config::isShardEconomyEnabled).isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+          .extracting(e->((org.springframework.web.server.ResponseStatusException)e).getStatusCode().value()).isEqualTo(503);
     }
-
-    @Test
-    void resolvesOpenCyclePolicyFromAppConfigRows() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                "1800",
-                Instant.EPOCH
-        )));
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                "1",
-                Instant.EPOCH
-        )));
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
-                "3",
-                Instant.EPOCH
-        )));
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
-                "10",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(30));
-        assertThat(config.freeOpenLimit()).isEqualTo(1);
-        assertThat(config.adOpenLimit()).isEqualTo(3);
-        // 검증 분기가 빠지면 어떤 값이든 거부되어 기본값 30 으로 폴백한다 (BEA-280 에서 실제로 그랬다).
-        assertThat(config.bulkOpenLimit()).isEqualTo(10);
+    @Test void databaseFailureFailsClosed(){
+        when(repository.findLatestEffectiveWithHistory(any(),eq(SWITCH),any())).thenThrow(new IllegalStateException("unavailable"));
+        assertThatThrownBy(config::isShardEconomyEnabled).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
-
-    @Test
-    void usesDefaultWhenBulkOpenLimitIsInvalidOnInitialLoad() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT,
-                "-1",
-                Instant.EPOCH
-        )));
-
+    @Test void freshPhaseUsesExactlyOneHistoryQuery(){config.isShardEconomyEnabled();verify(repository).findLatestEffectiveWithHistory(any(),eq(SWITCH),any());}
+    @Test void drawPriceRefreshKeepsLastGoodValue(){rows(row(KeycapBoxPolicyConfig.KEY_DRAW_PRICE,"3",Instant.EPOCH));config.refresh();assertThat(config.drawPrice()).isEqualTo(3);
+        rows(row(KeycapBoxPolicyConfig.KEY_DRAW_PRICE,"0",Instant.EPOCH));config.refresh();assertThat(config.drawPrice()).isEqualTo(3);}
+    @Test void futureActivationIsNotAppliedEarly(){rows(row(SWITCH,"true",Instant.now().plusSeconds(3600)));assertThat(config.isShardEconomyEnabled()).isFalse();}
+    @Test void heldEconomySnapshotKeepsItsPriceAcrossASeparateDisplayRefresh(){
+        rows(row(SWITCH,"true",Instant.EPOCH),row(KeycapBoxPolicyConfig.KEY_DRAW_PRICE,"10",Instant.EPOCH));
+        var held=config.requestSnapshot();
+        rows(row(SWITCH,"true",Instant.EPOCH),row(KeycapBoxPolicyConfig.KEY_DRAW_PRICE,"5",Instant.EPOCH));
         config.refresh();
-
-        assertThat(config.bulkOpenLimit()).isEqualTo(30);
-    }
-
-    @Test
-    void usesDefaultWhenOpenCycleDurationIsInvalidOnInitialLoad() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                "0",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
-    }
-
-    @Test
-    void usesDefaultWhenFreeOpenLimitIsInvalidOnInitialLoad() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                "-1",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.freeOpenLimit()).isEqualTo(2);
-    }
-
-    @Test
-    void usesDefaultWhenAdOpenLimitIsInvalidOnInitialLoad() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
-                "-1",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.adOpenLimit()).isEqualTo(6);
-    }
-
-    @Test
-    void usesDefaultWhenMalformedPolicyValueIsLoadedInitially() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                "not-a-number",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
-    }
-
-    @Test
-    void usesDefaultWhenPolicyValueIsDecimal() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                "1.5",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.freeOpenLimit()).isEqualTo(2);
-    }
-
-    @Test
-    void usesDefaultWhenPolicyValueExceedsIntegerRange() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
-                "2147483648",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.adOpenLimit()).isEqualTo(6);
-    }
-
-    @Test
-    void keepsLastKnownGoodWhenRefreshReceivesMalformedPolicyValue() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
-        )).thenReturn(
-                Optional.of(AppConfig.createFor(
-                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                        "1800",
-                        Instant.EPOCH
-                )),
-                Optional.of(AppConfig.createFor(
-                        KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                        "not-a-number",
-                        Instant.EPOCH
-                ))
-        );
-
-        config.refresh();
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofMinutes(30));
-    }
-
-    @Test
-    void appliesValidPolicyValuesWhenOnlyOneRefreshValueIsMalformed() {
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS,
-                "not-a-number",
-                Instant.EPOCH
-        )));
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_FREE_OPEN_LIMIT,
-                "1",
-                Instant.EPOCH
-        )));
-        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
-                eq(KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT), any(Instant.class)
-        )).thenReturn(Optional.of(AppConfig.createFor(
-                KeycapBoxPolicyConfig.KEY_AD_OPEN_LIMIT,
-                "3",
-                Instant.EPOCH
-        )));
-
-        config.refresh();
-
-        assertThat(config.openCycleDuration()).isEqualTo(Duration.ofHours(1));
-        assertThat(config.freeOpenLimit()).isEqualTo(1);
-        assertThat(config.adOpenLimit()).isEqualTo(3);
+        assertThat(held.shardEconomy()).isTrue();
+        assertThat(held.drawPrice()).isEqualTo(10);
+        assertThat(config.drawPrice()).isEqualTo(5);
     }
 }

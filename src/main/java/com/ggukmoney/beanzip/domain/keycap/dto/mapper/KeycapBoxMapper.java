@@ -13,6 +13,11 @@ import org.mapstruct.ReportingPolicy;
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface KeycapBoxMapper {
 
+    @Mapping(target = "shardBalance", constant = "0")
+    @Mapping(target = "drawPrice", source = "drawPrice")
+    @Mapping(target = "canDraw", constant = "false")
+    @Mapping(target = "shardProgressTapCount", source = "progress.cumulativeValidTapCount")
+    @Mapping(target = "nextShardRequiredTapCount", source = "progress.nextBoxTarget")
     @Mapping(target = "boxBalance", source = "account.boxBalance")
     @Mapping(target = "canFreeOpen", source = "cycleSnapshot.canFreeOpen")
     @Mapping(target = "canAdOpen", source = "cycleSnapshot.canAdOpen")
@@ -23,7 +28,8 @@ public interface KeycapBoxMapper {
     KeycapBoxStatusResponse mapToStatusResponse(
             KeycapBoxAccount account,
             KeycapBoxAccount.OpenCycleSnapshot cycleSnapshot,
-            BoxProgressSnapshot progress
+            BoxProgressSnapshot progress,
+            int drawPrice
     );
 
     @Mapping(target = "boxOpenId", source = "publicId")

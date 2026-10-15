@@ -109,6 +109,9 @@ public class PolicyValueRules {
         integer(KeycapBoxPolicyConfig.KEY_BULK_OPEN_LIMIT, 0, "한 번에 일괄 개봉할 수 있는 최대 개수");
         integer(KeycapBoxPolicyConfig.KEY_OPEN_CYCLE_DURATION_SECONDS, 1, "개봉 주기 (초)");
 
+        bool(KeycapBoxPolicyConfig.KEY_SHARD_ENABLED, "조각 경제로 한 번만 전환합니다. 전환 후 변경·해제할 수 없어요.");
+        integer(KeycapBoxPolicyConfig.KEY_DRAW_PRICE, 1, "경제 전환 후 뽑기 1회 가격 (조각)");
+
         // 온보딩: 로더가 매 요청 직접 읽고 대체값이 없다. 잘못되면 온보딩 지급이 바로 막힌다.
         group = "온보딩";
         add(OnboardingRewardConfig.KEY_REWARD_POINT_AMOUNT, Kind.INTEGER, "0 이상 " + MAX_MONEY_AMOUNT + " 이하의 정수",

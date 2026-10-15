@@ -53,7 +53,7 @@ class KeycapBoxBulkOpenServiceTest {
     private final KeycapBoxBulkOpenService service = new KeycapBoxBulkOpenService(
             keycapBoxOpenService, keycapBoxAccountService, keycapBoxOpenRepository,
             notificationPreferenceRepository, keycapBoxPolicyConfig, userService,
-            new NoOpTransactionManager(), Clock.fixed(NOW, ZoneOffset.UTC));
+            new NoOpTransactionManager(), Clock.fixed(NOW, ZoneOffset.UTC), org.mockito.Mockito.mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class));
 
     private final UUID userId = UUID.randomUUID();
     private final String idempotencyKey = UUID.randomUUID().toString();
@@ -80,7 +80,7 @@ class KeycapBoxBulkOpenServiceTest {
     private KeycapBoxAccount accountWith(int boxBalance) {
         KeycapBoxAccount account = KeycapBoxAccount.createFor(mock(AppUser.class), NOW);
         account.addBoxes(boxBalance);
-        when(keycapBoxAccountService.getForUserForUpdate(userId)).thenReturn(account);
+        when(keycapBoxAccountService.getLegacyAccountForUpdate(userId)).thenReturn(account);
         lenient().when(keycapBoxAccountService.getForUser(userId)).thenReturn(account);
         return account;
     }

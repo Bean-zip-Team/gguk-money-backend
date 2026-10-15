@@ -48,6 +48,10 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
     long countByUserIdAndStatusAndCompletedAtAfter(UUID userId, UserKeycap.Status status, Instant completedAt);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select k from UserKeycap k where k.user.id = :userId and k.status = com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap.Status.IN_PROGRESS")
+    List<UserKeycap> findLegacyInProgressForUpdate(@Param("userId") UUID userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select userKeycap
             from UserKeycap userKeycap
@@ -93,6 +97,7 @@ public interface UserKeycapRepository extends JpaRepository<UserKeycap, Long> {
             from UserKeycap userKeycap
             join fetch userKeycap.keycap keycap
             where userKeycap.user.id = :userId
+
             order by keycap.sortOrder asc, keycap.code asc
             """)
     List<UserKeycap> findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(@Param("userId") UUID userId);

@@ -12,6 +12,8 @@
             <p>DB(app_config)에 저장된 최신 값이에요. 바꾸면 새 행이 추가되어 이력이 남고, 대부분 1분 안에 반영돼요.</p>
         </div>
 
+        <div class="notice error" th:if="${error}" th:text="${error}">error</div>
+
         <section class="panel" th:each="section : ${sections}" th:id="${section.group.id}">
             <h2 th:text="${section.group.name}">분류</h2>
             <div class="table-scroll">
