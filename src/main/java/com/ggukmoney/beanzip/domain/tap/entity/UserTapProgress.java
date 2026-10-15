@@ -40,6 +40,12 @@ public class UserTapProgress {
     @Column(name = "cumulative_valid_tap_count", nullable = false)
     private Long cumulativeValidTapCount = 0L;
 
+    @Column(name = "cumulative_mission_tap_count", nullable = false)
+    private Long cumulativeMissionTapCount = 0L;
+
+    @Column(name = "cumulative_ranking_tap_count", nullable = false)
+    private Long cumulativeRankingTapCount = 0L;
+
     /** 커트오프 시점의 누적 탭 수. null 이면 아직 기준이 잡히지 않았다는 뜻이다. */
     @Column(name = "promotion_tap_baseline")
     private Long promotionTapBaseline;
@@ -86,7 +92,21 @@ public class UserTapProgress {
     }
 
     public void addValidTaps(long count) {
-        this.cumulativeValidTapCount += count;
+        addRewardTaps(count);
+        addMissionTaps(count);
+        addRankingTaps(count);
+    }
+
+    public void addRewardTaps(long count) {
+        this.cumulativeValidTapCount = Math.addExact(this.cumulativeValidTapCount, count);
+    }
+
+    public void addMissionTaps(long count) {
+        this.cumulativeMissionTapCount = Math.addExact(this.cumulativeMissionTapCount, count);
+    }
+
+    public void addRankingTaps(long count) {
+        this.cumulativeRankingTapCount = Math.addExact(this.cumulativeRankingTapCount, count);
     }
 
     public boolean hasReachedPointTarget() {

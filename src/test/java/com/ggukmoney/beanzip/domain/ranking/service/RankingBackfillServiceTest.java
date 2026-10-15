@@ -51,7 +51,7 @@ class RankingBackfillServiceTest {
         when(userService.getById(userId)).thenReturn(user);
         when(entryRepository.findBySeasonAndUserId(season, userId)).thenReturn(java.util.Optional.of(entry));
         UserTapDailyRepository.UserTapAggregateProjection recount = aggregateRow(userId, 300L);
-        when(dailyRepository.findTotalValidTapAggregates(LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27),
+        when(dailyRepository.findTotalEffectiveTapAggregates(LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27),
                 null, properties.pageSize())).thenReturn(List.of(recount));
         service.backfillFinalizingWeeklySeason(season, LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27));
         assertThat(entry.getScore()).isEqualTo(400L);
@@ -66,7 +66,7 @@ class RankingBackfillServiceTest {
                 Instant.parse("2026-07-26T15:00:00Z")
         );
         UserTapDailyRepository.UserTapAggregateProjection row = aggregateRow(userId, 123L);
-        when(dailyRepository.findTotalValidTapAggregates(
+        when(dailyRepository.findTotalEffectiveTapAggregates(
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27),
                 null,
@@ -93,16 +93,16 @@ class RankingBackfillServiceTest {
         UserTapDailyRepository.UserTapAggregateProjection firstRow = aggregateRow(firstUserId, 10L);
         UserTapDailyRepository.UserTapAggregateProjection secondRow = aggregateRow(secondUserId, 20L);
         UserTapDailyRepository.UserTapAggregateProjection thirdRow = aggregateRow(thirdUserId, 30L);
-        when(dailyRepository.findTotalValidTapAggregates(
+        when(dailyRepository.findTotalEffectiveTapAggregates(
                 LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), null, 2
         )).thenReturn(List.of(firstRow, secondRow));
-        when(dailyRepository.findTotalValidTapAggregates(
+        when(dailyRepository.findTotalEffectiveTapAggregates(
                 LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), secondUserId, 2
         )).thenReturn(List.of(thirdRow));
 
         assertThat(service.backfillActiveWeeklySeason(season)).isEqualTo(3L);
 
-        verify(dailyRepository).findTotalValidTapAggregates(
+        verify(dailyRepository).findTotalEffectiveTapAggregates(
                 LocalDate.of(2026, 7, 20), LocalDate.of(2026, 7, 27), secondUserId, 2
         );
     }
@@ -121,7 +121,7 @@ class RankingBackfillServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(season, "id", 1L);
         season.startFinalizing();
         UserTapDailyRepository.UserTapAggregateProjection row = aggregateRow(userId, 80L);
-        when(dailyRepository.findTotalValidTapAggregates(
+        when(dailyRepository.findTotalEffectiveTapAggregates(
                 LocalDate.of(2026, 7, 20),
                 LocalDate.of(2026, 7, 27),
                 null,
@@ -157,7 +157,7 @@ class RankingBackfillServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(progress.getUser()).thenReturn(user);
-        when(progress.getCumulativeValidTapCount()).thenReturn(123L);
+        when(progress.getCumulativeRankingTapCount()).thenReturn(123L);
         when(progressRepository.findActivePositiveProgress(PageRequest.of(0, properties.pageSize())))
                 .thenReturn(List.of(progress));
 
@@ -173,7 +173,7 @@ class RankingBackfillServiceTest {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
         when(progress.getUser()).thenReturn(user);
-        when(progress.getCumulativeValidTapCount()).thenReturn(123L);
+        when(progress.getCumulativeRankingTapCount()).thenReturn(123L);
         when(progressRepository.findActivePositiveProgress(PageRequest.of(0, properties.pageSize())))
                 .thenReturn(List.of(progress))
                 .thenReturn(List.of(progress));

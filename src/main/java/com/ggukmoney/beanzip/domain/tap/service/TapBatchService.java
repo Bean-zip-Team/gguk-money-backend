@@ -1,282 +1,99 @@
 package com.ggukmoney.beanzip.domain.tap.service;
-
-import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
-import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
-import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
-import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
-import com.ggukmoney.beanzip.domain.ranking.event.RankingScoreSyncRequestedEvent;
-import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
-import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
+import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
-import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
-import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantIssuer;
-import com.ggukmoney.beanzip.domain.promotion.service.PromotionTriggerContext;
-import com.ggukmoney.beanzip.domain.promotion.service.TapThousandCompletionTrigger;
-import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
-import com.ggukmoney.beanzip.domain.tap.entity.UserTapSession;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
-import com.ggukmoney.beanzip.domain.user.entity.AppUser;
-import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
+import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import com.ggukmoney.beanzip.global.util.TokenHash;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.script.RedisScript;
-import org.springframework.http.HttpStatus;
+import org.slf4j.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import java.time.*;
+import java.util.*;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-@Service
-@RequiredArgsConstructor
+@Service @RequiredArgsConstructor
 public class TapBatchService {
-
-    private static final Logger log = LoggerFactory.getLogger(TapBatchService.class);
-
-    private static final String CREDIT_REASON_TAP = "TAP_REWARD";
-
-    private static final RedisScript<Long> TOKEN_BUCKET_SCRIPT =
-            RedisScript.of(new ClassPathResource("scripts/tap-token-bucket.lua"), Long.class);
-
+    private static final Logger log=LoggerFactory.getLogger(TapBatchService.class);
+    private static final RedisScript<Long> TOKEN_BUCKET_SCRIPT=RedisScript.of(new ClassPathResource("scripts/tap-token-bucket.lua"),Long.class);
     private final TapBatchRepository tapBatchRepository;
-    private final UserTapDailyService userTapDailyService;
-    private final UserTapProgressService userTapProgressService;
-    private final UserTapSessionService userTapSessionService;
-    private final PointAccountService pointAccountService;
-    private final PointLedgerService pointLedgerService;
-    private final KeycapBoxAccountService keycapBoxAccountService;
+    private final TapRewardService rewards;
+    private final KeycapPassiveService passive;
+    private final UserRewardLock lock;
+    private final UserTapProgressService progressService;
     private final RedisService redisService;
     private final TapPolicyConfig tapPolicyConfig;
-    private final PromotionPolicyConfig promotionPolicyConfig;
-    private final PromotionGrantIssuer promotionGrantIssuer;
-    private final TapThousandCompletionTrigger tapThousandCompletionTrigger;
-    private final UserService userService;
-    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
-    private final ZoneId businessZoneId;
-    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
-    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig keycapBoxPolicyConfig;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     @Transactional
-    public TapBatchSubmitResponse submitBatch(UUID userId, TapBatchSubmitRequest request) {
-        Instant acceptedAt = clock.instant();
-        LocalDate tapDate = LocalDate.ofInstant(acceptedAt, businessZoneId);
-        if (tapPolicyConfig.rateLimitEnabled()
-                && !tryConsumeRateLimit(userId, tapPolicyConfig.rateLimitCapacity(), tapPolicyConfig.rateLimitRefillPerSecond(), acceptedAt)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "TAP_RATE_LIMITED");
+    public TapBatchSubmitResponse submitBatch(UUID userId,TapBatchSubmitRequest request) {
+        if(tapPolicyConfig.rateLimitEnabled() &&
+                !tryConsumeRateLimit(userId,tapPolicyConfig.rateLimitCapacity(),tapPolicyConfig.rateLimitRefillPerSecond(),clock.instant()))
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"TAP_RATE_LIMITED");
+        var user=lock.acquire(userId);
+        var now=clock.instant();
+        boolean shard=economy.isShardEconomyEnabled();
+        var existing=tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId,request.tapSessionId(),request.sequence());
+        String hash=requestHash(request);
+        if(existing.isPresent()) {
+            var saved=existing.get();
+            // Existing apps identify a batch by session/sequence, even if a retry changes count.
+            // Return current state with zero awards; no result JSON is persisted.
+            // Replaying neither settles new automatic clicks nor rolls another reward.
+            var state=rewards.award(user,now,com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE,
+                    0,true,saved.getPublicId(),new KeycapPassiveRoller());
+            return response(saved.getAcceptedCount(),0,0,0,0,state,shard,userId,now);
         }
-
-        AppUser user = rewardLock.acquire(userId);
-        boolean shardEconomy = keycapBoxPolicyConfig.isShardEconomyEnabled();
-
-        // 보상 상태는 지급 여부와 무관하게 응답에 담기므로 여기서 한 번만 조회한다.
-        // 지급 루프 안에서 다시 조회하면 파생 쿼리라 1차 캐시로 대체되지 않고
-        // 반복마다 SELECT와 auto-flush UPDATE가 발생한다.
-        UserTapDaily daily = userTapDailyService.getOrCreate(user, tapDate);
-        UserTapSession session = userTapSessionService.getOrCreateActiveSession(user, acceptedAt, tapPolicyConfig);
-        UserTapProgress progress = userTapProgressService.getForUser(userId);
-        PointAccount pointAccount = pointAccountService.getForUser(userId);
-        KeycapBoxAccount boxAccount = keycapBoxAccountService.getForUserForUpdate(userId);
-
-        Optional<TapBatch> existing = tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, request.tapSessionId(), request.sequence());
-        if (existing.isPresent()) {
-            return buildResponse(existing.get().getAcceptedCount(), 0, 0, acceptedAt, daily, session, progress, pointAccount, boxAccount, shardEconomy, userId);
-        }
-
-        int acceptedCount = request.submittedCount();
-
-        TapBatch batch = TapBatch.createFor(user, request.tapSessionId(), request.sequence(), request.submittedCount(), requestHash(request));
-        batch.markAccepted(acceptedCount);
-        batch = tapBatchRepository.save(batch);
-
-        int pointsAwarded = 0;
-        int shardsDropped = 0;
-
-        if (acceptedCount > 0) {
-            daily.addTotalValidTaps(acceptedCount);
-
-            int remainingDailyTapAllowance = Math.max(tapPolicyConfig.maxPerDay() - daily.getValidTapCount(), 0);
-            int creditedTaps = Math.min(acceptedCount, remainingDailyTapAllowance);
-
-            if (creditedTaps > 0) {
-                daily.addValidTaps(creditedTaps);
-
-                long cumulativeBefore = progress.getCumulativeValidTapCount();
-                progress.addValidTaps(creditedTaps);
-                long cumulativeAfter = progress.getCumulativeValidTapCount();
-                issueTapThousandIfCrossed(user, progress, cumulativeBefore, cumulativeAfter, acceptedAt);
-
-                long creditAmount = 1L;
-
-                int dailyCap = tapPolicyConfig.pointDailyCap();
-                int awardIndex = 0;
-                while (progress.hasReachedPointTarget() && daily.getPointEarnedAmount() < dailyCap) {
-                    UUID idempotencyKey = deterministicIdempotencyKey(batch.getPublicId(), awardIndex);
-                    pointAccount.credit(creditAmount);
-                    pointLedgerService.recordCredit(pointAccount, user, creditAmount, CREDIT_REASON_TAP, idempotencyKey);
-                    daily.incrementPointEarned();
-
-                    int nextTarget = userTapProgressService.drawNextTarget(progress.getCumulativeValidTapCount(), tapPolicyConfig);
-                    progress.advancePointTarget(nextTarget);
-
-                    pointsAwarded += creditAmount;
-                    awardIndex++;
-                }
-
-                userTapProgressService.save(progress);
-                if (pointsAwarded > 0) {
-                    pointAccountService.save(pointAccount);
-                }
-            }
-
-            // 조각 진행도는 포인트 일일 상한(tap.validity.maxPerDay)과 무관하게 인정된 탭 전체로 누적한다.
-            // 조각은 무료 재화라 여기서 막지 않는다. 드롭당 1개 고정이다(BEA-329).
-            // 부스터 배수는 앱이 탭 카운트에 이미 곱해서 보내므로 여기서 다시 곱하지 않는다 — 곱하면 4배가 된다.
-            session.addValidTaps(acceptedCount);
-            // 유휴 마감을 마지막 탭 기준으로 다시 민다. 계속 치는 동안에는 세션이 리셋되지 않으므로
-            // 조각 간격은 tailStep 에 머무른다. 손을 뗀 뒤 유휴 시간이 지나야 싼 스텝부터 다시 시작한다.
-            session.recordActivity(acceptedAt, tapPolicyConfig.boxSessionIdleTimeoutSeconds());
-            while (session.hasReachedBoxTarget()) {
-                boxAccount.addShards(1);
-
-                int nextBoxTarget = userTapSessionService.drawNextBoxTargetInSession(session.getSessionValidTapCount(), session.getBoxesDroppedInSession(), tapPolicyConfig);
-                session.advanceBoxTarget(nextBoxTarget);
-
-                shardsDropped++;
-            }
-            if (shardsDropped > 0) {
-                keycapBoxAccountService.save(boxAccount);
-            }
-            userTapSessionService.save(session);
-
-            userTapDailyService.save(daily);
-            eventPublisher.publishEvent(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
-        }
-
-        return buildResponse(acceptedCount, pointsAwarded, shardsDropped, acceptedAt, daily, session, progress, pointAccount, boxAccount, shardEconomy, userId);
+        var batch=TapBatch.createFor(user,request.tapSessionId(),request.sequence(),request.submittedCount(),hash);
+        batch.markAccepted(request.submittedCount());
+        batch=tapBatchRepository.save(batch);
+        var context=passive.requestPolicy(now,shard);
+        // The request owns one roller; automatic clicks bypass axis ②.
+        var roller=new KeycapPassiveRoller();
+        var automatic=passive.settleLocked(user,now,"tap:"+batch.getPublicId(),roller,context);
+        var effects=passive.activeEffects(userId,context);
+        var award=rewards.award(user,now,effects,request.submittedCount(),false,batch.getPublicId(),roller);
+        var result=response(request.submittedCount(),award.effectiveCount(),automatic.autoClicksGranted(),
+                automatic.pointsAwarded(),automatic.shardsDropped(),award,shard,userId,now);
+        return result;
     }
 
-    /**
-     * 1,000번 누르기 미션 (BEA-278). 임계를 넘는 그 배치에서만 1회 발급한다.
-     *
-     * <p><b>추가 쿼리가 없다.</b> progress 는 이미 로드돼 있고 정책값은 60초 캐시에서 온다.
-     * 판정은 산술 비교뿐이라 탭 배치의 쿼리 수가 늘지 않는다 (BEA-255).
-     *
-     * <p>기준값은 스위치가 켜진 뒤 첫 배치에서 박는다. 커트오프만 보고 미리 박아두면 스위치가
-     * 꺼져 있던 동안 임계를 넘긴 유저가 생기고, 그 사람은 통과 순간이 지나가 영영 못 받는다.
-     * 켜진 뒤부터 세면 그 창이 사라진다 — 소급 없음은 그대로 지켜진다.
-     */
-    private void issueTapThousandIfCrossed(
-            AppUser user, UserTapProgress progress, long before, long after, Instant acceptedAt) {
-        if (!tapThousandCompletionTrigger.issuingEnabled()) {
-            return;
-        }
-        Optional<Instant> launchAt = promotionPolicyConfig.tapThousandLaunchAt();
-        if (launchAt.isEmpty() || acceptedAt.isBefore(launchAt.get())) {
-            // 커트오프를 못 읽으면 소급 방지를 보장할 수 없다. 지급하지 않는다.
-            return;
-        }
-
-        long baseline = progress.ensurePromotionTapBaseline(before);
-        int threshold = promotionPolicyConfig.tapThousandThreshold();
-        if (before - baseline >= threshold || after - baseline < threshold) {
-            return;
-        }
-
-        promotionGrantIssuer.issueIfEligible(
-                tapThousandCompletionTrigger,
-                PromotionTriggerContext.tapThresholdCrossed(user, after - baseline, acceptedAt));
-    }
-
-    /**
-     * 배치 확정 직후 화면을 그리는 데 필요한 값을 모두 담는다. 조각 잔액은 이번 배치의 드롭까지
-     * 반영된 값이다. 상자 시절 필드는 구버전 앱 호환을 위해 중립값으로 채운다(BEA-329).
-     */
-    private TapBatchSubmitResponse buildResponse(
-            int acceptedCount,
-            int pointsAwarded,
-            int shardsDropped,
-            Instant now,
-            UserTapDaily daily,
-            UserTapSession session,
-            UserTapProgress progress,
-            PointAccount pointAccount,
-            KeycapBoxAccount shardWallet,
-            boolean shardEconomy,
-            UUID userId
-    ) {
-        int remainingToNextPoint = userTapProgressService.remainingTapsToNextPoint(progress, daily, tapPolicyConfig);
-        int remainingToNextShard = (int) Math.max(session.getNextBoxTarget() - session.getSessionValidTapCount(), 0);
-
-        var cycle=shardEconomy ? null : shardWallet.calculateOpenCycleSnapshot(now,keycapBoxPolicyConfig.openCycleDuration(),
-                keycapBoxPolicyConfig.freeOpenLimit(),keycapBoxPolicyConfig.adOpenLimit());
-        // 화면의 "오늘 탭"은 보상 상한(tap.validity.maxPerDay)과 무관하게 실제로 친 탭 수를 보여준다.
-        // validTapCount 는 상한에서 멈추므로 상한 없이 누적되는 totalValidTapCount 를 반환한다.
-        return new TapBatchSubmitResponse(
-                acceptedCount,
-                daily.getTotalValidTapCount(),
-                pointsAwarded,
-                shardEconomy ? 0 : shardsDropped,
-                pointAccount.getBalance(),
-                daily.getPointEarnedAmount() >= tapPolicyConfig.pointDailyCap(),
-                session.getSessionValidTapCount(),
-                session.getNextBoxTarget(),
-                daily.getTapDate(),
-                daily.getPointEarnedAmount(),
-                remainingToNextPoint,
-                remainingToNextShard,
-                shardEconomy ? 0 : shardWallet.getBoxBalance(),
-                !shardEconomy && cycle.canFreeOpen(),
-                !shardEconomy && cycle.canAdOpen(),
-                !shardEconomy && cycle.charging(),
-                shardEconomy ? null : cycle.nextRechargeAt(),
-                shardEconomy ? shardsDropped : 0,
-                shardEconomy ? keycapBoxAccountService.getAvailableShardBalance(userId) : 0,
-                remainingToNextShard
-        );
-    }
-
-    private UUID deterministicIdempotencyKey(UUID batchPublicId, int awardIndex) {
-        return UUID.nameUUIDFromBytes((batchPublicId + "-" + awardIndex).getBytes(StandardCharsets.UTF_8));
+    private TapBatchSubmitResponse response(int accepted,int effective,int automatic,int autoPoints,int autoShards,TapRewardService.Award award,boolean shard,UUID userId,Instant now) {
+        var daily=award.daily(); var session=award.session();
+        int remainingShard=(int)Math.max(session.getNextBoxTarget()-session.getSessionValidTapCount(),0);
+        var cycle=shard ? null : award.wallet().calculateOpenCycleSnapshot(now,economy.openCycleDuration(),
+                economy.freeOpenLimit(),economy.adOpenLimit());
+        int drops=award.shardsDropped()+autoShards;
+        return new TapBatchSubmitResponse(accepted,daily.getTotalValidTapCount(),award.pointsAwarded()+autoPoints,
+                shard?0:drops,award.account().getBalance(),daily.getPointEarnedAmount()>=tapPolicyConfig.pointDailyCap(),
+                session.getSessionValidTapCount(),session.getNextBoxTarget(),daily.getTapDate(),daily.getPointEarnedAmount(),
+                progressService.remainingTapsToNextPoint(award.progress(),daily,tapPolicyConfig),remainingShard,shard?0:award.wallet().getBoxBalance(),
+                !shard && cycle.canFreeOpen(),!shard && cycle.canAdOpen(),!shard && cycle.charging(),shard?null:cycle.nextRechargeAt(),
+                shard?drops:0,shard?rewards.availableShardBalance(userId):0,remainingShard,
+                effective,automatic,daily.getTotalEffectiveTapCount());
     }
 
     private String requestHash(TapBatchSubmitRequest request) {
-        String raw = request.tapSessionId() + ":" + request.sequence() + ":" + request.submittedCount();
-        return TokenHash.sha256Base64Url(raw);
+        return TokenHash.sha256Base64Url(request.tapSessionId()+":"+request.sequence()+":"+request.submittedCount());
     }
 
-    boolean tryConsumeRateLimit(UUID userId, int capacity, double refillPerSecond, Instant now) {
+    boolean tryConsumeRateLimit(UUID userId,int capacity,double refillPerSecond,Instant now) {
         try {
-            Long allowed = redisService.executeScript(
-                    TOKEN_BUCKET_SCRIPT,
-                    List.of(bucketKey(userId)),
-                    String.valueOf(capacity),
-                    String.valueOf(refillPerSecond),
-                    String.valueOf(now.toEpochMilli())
-            );
-            return allowed != null && allowed == 1L;
-        } catch (RuntimeException exception) {
-            log.error("Failed to evaluate tap rate limit for userId={}", userId, exception);
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "TAP_REDIS_UNAVAILABLE", exception);
+            Long allowed=redisService.executeScript(TOKEN_BUCKET_SCRIPT,List.of("ggukmoney:tap:bucket:"+userId),
+                    String.valueOf(capacity),String.valueOf(refillPerSecond),String.valueOf(now.toEpochMilli()));
+            return allowed!=null && allowed==1L;
+        } catch(RuntimeException exception) {
+            log.error("Failed to evaluate tap rate limit for userId={}",userId,exception);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"TAP_REDIS_UNAVAILABLE",exception);
         }
-    }
-
-    private String bucketKey(UUID userId) {
-        return "ggukmoney:tap:bucket:" + userId;
     }
 }

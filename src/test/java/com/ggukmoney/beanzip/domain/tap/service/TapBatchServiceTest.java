@@ -22,6 +22,8 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -73,17 +75,18 @@ class TapBatchServiceTest {
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final Instant acceptedAt = Instant.parse("2026-07-20T15:00:00Z");
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock = mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class);
+    private final com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService passive = mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.class);
     private final Clock clock = Clock.fixed(acceptedAt, ZoneOffset.UTC);
     private final LocalDate tapDate = LocalDate.of(2026, 7, 21);
 
-    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock = mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class);
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
     private final TapBatchService tapBatchService = new TapBatchService(
-            tapBatchRepository, userTapDailyService, userTapProgressService, userTapSessionService,
-            pointAccountService, pointLedgerService,
-            keycapBoxAccountService, redisService, tapPolicyConfig,
-            promotionPolicyConfig, promotionGrantIssuer, tapThousandCompletionTrigger, userService,
-            eventPublisher, clock, businessZoneId, rewardLock
-    , shardPolicy());
+            tapBatchRepository, new TapRewardService(userTapDailyService,userTapProgressService,userTapSessionService,
+                    pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
+                    promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId),
+            passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,clock
+    ,economy);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -93,6 +96,19 @@ class TapBatchServiceTest {
 
     @BeforeEach
     void allowRateLimitByDefault() {
+        lenient().when(passive.requestPolicy(any(),org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(
+                new com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.RequestPolicy(true,
+                        com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.decode(java.util.Map.of())));
+        lenient().when(passive.activeEffects(any(),any())).thenAnswer(i->passive.activeEffects(i.getArgument(0)));
+        lenient().when(passive.settleLocked(any(),any(),anyString(),any(),any())).thenAnswer(i->
+                passive.settleLocked(i.getArgument(0),i.getArgument(1),i.getArgument(2),i.getArgument(3)));
+        when(economy.isShardEconomyEnabled()).thenReturn(true);
+        when(rewardLock.acquire(any())).thenAnswer(i -> userService.getById(i.getArgument(0)));
+        when(passive.activeEffects(any())).thenReturn(com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE);
+        when(passive.settleLocked(any(),any(),anyString(),any())).thenReturn(
+                new com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveSettleResponse(0,0,0,0,0,false,acceptedAt));
+        lenient().when(userTapProgressService.drawNextTarget(anyLong(),any())).thenAnswer(i -> (int)(i.getArgument(0,Long.class)+1000));
+        lenient().when(userTapSessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenAnswer(i -> (int)(i.getArgument(0,Long.class)+1000));
         lenient().when(redisService.executeScript(any(RedisScript.class), anyList(), anyString(), anyString(), anyString()))
                 .thenReturn(1L);
         lenient().when(tapPolicyConfig.rateLimitEnabled()).thenReturn(true);
@@ -119,23 +135,25 @@ class TapBatchServiceTest {
         assertThatThrownBy(() -> tapBatchService.submitBatch(userId, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("TAP_RATE_LIMITED");
-        verify(rewardLock, never()).acquire(any());
+        verify(userService, never()).getById(any());
     }
 
-    @Test
-    void returnsExistingSnapshotWithoutReprocessingOnDuplicateSubmission() {
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void duplicateReturnsCurrentStateWithoutPayoutEvenWhenCountChanges(boolean changedCount) {
         AppUser user = stubUser();
         TapBatch existing = mock(TapBatch.class);
         when(existing.getAcceptedCount()).thenReturn(42);
+        when(existing.getRequestHash()).thenAnswer(i -> com.ggukmoney.beanzip.global.util.TokenHash.sha256Base64Url(sessionId+":1:50"));
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         pointAccount.credit(100L);
         UserTapDaily daily = UserTapDaily.createFor(user, tapDate);
         // 실제 적립 경로는 두 카운트를 항상 함께 올린다.
         daily.addValidTaps(77);
         daily.addTotalValidTaps(77);
+        daily.addEffectiveTaps(46);
         when(userTapDailyService.getOrCreate(eq(user), eq(tapDate))).thenReturn(daily);
 
-        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 50);
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, changedCount?51:50);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
         assertThat(response.acceptedCount()).isEqualTo(42);
@@ -143,11 +161,15 @@ class TapBatchServiceTest {
         assertThat(response.pointsAwarded()).isZero();
         assertThat(response.shardsDropped()).isZero();
         assertThat(response.balance()).isEqualTo(100L);
+        assertThat(response.effectiveCount()).isZero();
+        assertThat(response.autoClicksGranted()).isZero();
+        assertThat(response.effectiveTapCountToday()).isEqualTo(123);
         assertThat(response.boxProgressTapCount()).isZero();
         assertThat(response.nextBoxRequiredTapCount()).isEqualTo(FAR_AWAY_TARGET);
         verify(userTapDailyService, never()).save(any());
         verify(pointAccountService, never()).credit(any(), anyLong());
         verify(eventPublisher, never()).publishEvent(any());
+        verify(passive,never()).settleLocked(any(),any(),anyString(),any());
     }
 
     @Test
@@ -282,8 +304,8 @@ class TapBatchServiceTest {
         assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         InOrder inOrder = org.mockito.Mockito.inOrder(userTapDailyService, userTapProgressService, eventPublisher);
-        inOrder.verify(userTapProgressService).save(progress);
         inOrder.verify(userTapDailyService).save(daily);
+        inOrder.verify(userTapProgressService).save(progress);
         inOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
         verify(pointLedgerService).recordCredit(eq(pointAccount), eq(user), eq(1L), eq("TAP_REWARD"), any(UUID.class));
@@ -418,7 +440,7 @@ class TapBatchServiceTest {
         assertThat(response.validTapCount()).isEqualTo(3200);
         verify(userTapDailyService).save(daily);
         // 진행도는 응답에 담기므로 항상 조회하지만, 지급이 없으면 저장하지 않는다.
-        verify(userTapProgressService, never()).save(any());
+        verify(userTapProgressService).save(any());
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isEqualTo(new RankingScoreSyncRequestedEvent(userId, acceptedAt));
@@ -489,7 +511,7 @@ class TapBatchServiceTest {
     }
 
     @Test
-    void loadsAndSavesPointAccountOnceEvenWhenBatchAwardsMultiplePoints() {
+    void batchCrossingSeveralTargetsPaysOnceAndAdvancesPastItsEndpoint() {
         AppUser user = stubUser();
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.empty());
         when(tapPolicyConfig.pointDailyCap()).thenReturn(20);
@@ -504,25 +526,26 @@ class TapBatchServiceTest {
         when(savedBatch.getPublicId()).thenReturn(UUID.randomUUID());
         when(tapBatchRepository.save(any(TapBatch.class))).thenReturn(savedBatch);
 
-        // 한 배치 안에서 목표를 세 번 넘기도록 다음 목표를 이어서 돌려준다.
-        when(userTapProgressService.drawNextTarget(eq(30L), eq(tapPolicyConfig)))
-                .thenReturn(20, 30, 40);
+        // 목표 세 개 분량의 탭이어도 배치에서 한 번만 지급한다.
+        when(userTapProgressService.drawNextTarget(anyLong(), eq(tapPolicyConfig)))
+                .thenAnswer(i -> (int)(i.getArgument(0,Long.class)+10));
 
         TapBatchSubmitRequest request = new TapBatchSubmitRequest(sessionId, 1L, 30);
         TapBatchSubmitResponse response = tapBatchService.submitBatch(userId, request);
 
-        assertThat(response.pointsAwarded()).isEqualTo(3);
-        assertThat(response.balance()).isEqualTo(3L);
-        assertThat(daily.getPointEarnedAmount()).isEqualTo(3);
+        assertThat(response.pointsAwarded()).isEqualTo(1);
+        assertThat(response.balance()).isEqualTo(1L);
+        assertThat(daily.getPointEarnedAmount()).isEqualTo(1);
+        assertThat(progress.getNextPointTarget()).isEqualTo(40);
 
         // 지급 횟수와 무관하게 계정 조회·저장은 각각 한 번이어야 한다.
         verify(pointAccountService, times(1)).getForUser(userId);
         verify(pointAccountService, times(1)).save(pointAccount);
         verify(pointAccountService, never()).credit(any(), anyLong());
 
-        // 원장은 지급 건마다 남고 멱등 키는 서로 달라야 한다.
+        // 원장도 배치에서 한 번만 기록한다.
         ArgumentCaptor<UUID> keyCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(pointLedgerService, times(3))
+        verify(pointLedgerService, times(1))
                 .recordCredit(eq(pointAccount), eq(user), eq(1L), eq("TAP_REWARD"), keyCaptor.capture());
         assertThat(keyCaptor.getAllValues()).doesNotHaveDuplicates();
     }
@@ -530,7 +553,7 @@ class TapBatchServiceTest {
     private AppUser stubUser() {
         AppUser user = mock(AppUser.class);
         when(user.getId()).thenReturn(userId);
-        when(rewardLock.acquire(userId)).thenReturn(user);
+        when(userService.getById(userId)).thenReturn(user);
         return user;
     }
 
@@ -541,10 +564,5 @@ class TapBatchServiceTest {
     private UserTapSession farAwaySession() {
         AppUser sessionUser = mock(AppUser.class);
         return UserTapSession.createFor(sessionUser, acceptedAt, acceptedAt.plusSeconds(3600), FAR_AWAY_TARGET);
-    }
-    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardPolicy() {
-        var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
-        org.mockito.Mockito.lenient().when(policy.isShardEconomyEnabled()).thenReturn(true);
-        return policy;
     }
 }

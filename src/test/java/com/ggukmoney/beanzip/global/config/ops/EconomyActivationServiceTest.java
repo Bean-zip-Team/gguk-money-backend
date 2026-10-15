@@ -14,7 +14,7 @@ import static org.mockito.ArgumentMatchers.*;
 class EconomyActivationServiceTest {
     private final AppConfigRepository repository=mock(AppConfigRepository.class);
     private final ObjectMapper mapper=new ObjectMapper();
-    private final OpsConfigService service=new OpsConfigService(repository,new AppConfigValueValidator(mapper),new PolicyValueRules(mock(KeycapRepository.class),mapper));
+    private final OpsConfigService service=new OpsConfigService(repository,new AppConfigValueValidator(mapper),new PolicyValueRules(mock(KeycapRepository.class),mapper),mock(KeycapPassivePolicyConfig.class),mock(KeycapBoxPolicyConfig.class));
     private final String key=KeycapBoxPolicyConfig.KEY_SHARD_ENABLED;
     @Test void missingSeedIsExplainedAndActivationIsNotSaved(){
         assertThatThrownBy(()->service.change(key,"missing","true","user","activate"))

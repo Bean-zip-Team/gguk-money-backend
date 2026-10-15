@@ -10,6 +10,7 @@ import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
 import com.ggukmoney.beanzip.domain.tap.service.UserTapProgressService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -35,11 +36,15 @@ public class RankingProjectionService {
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
     private final ZoneId businessZoneId;
+    private final UserRewardLock rewardLock;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<RankingEntry> syncLatestWeeklyScore(UUID userId, Instant occurredAt) {
         return seasonService.findWeeklySeasonContaining(occurredAt)
-                .flatMap(season -> syncWeeklyScore(season, userId, weeklyScore(userId, season), occurredAt, true));
+                .flatMap(season -> {
+                    rewardLock.acquire(userId);
+                    return upsertScore(season, userId, weeklyScore(userId, season), occurredAt, true);
+                });
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -56,19 +61,22 @@ public class RankingProjectionService {
                 || !season.contains(occurredAt)) {
             return Optional.empty();
         }
+        rewardLock.acquire(userId);
         return upsertScore(season, userId, score, occurredAt, publishRedisEvent);
     }
 
     @Deprecated
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RankingEntry syncLatestAllTimeScore(UUID userId) {
+        rewardLock.acquire(userId);
         UserTapProgress progress = userTapProgressService.getForUser(userId);
-        return upsertAllTimeScore(userId, progress.getCumulativeValidTapCount());
+        return upsertAllTimeScore(userId, progress.getCumulativeRankingTapCount());
     }
 
     @Deprecated
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RankingEntry syncAllTimeScore(UUID userId, long cumulativeValidTapCount) {
+        rewardLock.acquire(userId);
         return upsertAllTimeScore(userId, cumulativeValidTapCount);
     }
 
@@ -79,7 +87,7 @@ public class RankingProjectionService {
         RankingEntry entry = entryRepository.findBySeasonAndUserId(season, userId)
                 .orElseGet(() -> RankingEntry.createFor(season, user, cumulativeValidTapCount, null, now));
         String previousRegionCode = entry.getRegionCode();
-        long score = Math.max(entry.getScore(), cumulativeValidTapCount);
+        long score = Math.max(entry.getRealScore(), cumulativeValidTapCount);
         if (entry.getRealScore() != score || entry.getRegionCode() != null) {
             entry.updateScore(score, null, now);
         }
@@ -129,7 +137,7 @@ public class RankingProjectionService {
     }
 
     private long weeklyScore(UUID userId, RankingSeason season) {
-        return userTapDailyRepository.sumTotalValidTapCount(
+        return userTapDailyRepository.sumTotalEffectiveTapCount(
                 userId,
                 LocalDate.ofInstant(season.getStartsAt(), businessZoneId),
                 LocalDate.ofInstant(season.getEndsAt(), businessZoneId)

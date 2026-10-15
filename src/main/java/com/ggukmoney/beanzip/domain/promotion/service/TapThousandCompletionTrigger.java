@@ -57,7 +57,7 @@ public class TapThousandCompletionTrigger implements PromotionTrigger {
         return userTapProgressRepository.findByUserId(userId)
                 .filter(UserTapProgress::hasPromotionTapBaseline)
                 .map(progress -> MissionProgress.of(
-                        progress.getCumulativeValidTapCount() - progress.getPromotionTapBaseline(),
+                        progress.getCumulativeMissionTapCount() - progress.getPromotionTapBaseline(),
                         threshold))
                 // 기준값이 아직 없으면 커트오프에 고정되지 않았다는 뜻이다. 0 에서 시작한다.
                 .orElseGet(() -> MissionProgress.of(0L, threshold));

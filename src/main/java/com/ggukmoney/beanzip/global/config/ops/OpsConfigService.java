@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.global.config.ops;
 
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
+import com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig;
 import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -8,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,6 +35,8 @@ public class OpsConfigService {
     private final AppConfigRepository repository;
     private final AppConfigValueValidator validator;
     private final PolicyValueRules rules;
+    private final KeycapPassivePolicyConfig passiveConfig;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
     @Transactional(readOnly = true)
     public List<AppConfig> currentValues() {
@@ -61,6 +66,10 @@ public class OpsConfigService {
      */
     @Transactional
     public void change(String key, String basedOn, String input, String changedBy, String reason) {
+        if (key.startsWith("keycap.passive.")) {
+            repository.findFirstByConfigKeyOrderByIdAsc(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED)
+                    .orElseThrow(() -> new IllegalArgumentException("패시브 기본 설정을 먼저 등록하세요."));
+        }
         boolean economyKey=com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key);
         if (economyKey) {
             repository.findFirstByConfigKeyOrderByIdAsc(key).orElseThrow(() ->
@@ -84,8 +93,47 @@ public class OpsConfigService {
         String next = validator.normalize(rule, current.getConfigValue(), input);
 
         if (economyKey && !"true".equals(next)) throw new IllegalArgumentException("경제 전환은 활성화만 할 수 있습니다.");
-        repository.save(AppConfig.change(key, next, Instant.now(), author, why));
+        if (KeycapPassivePolicyConfig.KEY_ENABLED.equals(key) && "true".equals(next)
+                && !economy.isShardEconomyEnabled())
+            throw new IllegalArgumentException("조각 경제로 전환한 후 패시브를 활성화하세요.");
+        Instant effectiveAt = Instant.now();
+        if (key.startsWith("keycap.passive.")) {
+            var passive = new java.util.HashMap<String,String>();
+            repository.findLatestEffectiveByConfigKeys(KeycapPassivePolicyConfig.CONFIG_KEYS, effectiveAt)
+                    .forEach(row -> passive.put(row.getConfigKey(),row.getConfigValue()));
+            passive.put(key,next);
+            if (key.equals(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED_AT)) {
+                throw new IllegalArgumentException("활성화 시각은 스위치를 켤 때 자동으로 기록됩니다.");
+            }
+            if (key.equals(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED)
+                    && "true".equals(next) && !"true".equals(current.getConfigValue())) {
+                String activated = "\""+effectiveAt+"\"";
+                passive.put(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED_AT,activated);
+                com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.decode(passive);
+                repository.save(AppConfig.change(com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.KEY_ENABLED_AT,
+                        activated,effectiveAt,author,why));
+            } else {
+                com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.decode(passive);
+            }
+        }
+        repository.save(AppConfig.change(key, next, effectiveAt, author, why));
+        if (key.startsWith("keycap.passive.")) {
+            publishPassivePolicyAfterCommit();
+        }
         log.info("OPS_CONFIG_CHANGED key={} from={} to={} by={} reason={}", key, current.getConfigValue(), next, author, why);
+    }
+
+    private void publishPassivePolicyAfterCommit() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    passiveConfig.refresh();
+                }
+            });
+        } else {
+            passiveConfig.refresh();
+        }
     }
 
     private static String required(String value, int max, String label) {

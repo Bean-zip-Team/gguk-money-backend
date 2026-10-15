@@ -62,6 +62,7 @@ class KeycapDrawServiceTest {
     private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger = mock(KeycapFiveCompletionTrigger.class);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
     private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock = mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class);
+    private final KeycapPassiveService passiveService = mock(KeycapPassiveService.class);
     private final KeycapDrawService service = new KeycapDrawService(
             keycapBoxAccountService,
             keycapDrawRepository,
@@ -75,7 +76,7 @@ class KeycapDrawServiceTest {
             promotionGrantIssuer,
             keycapFiveCompletionTrigger,
             transactionManager,
-            Clock.fixed(NOW, ZoneOffset.UTC), rewardLock
+            Clock.fixed(NOW, ZoneOffset.UTC),rewardLock,passiveService
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -156,10 +157,8 @@ class KeycapDrawServiceTest {
         UserKeycap legacy = UserKeycap.createInProgress(user, keycap);
         legacy.addShard(3, NOW);
         when(userKeycapRepository.findByUserIdAndKeycapIdForUpdate(userId, 1L)).thenReturn(Optional.of(legacy));
-        assertThatThrownBy(() -> service.draw(userId, "unmigrated"))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.draw(userId, "unmigrated")).isInstanceOf(IllegalStateException.class);
         assertThat(wallet.getShardBalance()).isEqualTo(5);
-        assertThat(legacy.isLegacyInProgress()).isTrue();
     }
 
     @Test

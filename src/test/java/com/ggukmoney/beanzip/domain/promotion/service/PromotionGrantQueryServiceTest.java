@@ -85,7 +85,7 @@ class PromotionGrantQueryServiceTest {
 
         UserTapProgress progress = mock(UserTapProgress.class);
         when(progress.getPromotionTapBaseline()).thenReturn(3200L);
-        when(progress.getCumulativeValidTapCount()).thenReturn(4150L);
+        when(progress.getCumulativeMissionTapCount()).thenReturn(4150L);
         when(userTapProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
 
         PromotionGrantByUserResponse response = service.byUser(userId);
@@ -100,7 +100,7 @@ class PromotionGrantQueryServiceTest {
 
         UserTapProgress progress = mock(UserTapProgress.class);
         when(progress.getPromotionTapBaseline()).thenReturn(null);
-        when(progress.getCumulativeValidTapCount()).thenReturn(4150L);
+        when(progress.getCumulativeMissionTapCount()).thenReturn(4150L);
         when(userTapProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
 
         PromotionGrantByUserResponse response = service.byUser(userId);

@@ -34,9 +34,17 @@ class KeycapServiceTest {
     private final UserKeycapRepository userKeycapRepository = mock(UserKeycapRepository.class);
     private final KeycapMapper keycapMapper = Mappers.getMapper(KeycapMapper.class);
     private final OnboardingRewardConfig onboardingRewardConfig = mock(OnboardingRewardConfig.class);
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy=shardEconomy();
     private final KeycapService keycapService =
-            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig, mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class), shardPolicy());
+            new KeycapService(keycapRepository, userKeycapRepository, keycapMapper, onboardingRewardConfig,
+                    mock(com.ggukmoney.beanzip.domain.user.service.UserRewardLock.class),mock(KeycapPassiveService.class),
+                    java.time.Clock.systemUTC(),new com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig(
+                    mock(com.ggukmoney.beanzip.global.config.AppConfigBatchLoader.class)),economy);
 
+    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardEconomy() {
+        var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+        when(policy.isShardEconomyEnabled()).thenReturn(true); return policy;
+    }
     @Test
     void getsActiveBoxKeycapCatalogInRepositoryOrder() {
         Keycap first = keycap(UUID.randomUUID(), "BASIC_001", "Basic", Keycap.Grade.COMMON, 10, 1, true, 1);
@@ -262,7 +270,7 @@ class KeycapServiceTest {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap(keycapId, code, name, Keycap.Grade.COMMON, 10, 1, true, 1));
-        ReflectionTestUtils.setField(userKeycap, "shardCount", userKeycap.getKeycap().getRequiredShardCount() + level - 1);
+        ReflectionTestUtils.setField(userKeycap, "shardCount", userKeycap.getKeycap().getRequiredShardCount() + (level) - 1);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;
@@ -298,10 +306,5 @@ class KeycapServiceTest {
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to create test entity " + type.getSimpleName(), exception);
         }
-    }
-    private static com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig shardPolicy() {
-        var policy=org.mockito.Mockito.mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
-        org.mockito.Mockito.lenient().when(policy.isShardEconomyEnabled()).thenReturn(true);
-        return policy;
     }
 }

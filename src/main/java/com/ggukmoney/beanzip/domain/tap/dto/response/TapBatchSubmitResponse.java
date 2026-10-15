@@ -21,7 +21,7 @@ public record TapBatchSubmitResponse(
         int acceptedCount,
         @Schema(description = "오늘 실제로 친 탭 수예요. 보상 상한(3000탭)과 무관하게 계속 늘어나요.", example = "3763")
         int validTapCount,
-        @Schema(description = "이번 배치에서 지급된 포인트예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "1")
+        @Schema(description = "이번 요청에서 자동 클릭 정산과 직접 탭 배치로 지급된 포인트의 합계예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "1")
         int pointsAwarded,
         @Schema(description = "[deprecated] 경제 전환 전 이번 요청에서 나온 상자 수예요. 전환 후에는 0이며 `shardsDropped`를 사용해요.", example = "0", deprecated = true)
         int boxesDropped,
@@ -51,11 +51,17 @@ public record TapBatchSubmitResponse(
         boolean charging,
         @Schema(description = "[deprecated] 경제 전환 전 다음 개봉 충전 시각이에요. 전환 후에는 null이에요.", nullable = true, deprecated = true)
         Instant nextRechargeAt,
-        @Schema(description = "이번 배치에서 나온 키캡 조각 수예요. 다음 조각 목표에 닿을 때마다 1개씩 나와요(BEA-329). 이미 처리한 배치를 다시 보내면 0이에요.", example = "1")
+        @Schema(description = "경제 전환 후 이번 요청에서 자동 클릭 정산과 직접 탭 배치로 나온 키캡 조각 수의 합계예요. 전환 전에는 0이에요. 드롭당 기본 1개에 조각 크리티컬을 적용해요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "1")
         int shardsDropped,
         @Schema(description = "경제 전환 후 제출 시점의 키캡 조각 잔액이에요. 이번 배치의 드롭을 포함하며 전환 전에는 0이에요.", example = "12")
         int shardBalance,
         @Schema(description = "다음 조각까지 남은 탭 수예요. `nextBoxRequiredTapCount` 필드 값에서 `boxProgressTapCount` 필드 값을 뺀 값이에요.", example = "55")
-        int remainingTapsToNextShard
+        int remainingTapsToNextShard,
+        @Schema(description = "이번 직접 탭에 클릭 크리티컬(②)을 반영한 클릭 수예요. 자동 클릭(⑤)은 포함하지 않아요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "12")
+        int effectiveCount,
+        @Schema(description = "이번 요청에서 직접 탭보다 먼저 정산한 자동 클릭(⑤) 수예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "60")
+        int autoClicksGranted,
+        @Schema(description = "오늘 직접 탭, 클릭 크리티컬(②), 자동 클릭(⑤)을 합한 클릭 수예요. 포인트 지급용 탭 한도와 무관하게 계속 늘어나요.", example = "3823")
+        long effectiveTapCountToday
 ) {
 }

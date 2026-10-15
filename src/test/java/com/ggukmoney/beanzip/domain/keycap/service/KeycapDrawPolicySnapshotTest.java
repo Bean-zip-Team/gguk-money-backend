@@ -44,7 +44,7 @@ class KeycapDrawPolicySnapshotTest {
         var service=new KeycapDrawService(wallets,draws,catalog,owned,mock(UserService.class),selector,policy,
                 mock(PointAccountService.class),mock(PointLedgerService.class),mock(PromotionGrantIssuer.class),
                 mock(KeycapFiveCompletionTrigger.class),mock(PlatformTransactionManager.class),
-                Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),lock);
+                Clock.fixed(Instant.parse("2026-10-14T00:00:00Z"),ZoneOffset.UTC),lock,mock(KeycapPassiveService.class));
         var response=service.draw(userId,"price-race");
         assertThat(response.shardsSpent()).isEqualTo(10);
         assertThat(wallet.getShardBalance()).isEqualTo(10);
