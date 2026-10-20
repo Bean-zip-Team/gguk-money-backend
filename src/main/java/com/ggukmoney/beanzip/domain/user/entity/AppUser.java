@@ -57,6 +57,10 @@ public class AppUser {
     @Column(name = "withdrawn_at")
     private Instant withdrawnAt;
 
+    // 정지 이력. 탈퇴로 status 가 WITHDRAWN 으로 바뀌어도 남아서, 재로그인 복구가 정지를 지우지 못하게 한다.
+    @Column(name = "suspended_at")
+    private Instant suspendedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -74,6 +78,10 @@ public class AppUser {
         return status == Status.WITHDRAWN;
     }
 
+    public boolean isSuspended() {
+        return status == Status.SUSPENDED || suspendedAt != null;
+    }
+
     public void recordLogin(String nickname, String profileImageUrl) {
         if (isWithdrawn()) {
             return;
@@ -85,7 +93,8 @@ public class AppUser {
     }
 
     public void reactivate(String nickname, String profileImageUrl) {
-        this.status = Status.ACTIVE;
+        // 정지된 채 탈퇴했다가 재로그인하면 ACTIVE 가 아니라 정지 상태로 돌아온다.
+        this.status = suspendedAt != null ? Status.SUSPENDED : Status.ACTIVE;
         this.withdrawnAt = null;
         this.nickname = normalizeNullable(nickname);
         this.nicknameNormalized = normalizeNickname(nickname);
@@ -127,6 +136,9 @@ public class AppUser {
     }
 
     public void suspend() {
+        if (suspendedAt == null) {
+            this.suspendedAt = Instant.now();
+        }
         if (status == Status.WITHDRAWN) {
             return;
         }
