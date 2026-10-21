@@ -46,6 +46,12 @@ class AuthWithdrawalTransactionIntegrationTest extends FullStackIntegrationTestS
     @Autowired
     private TossLoginConsentHistoryRepository tossLoginConsentHistoryRepository;
 
+    @Autowired
+    private AuthWithdrawalTransactionService authWithdrawalTransactionService;
+
+    @Autowired
+    private AuthLoginTransactionService authLoginTransactionService;
+
     @MockitoBean
     private TossAuthClient tossAuthClient;
 
@@ -105,5 +111,29 @@ class AuthWithdrawalTransactionIntegrationTest extends FullStackIntegrationTestS
                 .extracting(TossLoginConsentHistory::getStatus)
                 .containsExactly(TossLoginConsentHistory.Status.AGREED, TossLoginConsentHistory.Status.WITHDRAWN);
         assertThat(writeTransactionObserved).isTrue();
+    }
+
+    // 2026-10-19 운영 사례: 정지 계정이 토스 연결 해제(웹훅)로 탈퇴한 뒤 재로그인하면 ACTIVE 로 풀렸다.
+    @Test
+    void keepsSuspensionWhenSuspendedUserUnlinksAndLogsInAgain() {
+        AppUser user = AppUser.createActive("suspended-" + UUID.randomUUID(), null);
+        user.suspend();
+        user = appUserRepository.save(user);
+        String providerUserId = "toss-user-key-" + UUID.randomUUID();
+        authIdentityRepository.save(AuthIdentity.toss(user, providerUserId));
+
+        authWithdrawalTransactionService.completeFromWebhook(providerUserId, "UNLINK");
+        assertThat(appUserRepository.findById(user.getId()).orElseThrow().isWithdrawn()).isTrue();
+
+        AuthLoginTransactionService.LoginTransactionResult result =
+                authLoginTransactionService.loginWithTossUser(providerUserId, "Bean", null, null);
+
+        AppUser reactivated = appUserRepository.findById(user.getId()).orElseThrow();
+        assertThat(result.userId()).isEqualTo(user.getId());
+        assertThat(result.newUser()).isFalse();
+        assertThat(reactivated.isWithdrawn()).isFalse();
+        assertThat(reactivated.getStatus()).isEqualTo(AppUser.Status.SUSPENDED);
+        assertThat(reactivated.isSuspended()).isTrue();
+        assertThat(reactivated.getSuspendedAt()).isNotNull();
     }
 }

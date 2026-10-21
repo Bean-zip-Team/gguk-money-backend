@@ -2,6 +2,8 @@ package com.ggukmoney.beanzip.domain.user.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AppUserTest {
@@ -52,10 +54,44 @@ class AppUserTest {
         user.reactivate(" Toss Bean ", " https://example.com/new.png ");
 
         assertThat(user.isWithdrawn()).isFalse();
+        assertThat(user.getStatus()).isEqualTo(AppUser.Status.ACTIVE);
         assertThat(user.getWithdrawnAt()).isNull();
         assertThat(user.getNickname()).isEqualTo("Toss Bean");
         assertThat(user.getNicknameNormalized()).isEqualTo("toss bean");
         assertThat(user.getProfileImageUrl()).isEqualTo("https://example.com/new.png");
         assertThat(user.getLastLoginAt()).isNotNull();
+    }
+
+    @Test
+    void keepsSuspensionWhenSuspendedUserWithdrawsAndReactivates() {
+        AppUser user = AppUser.createActive("Bean", null);
+        user.suspend();
+        Instant suspendedAt = user.getSuspendedAt();
+        user.withdraw();
+
+        user.reactivate("Bean", null);
+
+        assertThat(user.isWithdrawn()).isFalse();
+        assertThat(user.getStatus()).isEqualTo(AppUser.Status.SUSPENDED);
+        assertThat(user.isSuspended()).isTrue();
+        assertThat(user.getSuspendedAt()).isEqualTo(suspendedAt);
+        assertThat(user.getWithdrawnAt()).isNull();
+    }
+
+    @Test
+    void suspendKeepsFirstSuspendedAtAndMarksWithdrawnUserWithoutChangingStatus() {
+        AppUser user = AppUser.createActive("Bean", null);
+        user.suspend();
+        Instant first = user.getSuspendedAt();
+        user.suspend();
+        assertThat(user.getSuspendedAt()).isEqualTo(first);
+
+        AppUser withdrawn = AppUser.createActive("Gone", null);
+        withdrawn.withdraw();
+        withdrawn.suspend();
+
+        assertThat(withdrawn.getStatus()).isEqualTo(AppUser.Status.WITHDRAWN);
+        assertThat(withdrawn.isSuspended()).isTrue();
+        assertThat(withdrawn.getSuspendedAt()).isNotNull();
     }
 }
