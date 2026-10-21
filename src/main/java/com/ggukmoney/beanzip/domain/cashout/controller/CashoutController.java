@@ -57,6 +57,7 @@ public class CashoutController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "202", description = "출금 신청을 접수했어요. 같은 멱등키로 다시 요청하면 처음 접수한 결과를 다시 돌려줘요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "멱등키가 없거나 형식이 올바르지 않아요. 잔액이 최소 출금 포인트에 못 미쳐도 이 응답을 받아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "정지된 계정이에요. `ACCOUNT_SUSPENDED` 코드를 돌려줘요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 처리 중인 출금 신청이 있어요. `REQUESTED` 또는 `PROCESSING` 상태인 출금이 끝나야 새로 신청할 수 있어요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @PostMapping

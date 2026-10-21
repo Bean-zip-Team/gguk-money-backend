@@ -45,7 +45,8 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
     }
 
     @Test
-    void returnsConflictWithoutMutatingSessionWhenExpectedValuesDoNotMatch() {
+    // 현재도 직전도 아닌 토큰은 유효해질 수 없으므로 409(재시도)가 아니라 재사용으로 판정해야 앱이 세션을 정리한다.
+    void treatsUnknownRefreshTokenAsReuseWithoutMutatingSession() {
         AuthService.AuthSession session = savedSession();
 
         AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
@@ -58,7 +59,7 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
                 Instant.now().plusSeconds(7200)
         );
 
-        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.CONFLICT);
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.REUSED);
         AuthService.AuthSession unchanged = authService.findBySessionId(session.sessionId()).orElseThrow();
         assertThat(unchanged.currentRefreshJtiHash()).isEqualTo("jti-A");
         assertThat(unchanged.refreshTokenHash()).isEqualTo("token-A");
@@ -131,6 +132,31 @@ class RefreshLuaCasIntegrationTest extends RedisIntegrationTestSupport {
         );
 
         assertThat(result).isEqualTo(AuthService.RefreshRotationResult.REUSED);
+    }
+
+    // 저장을 두 번 놓친 앱이 직전보다 오래된 토큰을 내는 경우. 유예 안이어도 재사용이며 스크립트는 세션을 건드리지 않는다.
+    @Test
+    void treatsRefreshTokenOlderThanPreviousAsReuseEvenInsideConflictWindow() {
+        AuthService.AuthSession session = savedSession();
+        Instant firstRotationAt = Instant.now();
+        authService.rotateRefreshToken(session, "jti-A", "token-A", "jti-B", "token-B", firstRotationAt, firstRotationAt.plusSeconds(7200));
+        Instant secondRotationAt = firstRotationAt.plusSeconds(1);
+        authService.rotateRefreshToken(session, "jti-B", "token-B", "jti-C", "token-C", secondRotationAt, secondRotationAt.plusSeconds(7200));
+
+        AuthService.RefreshRotationResult result = authService.rotateRefreshToken(
+                session,
+                "jti-A",
+                "token-A",
+                "jti-D",
+                "token-D",
+                secondRotationAt.plusMillis(500),
+                secondRotationAt.plusSeconds(9000)
+        );
+
+        assertThat(result).isEqualTo(AuthService.RefreshRotationResult.REUSED);
+        AuthService.AuthSession unchanged = authService.findBySessionId(session.sessionId()).orElseThrow();
+        assertThat(unchanged.currentRefreshJtiHash()).isEqualTo("jti-C");
+        assertThat(unchanged.previousRefreshJtiHash()).isEqualTo("jti-B");
     }
 
     private AuthService.AuthSession savedSession() {
