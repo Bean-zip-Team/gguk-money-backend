@@ -100,6 +100,15 @@ public class Keycap {
         return keycap;
     }
 
+    /** 앱 `collectionName()`과 같은 규칙으로 만든 표시 이름이다. 한쪽을 바꾸면 다른 쪽도 맞춘다 (BEA-357). */
+    public String getSoundName() {
+        return switch (code) {
+            case "main" -> "기본";
+            case "cheer" -> "응원";
+            default -> name.replaceFirst("\\s*키캡$", "");
+        };
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

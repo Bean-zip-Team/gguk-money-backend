@@ -26,7 +26,7 @@ public record MyKeycapItemResponse(
         String imageUrl,
         @Schema(description = "사운드 URL이에요.", example = "https://example.com/keycap.mp3")
         String soundUrl,
-        @Schema(description = "상세 화면의 사운드 항목에 표시할 이름이에요. 지금은 키캡 이름과 같아요.", example = "기본 콩")
+        @Schema(description = "상세 화면의 사운드 항목에 표시할 이름이에요. 앱 카드에 표시하는 키캡 이름과 같아요. 예) `메인 키캡` → `기본`, `돌고래 키캡` → `돌고래`", example = "돌고래")
         String soundName,
         @Schema(description = "현재 레벨에서 계산한 효과예요. 실제 지급은 단일 장착 슬롯의 키캡에만 적용해요. `enabled=false`이면 신규 적립과 직접 탭 효과를 적용하지 않지만, 비활성화 전에 쌓인 자동 클릭은 다음 정산 때 지급해요.")
         KeycapPassiveEffectResponse effects,
@@ -35,7 +35,7 @@ public record MyKeycapItemResponse(
 ) {
     public MyKeycapItemResponse(UUID id,String code,String name,int level,String status,boolean equipped,
             String grade,String acquisitionType,String imageUrl,String soundUrl) {
-        this(id,code,name,level,status,equipped,grade,acquisitionType,imageUrl,soundUrl,name,null,0);
+        this(id,code,name,level,status,equipped,grade,acquisitionType,imageUrl,soundUrl,null,null,0);
     }
     public MyKeycapItemResponse withEffects(KeycapPassiveEffectResponse value) {
         return new MyKeycapItemResponse(keycapId,code,name,level,status,equipped,grade,acquisitionType,imageUrl,soundUrl,soundName,value,shardCount);

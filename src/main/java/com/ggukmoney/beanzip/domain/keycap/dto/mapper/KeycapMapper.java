@@ -20,7 +20,6 @@ public interface KeycapMapper {
     @Mapping(target = "keycapId", source = "publicId")
     @Mapping(target = "grade", expression = "java(keycap.getGrade().name())")
     @Mapping(target = "acquisitionType", expression = "java(keycap.getAcquisitionType().name())")
-    @Mapping(target = "soundName", source = "name")
     KeycapItemResponse mapToKeycapItemResponse(Keycap keycap);
 
     default KeycapListResponse mapToKeycapListResponse(List<Keycap> keycaps) {
@@ -37,7 +36,7 @@ public interface KeycapMapper {
     @Mapping(target = "acquisitionType", expression = "java(userKeycap.getKeycap().getAcquisitionType().name())")
     @Mapping(target = "imageUrl", source = "keycap.imageUrl")
     @Mapping(target = "soundUrl", source = "keycap.soundUrl")
-    @Mapping(target = "soundName", source = "keycap.name")
+    @Mapping(target = "soundName", source = "keycap.soundName")
     MyKeycapItemResponse mapToMyKeycapItemResponse(UserKeycap userKeycap);
 
     default MyKeycapListResponse mapToMyKeycapListResponse(List<UserKeycap> userKeycaps) {
