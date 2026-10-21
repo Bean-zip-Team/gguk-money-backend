@@ -15,7 +15,9 @@ if currentJti ~= ARGV[1] or currentToken ~= ARGV[2] then
     end
     return 3
   end
-  return 2
+  -- 현재도 직전도 아닌 토큰은 다시 유효해질 수 없다. 409 로 돌리면 앱이 재시도만 반복하며 갇히므로
+  -- 직전 토큰을 유예 뒤에 낸 것과 똑같이 재사용으로 본다(세션 삭제 → 401 AUTH_REFRESH_REUSED).
+  return 3
 end
 redis.call('HSET', KEYS[1],
   'previousRefreshJtiHash', currentJti,
