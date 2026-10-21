@@ -21,6 +21,8 @@ public record KeycapDrawResponse(
         String imageUrl,
         @Schema(description = "사운드 URL이에요.", example = "https://example.com/keycap.mp3")
         String soundUrl,
+        @Schema(description = "상세 화면의 사운드 항목에 표시할 이름이에요. 앱 카드에 표시하는 키캡 이름과 같아요. 예) `메인 키캡` → `기본`, `돌고래 키캡` → `돌고래`", example = "돌고래")
+        String soundName,
         @Schema(description = "처음 얻은 키캡인지 여부예요. false면 이미 보유한 키캡이라 레벨만 올랐어요.", example = "false")
         boolean newlyAcquired,
         @Schema(description = "뽑기 후 이 키캡의 레벨이에요. 같은 멱등키로 재호출해도 처음 뽑았을 때의 레벨을 돌려줘요.", example = "9")

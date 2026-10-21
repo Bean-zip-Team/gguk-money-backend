@@ -190,7 +190,7 @@ class KeycapControllerTest {
         UUID keycapId = UUID.randomUUID();
         Instant drawnAt = Instant.parse("2026-10-09T01:00:00Z");
         when(keycapDrawService.draw(authenticatedUserId(), "idem-key")).thenReturn(new KeycapDrawResponse(
-                drawId, keycapId, "RARE_001", "Rare", "RARE", "https://example.com/rare.png", null, false, 9, 5, 12, drawnAt));
+                drawId, keycapId, "RARE_001", "Rare", "RARE", "https://example.com/rare.png", null, "레어", false, 9, 5, 12, drawnAt));
 
         mockMvc.perform(post("/api/keycaps/draw")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -201,6 +201,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
                 .andExpect(jsonPath("$.data.code").value("RARE_001"))
                 .andExpect(jsonPath("$.data.grade").value("RARE"))
+                .andExpect(jsonPath("$.data.soundName").value("레어"))
                 .andExpect(jsonPath("$.data.newlyAcquired").value(false))
                 .andExpect(jsonPath("$.data.level").value(9))
                 .andExpect(jsonPath("$.data.shardsSpent").value(5))

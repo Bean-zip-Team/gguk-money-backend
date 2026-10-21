@@ -199,6 +199,7 @@ public class KeycapDrawService {
                 keycap.getGrade().name(),
                 keycap.getImageUrl(),
                 keycap.getSoundUrl(),
+                keycap.getSoundName(),
                 draw.isNewlyAcquired(),
                 draw.getLevelAfter(),
                 draw.getShardsSpent(),
