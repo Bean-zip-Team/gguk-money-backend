@@ -113,6 +113,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycaps[0].requiredShardCount").value(10))
                 .andExpect(jsonPath("$.data.keycaps[0].season").value(1))
                 .andExpect(jsonPath("$.data.keycaps[0].acquisitionType").value("BOX"))
+                .andExpect(jsonPath("$.data.keycaps[0].soundName").value("Basic"))
                 .andExpect(jsonPath("$.data.keycaps[0].id").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
     }
@@ -136,6 +137,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycaps[0].grade").value("COMMON"))
                 .andExpect(jsonPath("$.data.keycaps[0].acquisitionType").value("BOX"))
                 .andExpect(jsonPath("$.data.keycaps[0].imageUrl").value("https://example.com/keycap.png"))
+                .andExpect(jsonPath("$.data.keycaps[0].soundName").value("Basic"))
                 .andExpect(jsonPath("$.data.keycaps[0].status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.keycaps[0].equipped").value(true))
                 .andExpect(jsonPath("$.data.keycaps[0].id").doesNotExist())
@@ -190,7 +192,7 @@ class KeycapControllerTest {
         UUID keycapId = UUID.randomUUID();
         Instant drawnAt = Instant.parse("2026-10-09T01:00:00Z");
         when(keycapDrawService.draw(authenticatedUserId(), "idem-key")).thenReturn(new KeycapDrawResponse(
-                drawId, keycapId, "RARE_001", "Rare", "RARE", "https://example.com/rare.png", null, false, 9, 5, 12, drawnAt));
+                drawId, keycapId, "RARE_001", "Rare", "RARE", "https://example.com/rare.png", null, "Rare", false, 9, 5, 12, drawnAt));
 
         mockMvc.perform(post("/api/keycaps/draw")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -201,6 +203,7 @@ class KeycapControllerTest {
                 .andExpect(jsonPath("$.data.keycapId").value(keycapId.toString()))
                 .andExpect(jsonPath("$.data.code").value("RARE_001"))
                 .andExpect(jsonPath("$.data.grade").value("RARE"))
+                .andExpect(jsonPath("$.data.soundName").value("Rare"))
                 .andExpect(jsonPath("$.data.newlyAcquired").value(false))
                 .andExpect(jsonPath("$.data.level").value(9))
                 .andExpect(jsonPath("$.data.shardsSpent").value(5))

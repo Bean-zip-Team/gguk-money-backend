@@ -41,6 +41,7 @@ class KeycapMapperTest {
         assertThat(response.acquisitionType()).isEqualTo("BOX");
         assertThat(response.imageUrl()).isEqualTo("https://example.com/keycap.png");
         assertThat(response.soundUrl()).isEqualTo("https://example.com/keycap.mp3");
+        assertThat(response.soundName()).isEqualTo("Basic");
     }
 
     @Test
@@ -81,6 +82,7 @@ class KeycapMapperTest {
         assertThat(response.acquisitionType()).isEqualTo("BOX");
         assertThat(response.imageUrl()).isNull();
         assertThat(response.soundUrl()).isNull();
+        assertThat(response.soundName()).isEqualTo("Rare");
     }
 
     @Test
