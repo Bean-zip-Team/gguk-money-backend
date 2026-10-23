@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
@@ -36,6 +37,7 @@ public class TapRewardService {
     private final TapThousandCompletionTrigger thousandTrigger;
     private final ApplicationEventPublisher events;
     private final ZoneId businessZoneId;
+    private final ClickCriticalSchedule clickCriticals;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public Award award(AppUser user, Instant now, Effects effects, int count, boolean automatic,
@@ -46,10 +48,11 @@ public class TapRewardService {
         var session = sessionService.getOrCreateActiveSession(user, now, tap);
         var account = points.getForUser(user.getId());
         var wallet = wallets.getForUserForUpdate(user.getId());
-        if (count==0) return new Award(0,0,0,daily,progress,session,account,wallet);
+        if (count==0) return new Award(0,0,0,0,daily,progress,session,account,wallet);
         int eligible = Math.min(count, Math.max(tap.maxPerDay() - daily.getValidTapCount(), 0));
-        var clicks = automatic ? new KeycapPassiveRoller.ClickResult(count,count,eligible)
-                : roller.rollClicks(effects,count,eligible);
+        // Automatic clicks bypass axis ② and do not advance the manual tap numbers it is announced on.
+        var clicks = automatic ? new ClickCriticalSchedule.ClickResult(count,count,eligible,0)
+                : clickCriticals.roll(user.getId(),progress.getCumulativeMissionTapCount(),effects.click(),count,eligible);
         if (!automatic) daily.addSubmittedTaps(count);
         daily.addEffectiveTaps(clicks.effectiveCount());
         daily.addValidTaps(eligible);
@@ -96,7 +99,7 @@ public class TapRewardService {
         if (awarded>0) points.save(account);
         if (shards>0) wallets.save(wallet);
         if (count>0) events.publishEvent(new RankingScoreSyncRequestedEvent(user.getId(),now));
-        return new Award(clicks.effectiveCount(),awarded,shards,daily,progress,session,account,wallet);
+        return new Award(clicks.effectiveCount(),clicks.criticalCount(),awarded,shards,daily,progress,session,account,wallet);
     }
 
     public int availableShardBalance(UUID userId) { return wallets.getAvailableShardBalance(userId); }
@@ -112,6 +115,6 @@ public class TapRewardService {
             promotionIssuer.issueIfEligible(thousandTrigger,PromotionTriggerContext.tapThresholdCrossed(user,after-baseline,now));
     }
 
-    public record Award(int effectiveCount, int pointsAwarded, int shardsDropped, UserTapDaily daily,
+    public record Award(int effectiveCount, int clickCriticalCount, int pointsAwarded, int shardsDropped, UserTapDaily daily,
                         UserTapProgress progress, UserTapSession session, PointAccount account, KeycapBoxAccount wallet) {}
 }

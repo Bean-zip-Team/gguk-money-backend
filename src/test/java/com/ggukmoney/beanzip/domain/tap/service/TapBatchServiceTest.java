@@ -81,10 +81,12 @@ class TapBatchServiceTest {
     private final LocalDate tapDate = LocalDate.of(2026, 7, 21);
 
     private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+    private final com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule clickCriticals=
+            new com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule("integration-test-secret-at-least-32-bytes-long");
     private final TapBatchService tapBatchService = new TapBatchService(
             tapBatchRepository, new TapRewardService(userTapDailyService,userTapProgressService,userTapSessionService,
                     pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
-                    promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId),
+                    promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId,clickCriticals),
             passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,clock
     ,economy);
 

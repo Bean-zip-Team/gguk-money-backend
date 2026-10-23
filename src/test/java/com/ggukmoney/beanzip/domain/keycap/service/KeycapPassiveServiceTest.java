@@ -86,7 +86,7 @@ class KeycapPassiveServiceTest {
         when(points.getForUser(any())).thenReturn(account); when(wallets.getForUserForUpdate(any())).thenReturn(wallet);
         when(wallets.getAvailableShardBalance(any())).thenAnswer(i->wallet.getShardBalance());
         when(rewards.award(any(),any(),any(),anyInt(),anyBoolean(),any(),any())).thenAnswer(i ->
-                new TapRewardService.Award(i.getArgument(3),0,0,null,null,null,account,wallet));
+                new TapRewardService.Award(i.getArgument(3),0,0,0,null,null,null,account,wallet));
         var service=new KeycapPassiveService(mock(UserRewardLock.class),equipment,checkpoints,
                 mock(KeycapPassiveSettlementRepository.class),config,rewards,new ObjectMapper(),Clock.systemUTC(),points,wallets,shardEconomy());
         var start=Instant.parse("2026-10-01T00:00:00Z");
@@ -134,7 +134,7 @@ class KeycapPassiveServiceTest {
         var points=mock(PointAccountService.class); var account=PointAccount.createFor(user); when(points.getForUser(any())).thenReturn(account);
         var wallets=mock(KeycapBoxAccountService.class); var wallet=KeycapBoxAccount.createFor(user, Instant.EPOCH);
         var rewards=mock(TapRewardService.class); when(rewards.award(any(),any(),any(),anyInt(),anyBoolean(),any(),any())).thenAnswer(i->
-                new TapRewardService.Award(i.getArgument(3),0,0,null,null,null,account,wallet));
+                new TapRewardService.Award(i.getArgument(3),0,0,0,null,null,null,account,wallet));
         var service=new KeycapPassiveService(mock(UserRewardLock.class),equipment,checkpoints,mock(KeycapPassiveSettlementRepository.class),
                 config,rewards,new ObjectMapper(),Clock.systemUTC(),points,wallets,shardEconomy());
         assertThat(service.settleLocked(user,start,"off-first",new KeycapPassiveRoller()).autoClicksGranted()).isZero();

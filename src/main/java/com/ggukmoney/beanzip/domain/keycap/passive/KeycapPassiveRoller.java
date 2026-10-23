@@ -7,39 +7,21 @@ import java.util.Objects;
 import java.util.random.RandomGenerator;
 
 /**
- * Independent server trials for accepted taps, shard drops and point payout boundaries.
+ * Independent server trials for shard drops and point payout boundaries.
  * Results must be persisted by the transaction adapter before a request can be replayed.
+ * Click criticals are announced ahead of the taps, so {@link ClickCriticalSchedule} decides them.
  */
 public final class KeycapPassiveRoller {
-    private final RandomGenerator clickRandom;
     private final RandomGenerator shardRandom;
     private final RandomGenerator pointRandom;
 
     public KeycapPassiveRoller() {
-        this(RandomGenerator.getDefault(), RandomGenerator.getDefault(), RandomGenerator.getDefault());
+        this(RandomGenerator.getDefault(), RandomGenerator.getDefault());
     }
 
-    public KeycapPassiveRoller(RandomGenerator clickRandom, RandomGenerator shardRandom, RandomGenerator pointRandom) {
-        this.clickRandom = Objects.requireNonNull(clickRandom);
+    public KeycapPassiveRoller(RandomGenerator shardRandom, RandomGenerator pointRandom) {
         this.shardRandom = Objects.requireNonNull(shardRandom);
         this.pointRandom = Objects.requireNonNull(pointRandom);
-    }
-
-    public ClickResult rollClicks(Effects effects, int acceptedCount, int pointEligibleRawCount) {
-        Objects.requireNonNull(effects);
-        if (acceptedCount < 0 || pointEligibleRawCount < 0 || pointEligibleRawCount > acceptedCount) {
-            throw new IllegalArgumentException("Invalid accepted tap prefix");
-        }
-        int effectiveCount = 0;
-        int eligibleEffectiveCount = 0;
-        for (int i = 0; i < acceptedCount; i++) {
-            int multiplier = roll(effects.click(), clickRandom);
-            effectiveCount = Math.addExact(effectiveCount, multiplier);
-            if (i < pointEligibleRawCount) {
-                eligibleEffectiveCount = Math.addExact(eligibleEffectiveCount, multiplier);
-            }
-        }
-        return new ClickResult(acceptedCount, effectiveCount, eligibleEffectiveCount);
     }
 
     public int rollShard(Effects effects, int baseAmount) {
@@ -61,6 +43,4 @@ public final class KeycapPassiveRoller {
     private int roll(Critical effect, RandomGenerator random) {
         return effect.probability() > 0 && random.nextDouble() < effect.probability() ? effect.multiplier() : 1;
     }
-
-    public record ClickResult(int acceptedCount, int effectiveCount, int pointEligibleEffectiveCount) {}
 }
