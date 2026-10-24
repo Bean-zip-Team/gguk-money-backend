@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.*;
+import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
 import com.ggukmoney.beanzip.domain.keycap.repository.*;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
@@ -33,6 +34,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean AppConfigBatchLoader requestLoader;
     @Autowired KeycapPassiveService passive;
     @Autowired TapBatchService taps;
+    @Autowired com.ggukmoney.beanzip.domain.tap.service.TapStatusService status;
     @Autowired KeycapService keycaps;
     @Autowired KeycapDrawService draws;
     @Autowired AppUserRepository users;
@@ -93,6 +95,47 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         passive.settle(user.getId(),"init");
         jdbcTemplate.update("update keycap_passive_checkpoint set last_activity_at=? where user_id=?",
                 java.sql.Timestamp.from(Instant.now().minus(Duration.ofDays(days))),user.getId());
+    }
+
+    @Test void announcedClickCriticalsAreTheOnesTheNextBatchAppliesAndEachBatchIsAudited() {
+        var user=user("pudding");
+        var session=UUID.randomUUID();
+        var first=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,1L,100));
+        var schedule=first.clickCriticalSchedule();
+        assertThat(schedule.multiplier()).isEqualTo(2);
+        assertThat(schedule.baseTapNumber()).isEqualTo(100);
+        assertThat(status.getTodayStatus(user.getId()).clickCriticalSchedule()).isEqualTo(schedule);
+
+        long sequence=2;
+        for (int size : new int[]{37,100,64}) {
+            var announced=schedule;
+            var next=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,sequence++,size));
+            int due=(int)announced.tapOffsets().stream().filter(offset -> offset<=size).count();
+            assertThat(next.effectiveCount()).as("batch of %d",size).isEqualTo(size+due);
+            schedule=next.clickCriticalSchedule();
+            assertThat(schedule.baseTapNumber()).isEqualTo(announced.baseTapNumber()+size);
+            assertThat(schedule.tapOffsets().stream().filter(offset -> offset<=ClickCriticalSchedule.WINDOW-size).toList())
+                    .isEqualTo(announced.tapOffsets().stream().filter(offset -> offset>size).map(offset -> offset-size).toList());
+            var audit=jdbcTemplate.queryForMap("select start_tap_number,equipped_keycap_code,click_critical_probability,"
+                    +"click_critical_multiplier,click_critical_count from tap_batch where user_id=? and sequence=?",user.getId(),sequence-1);
+            assertThat(audit).containsEntry("start_tap_number",announced.baseTapNumber()+1).containsEntry("equipped_keycap_code","pudding")
+                    .containsEntry("click_critical_multiplier",2).containsEntry("click_critical_count",due)
+                    .containsEntry("click_critical_probability",passive.displayEffects(user.getId()).click().probability());
+        }
+        // A retried batch neither applies nor re-rolls anything.
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,sequence-1,64)).clickCriticalSchedule())
+                .isEqualTo(schedule);
+        assertThat(status.getTodayStatus(user.getId()).clickCriticalSchedule()).isEqualTo(schedule);
+    }
+
+    @Test void keycapsWithoutClickCriticalAnnounceNothing() {
+        var user=user("main");
+        var result=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(UUID.randomUUID(),1L,100));
+        assertThat(result.clickCriticalSchedule()).isNull();
+        assertThat(result.effectiveCount()).isEqualTo(100);
+        assertThat(status.getTodayStatus(user.getId()).clickCriticalSchedule()).isNull();
+        assertThat(jdbcTemplate.queryForMap("select equipped_keycap_code,click_critical_count from tap_batch where user_id=?",user.getId()))
+                .containsEntry("equipped_keycap_code","main").containsEntry("click_critical_count",0);
     }
 
     @Test void sameKeyAndSimultaneousRequestsPayExactlyOnceAndReplaySnapshot() throws Exception {

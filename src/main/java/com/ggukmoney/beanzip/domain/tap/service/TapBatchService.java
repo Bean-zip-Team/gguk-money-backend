@@ -1,7 +1,10 @@
 package com.ggukmoney.beanzip.domain.tap.service;
+import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
+import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Critical;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService;
 import com.ggukmoney.beanzip.domain.tap.dto.request.TapBatchSubmitRequest;
+import com.ggukmoney.beanzip.domain.tap.dto.response.ClickCriticalScheduleResponse;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapBatchSubmitResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.TapBatch;
 import com.ggukmoney.beanzip.domain.tap.repository.TapBatchRepository;
@@ -33,6 +36,7 @@ public class TapBatchService {
     private final TapPolicyConfig tapPolicyConfig;
     private final Clock clock;
     private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
+    private final ClickCriticalSchedule clickCriticals;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId,TapBatchSubmitRequest request) {
@@ -51,7 +55,8 @@ public class TapBatchService {
             // Replaying neither settles new automatic clicks nor rolls another reward.
             var state=rewards.award(user,now,com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE,
                     0,true,saved.getPublicId(),new KeycapPassiveRoller());
-            return response(saved.getAcceptedCount(),0,0,0,0,state,shard,userId,now);
+            var click=passive.displayEffects(userId).click();
+            return response(saved.getAcceptedCount(),0,0,0,0,state,shard,userId,now,click);
         }
         var batch=TapBatch.createFor(user,request.tapSessionId(),request.sequence(),request.submittedCount(),hash);
         batch.markAccepted(request.submittedCount());
@@ -60,14 +65,16 @@ public class TapBatchService {
         // The request owns one roller; automatic clicks bypass axis ②.
         var roller=new KeycapPassiveRoller();
         var automatic=passive.settleLocked(user,now,"tap:"+batch.getPublicId(),roller,context);
-        var effects=passive.activeEffects(userId,context);
+        var equipment=passive.activeEquipment(userId,context);
+        var effects=equipment.effects();
         var award=rewards.award(user,now,effects,request.submittedCount(),false,batch.getPublicId(),roller);
-        var result=response(request.submittedCount(),award.effectiveCount(),automatic.autoClicksGranted(),
-                automatic.pointsAwarded(),automatic.shardsDropped(),award,shard,userId,now);
-        return result;
+        long startTapNumber=award.progress().getCumulativeMissionTapCount()-request.submittedCount()+1;
+        batch.recordClickCriticals(startTapNumber,equipment.code(),effects.click(),award.clickCriticalCount());
+        return response(request.submittedCount(),award.effectiveCount(),automatic.autoClicksGranted(),
+                automatic.pointsAwarded(),automatic.shardsDropped(),award,shard,userId,now,effects.click());
     }
 
-    private TapBatchSubmitResponse response(int accepted,int effective,int automatic,int autoPoints,int autoShards,TapRewardService.Award award,boolean shard,UUID userId,Instant now) {
+    private TapBatchSubmitResponse response(int accepted,int effective,int automatic,int autoPoints,int autoShards,TapRewardService.Award award,boolean shard,UUID userId,Instant now,Critical click) {
         var daily=award.daily(); var session=award.session();
         int remainingShard=(int)Math.max(session.getNextBoxTarget()-session.getSessionValidTapCount(),0);
         var cycle=shard ? null : award.wallet().calculateOpenCycleSnapshot(now,economy.openCycleDuration(),
@@ -79,7 +86,8 @@ public class TapBatchService {
                 progressService.remainingTapsToNextPoint(award.progress(),daily,tapPolicyConfig),remainingShard,shard?0:award.wallet().getBoxBalance(),
                 !shard && cycle.canFreeOpen(),!shard && cycle.canAdOpen(),!shard && cycle.charging(),shard?null:cycle.nextRechargeAt(),
                 shard?drops:0,shard?rewards.availableShardBalance(userId):0,remainingShard,
-                effective,automatic,daily.getTotalEffectiveTapCount());
+                effective,automatic,daily.getTotalEffectiveTapCount(),
+                ClickCriticalScheduleResponse.of(clickCriticals,userId,award.progress().getCumulativeMissionTapCount(),click));
     }
 
     private String requestHash(TapBatchSubmitRequest request) {

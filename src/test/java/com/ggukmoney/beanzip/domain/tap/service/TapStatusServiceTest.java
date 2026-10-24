@@ -31,12 +31,15 @@ class TapStatusServiceTest {
     private final UserTapSessionService userTapSessionService = mock(UserTapSessionService.class);
     private final UserService userService = mock(UserService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
+    private final com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService passive =
+            mock(com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.class);
     private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final ZoneId businessZoneId = ZoneId.of("Asia/Seoul");
     private final TapStatusService tapStatusService = new TapStatusService(
             userTapDailyService, userTapProgressService, userTapSessionService, userService, tapPolicyConfig,
-            clock, businessZoneId
+            clock, businessZoneId, passive,
+            new com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule("integration-test-secret-at-least-32-bytes-long")
     );
 
     private final UUID userId = UUID.randomUUID();
@@ -48,6 +51,7 @@ class TapStatusServiceTest {
         lenient().when(userTapProgressService.remainingTapsToNextPoint(any(), any(), any())).thenCallRealMethod();
         lenient().when(tapPolicyConfig.pointDailyCap()).thenReturn(150);
         lenient().when(tapPolicyConfig.maxPerDay()).thenReturn(3000);
+        lenient().when(passive.displayEffects(any(UUID.class))).thenReturn(com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE);
     }
 
     @Test

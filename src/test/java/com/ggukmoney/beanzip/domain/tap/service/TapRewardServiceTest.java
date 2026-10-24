@@ -31,7 +31,8 @@ class TapRewardServiceTest {
     private final TapRewardService rewards = new TapRewardService(dailyService, progressService, sessionService,
             points, ledger, wallets, tap, mock(PromotionPolicyConfig.class),
             mock(PromotionGrantIssuer.class), mock(TapThousandCompletionTrigger.class),
-            mock(ApplicationEventPublisher.class),ZoneOffset.UTC);
+            mock(ApplicationEventPublisher.class),ZoneOffset.UTC,
+            new com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule("integration-test-secret-at-least-32-bytes-long"));
     private final AppUser user = mock(AppUser.class);
     private final Instant now = Instant.parse("2026-10-10T03:00:00Z");
     private final UserTapDaily daily = UserTapDaily.createFor(user, LocalDate.of(2026,10,10));
