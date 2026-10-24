@@ -1,6 +1,9 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
+import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService;
 import com.ggukmoney.beanzip.domain.tap.dto.BoxProgressSnapshot;
+import com.ggukmoney.beanzip.domain.tap.dto.response.ClickCriticalScheduleResponse;
 import com.ggukmoney.beanzip.domain.tap.dto.response.TapTodayStatusResponse;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapProgress;
@@ -27,6 +30,8 @@ public class TapStatusService {
     private final TapPolicyConfig tapPolicyConfig;
     private final Clock clock;
     private final ZoneId businessZoneId;
+    private final KeycapPassiveService passive;
+    private final ClickCriticalSchedule clickCriticals;
 
     public TapTodayStatusResponse getTodayStatus(UUID userId) {
         AppUser user = userService.getById(userId);
@@ -50,7 +55,9 @@ public class TapStatusService {
                 remainingToNextPoint,
                 remainingToNextBox,
                 boxProgress.cumulativeValidTapCount(),
-                boxProgress.nextBoxTarget()
+                boxProgress.nextBoxTarget(),
+                ClickCriticalScheduleResponse.of(clickCriticals, userId, progress.getCumulativeMissionTapCount(),
+                        passive.displayEffects(userId).click())
         );
     }
 }

@@ -19,6 +19,8 @@ public record TapTodayStatusResponse(
         @Schema(description = "현재 조각 세션에 쌓인 탭 수예요. 이름은 상자 시절 그대로지만 키캡 조각 진행도를 담는 현역 필드예요. 마지막 탭 뒤 유휴 시간이 지나 세션이 만료됐으면 0이에요.", example = "45")
         long boxProgressTapCount,
         @Schema(description = "다음 조각이 나오는 세션 누적 탭 수예요. 이름은 상자 시절 그대로지만 키캡 조각 진행도를 담는 현역 필드예요. `boxProgressTapCount` 필드 값이 이 값에 닿으면 조각이 하나 나와요.", example = "100")
-        int nextBoxRequiredTapCount
+        int nextBoxRequiredTapCount,
+        @Schema(description = "앞으로 300탭 안에서 클릭 크리티컬이 터질 탭 예정표예요. 장착한 키캡에 클릭 크리티컬이 없거나 패시브가 꺼져 있으면 null이에요.", nullable = true)
+        ClickCriticalScheduleResponse clickCriticalSchedule
 ) {
 }

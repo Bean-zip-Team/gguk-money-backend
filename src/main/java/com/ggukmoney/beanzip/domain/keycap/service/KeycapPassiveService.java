@@ -99,9 +99,24 @@ public class KeycapPassiveService {
     }
 
     public Effects activeEffects(UUID userId,RequestPolicy context) {
-        if (!context.shard()) return Effects.NONE;
+        return activeEquipment(userId,context).effects();
+    }
+
+    /** Display only (tap status, batch retries): the cached policy, and no effect rather than 503 while it is unloaded. */
+    @Transactional(readOnly=true)
+    public Effects displayEffects(UUID userId) {
+        var snapshot=config.snapshot();
+        if (!economy.isShardEconomyEnabled() || !snapshot.loaded() || !snapshot.enabled()) return Effects.NONE;
+        return currentEquipment(userId,snapshot).effects();
+    }
+
+    /** The equipped code is recorded with each tap batch so equipment switching stays traceable (BEA-367). */
+    public ActiveEquipment activeEquipment(UUID userId,RequestPolicy context) {
+        if (!context.shard()) return ActiveEquipment.NONE;
         var snapshot=requireLoaded(context.passive());
-        return snapshot.enabled()?currentEquipment(userId,snapshot).effects():Effects.NONE;
+        if (!snapshot.enabled()) return ActiveEquipment.NONE;
+        var current=currentEquipment(userId,snapshot);
+        return new ActiveEquipment(current.code(),current.effects());
     }
 
     @Transactional(readOnly=true)
@@ -139,5 +154,8 @@ public class KeycapPassiveService {
                 KeycapPassivePolicyConfig.decode(java.util.Map.of()));
     }
     public record RequestPolicy(boolean shard,KeycapPassivePolicyConfig.Snapshot passive) {}
+    public record ActiveEquipment(String code,Effects effects) {
+        public static final ActiveEquipment NONE=new ActiveEquipment(null,Effects.NONE);
+    }
     private record Equipment(String code,int level,Effects effects) {}
 }

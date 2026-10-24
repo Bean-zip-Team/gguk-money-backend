@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.tap.entity;
 
+import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Critical;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -58,6 +59,22 @@ public class TapBatch {
     @Column(name = "bot_suspected", nullable = false)
     private boolean botSuspected = false;
 
+    // Click critical audit (BEA-367). Null before BEA-367: those criticals were random and cannot be recomputed.
+    @Column(name = "start_tap_number")
+    private Long startTapNumber;
+
+    @Column(name = "equipped_keycap_code")
+    private String equippedKeycapCode;
+
+    @Column(name = "click_critical_probability")
+    private Double clickCriticalProbability;
+
+    @Column(name = "click_critical_multiplier")
+    private Integer clickCriticalMultiplier;
+
+    @Column(name = "click_critical_count")
+    private Integer clickCriticalCount;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -76,6 +93,15 @@ public class TapBatch {
 
     public void markAccepted(int acceptedCount) {
         this.acceptedCount = acceptedCount;
+    }
+
+    /** Enough to recompute every tap of this batch with {@code ClickCriticalSchedule}. */
+    public void recordClickCriticals(long startTapNumber, String equippedKeycapCode, Critical click, int criticalCount) {
+        this.startTapNumber = startTapNumber;
+        this.equippedKeycapCode = equippedKeycapCode;
+        this.clickCriticalProbability = click.probability();
+        this.clickCriticalMultiplier = click.multiplier();
+        this.clickCriticalCount = criticalCount;
     }
 
     public void markBotSuspected() {

@@ -88,7 +88,7 @@ class TapBatchServiceTest {
                     pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
                     promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId,clickCriticals),
             passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,clock
-    ,economy);
+    ,economy,clickCriticals);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -102,11 +102,14 @@ class TapBatchServiceTest {
                 new com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.RequestPolicy(true,
                         com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig.decode(java.util.Map.of())));
         lenient().when(passive.activeEffects(any(),any())).thenAnswer(i->passive.activeEffects(i.getArgument(0)));
+        lenient().when(passive.activeEquipment(any(),any())).thenAnswer(i->
+                new com.ggukmoney.beanzip.domain.keycap.service.KeycapPassiveService.ActiveEquipment(null,passive.activeEffects(i.getArgument(0))));
         lenient().when(passive.settleLocked(any(),any(),anyString(),any(),any())).thenAnswer(i->
                 passive.settleLocked(i.getArgument(0),i.getArgument(1),i.getArgument(2),i.getArgument(3)));
         when(economy.isShardEconomyEnabled()).thenReturn(true);
         when(rewardLock.acquire(any())).thenAnswer(i -> userService.getById(i.getArgument(0)));
         when(passive.activeEffects(any())).thenReturn(com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE);
+        lenient().when(passive.displayEffects(any())).thenReturn(com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE);
         when(passive.settleLocked(any(),any(),anyString(),any())).thenReturn(
                 new com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveSettleResponse(0,0,0,0,0,false,acceptedAt));
         lenient().when(userTapProgressService.drawNextTarget(anyLong(),any())).thenAnswer(i -> (int)(i.getArgument(0,Long.class)+1000));

@@ -62,6 +62,8 @@ public record TapBatchSubmitResponse(
         @Schema(description = "이번 요청에서 직접 탭보다 먼저 정산한 자동 클릭(⑤) 수예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "60")
         int autoClicksGranted,
         @Schema(description = "오늘 직접 탭, 클릭 크리티컬(②), 자동 클릭(⑤)을 합한 클릭 수예요. 포인트 지급용 탭 한도와 무관하게 계속 늘어나요.", example = "3823")
-        long effectiveTapCountToday
+        long effectiveTapCountToday,
+        @Schema(description = "앞으로 300탭 안에서 클릭 크리티컬이 터질 탭 예정표예요. 장착한 키캡에 클릭 크리티컬이 없거나 패시브가 꺼져 있으면 null이에요.", nullable = true)
+        ClickCriticalScheduleResponse clickCriticalSchedule
 ) {
 }
