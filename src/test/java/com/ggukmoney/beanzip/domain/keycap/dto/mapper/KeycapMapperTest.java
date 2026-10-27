@@ -41,6 +41,14 @@ class KeycapMapperTest {
         assertThat(response.acquisitionType()).isEqualTo("BOX");
         assertThat(response.imageUrl()).isEqualTo("https://example.com/keycap.png");
         assertThat(response.soundUrl()).isEqualTo("https://example.com/keycap.mp3");
+        assertThat(response.soundName()).isEqualTo("Basic");
+    }
+
+    @Test
+    void mapsSoundNameToTheNameShownOnTheAppCard() {
+        assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "main", "메인 키캡", Keycap.Grade.COMMON, 10, 1, true, 1)).soundName()).isEqualTo("기본");
+        assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "cheer", "치어 키캡", Keycap.Grade.COMMON, 10, 1, true, 2)).soundName()).isEqualTo("응원");
+        assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "dolphin", "돌고래 키캡", Keycap.Grade.COMMON, 10, 1, true, 3)).soundName()).isEqualTo("돌고래");
     }
 
     @Test
@@ -66,16 +74,22 @@ class KeycapMapperTest {
     @Test
     void mapsUserKeycapToMyKeycapItem() {
         UUID keycapId = UUID.randomUUID();
-        UserKeycap userKeycap = userKeycap(UUID.randomUUID(), keycapId, "RARE_001", "Rare", 8, UserKeycap.Status.IN_PROGRESS, false);
+        UserKeycap userKeycap = userKeycap(UUID.randomUUID(), keycapId, "RARE_001", "Rare", 8, UserKeycap.Status.COMPLETED, false);
 
         MyKeycapItemResponse response = keycapMapper.mapToMyKeycapItemResponse(userKeycap);
 
         assertThat(response.keycapId()).isEqualTo(keycapId);
         assertThat(response.code()).isEqualTo("RARE_001");
         assertThat(response.name()).isEqualTo("Rare");
-        assertThat(response.shardCount()).isEqualTo(8);
-        assertThat(response.status()).isEqualTo("IN_PROGRESS");
+        assertThat(response.level()).isEqualTo(8);
+        assertThat(response.status()).isEqualTo("COMPLETED");
         assertThat(response.equipped()).isFalse();
+        // 시즌 키캡은 카탈로그에 없으므로 보유 목록이 그릴 정보를 직접 든다 (BEA-329).
+        assertThat(response.grade()).isEqualTo("COMMON");
+        assertThat(response.acquisitionType()).isEqualTo("BOX");
+        assertThat(response.imageUrl()).isNull();
+        assertThat(response.soundUrl()).isNull();
+        assertThat(response.soundName()).isEqualTo("Rare");
     }
 
     @Test
@@ -134,7 +148,7 @@ class KeycapMapperTest {
             UUID keycapId,
             String code,
             String name,
-            int shardCount,
+            int level,
             UserKeycap.Status status,
             boolean equipped
     ) {
@@ -144,7 +158,7 @@ class KeycapMapperTest {
         UserKeycap userKeycap = newInstance(UserKeycap.class);
         ReflectionTestUtils.setField(userKeycap, "user", user);
         ReflectionTestUtils.setField(userKeycap, "keycap", keycap(keycapId, code, name, Keycap.Grade.COMMON, 10, 1, true, 1));
-        ReflectionTestUtils.setField(userKeycap, "shardCount", shardCount);
+        ReflectionTestUtils.setField(userKeycap, "shardCount", userKeycap.getKeycap().getRequiredShardCount() + level - 1);
         ReflectionTestUtils.setField(userKeycap, "status", status);
         ReflectionTestUtils.setField(userKeycap, "equipped", equipped);
         return userKeycap;
@@ -180,5 +194,17 @@ class KeycapMapperTest {
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to create test entity " + type.getSimpleName(), exception);
         }
+    }
+
+    @Test
+    void legacyCollectingKeycapKeepsShardCountInJson() {
+        var key=keycap(UUID.randomUUID(), "legacy", "Legacy", Keycap.Grade.COMMON, 20, 1, true, 1);
+        var collecting=UserKeycap.createInProgress(null,key);
+        collecting.addShard(3, java.time.Instant.EPOCH);
+        var response=keycapMapper.mapToMyKeycapItemResponse(collecting);
+        var json=new tools.jackson.databind.ObjectMapper();
+        var payload=json.readTree(json.writeValueAsString(response));
+        assertThat(payload.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(payload.path("shardCount").asInt(-1)).isEqualTo(3);
     }
 }

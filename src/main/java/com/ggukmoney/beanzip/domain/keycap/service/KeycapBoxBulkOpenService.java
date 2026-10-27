@@ -51,6 +51,7 @@ public class KeycapBoxBulkOpenService {
     private final UserService userService;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
 
     public KeycapBoxBulkOpenResponse bulkOpen(UUID userId, String idempotencyKey) {
         validateIdempotencyKey(idempotencyKey);
@@ -70,13 +71,14 @@ public class KeycapBoxBulkOpenService {
     }
 
     private KeycapBoxBulkOpenResponse bulkOpenInTransaction(UUID userId, String idempotencyKey) {
+        rewardLock.acquire(userId);
         if (keycapBoxOpenRepository.existsByUserIdAndOpenMethod(userId, KeycapBoxOpen.OpenMethod.BULK_REWARD)) {
             // 1회성이자 멱등이다. 이미 받았으면 그때 연 결과를 그대로 재생한다.
             return summarizeAlreadyClaimed(userId);
         }
 
         Instant acceptedAt = clock.instant();
-        KeycapBoxAccount account = keycapBoxAccountService.getForUserForUpdate(userId);
+        KeycapBoxAccount account = keycapBoxAccountService.getLegacyAccountForUpdate(userId);
         int openCount = account.consumeForBulkOpen(keycapBoxPolicyConfig.bulkOpenLimit());
 
         if (openCount == 0) {
@@ -109,7 +111,7 @@ public class KeycapBoxBulkOpenService {
     private KeycapBoxBulkOpenResponse summarizeAlreadyClaimed(UUID userId) {
         List<KeycapBoxOpen> opened = keycapBoxOpenRepository.findAllByUserIdAndOpenMethodWithKeycap(
                 userId, KeycapBoxOpen.OpenMethod.BULK_REWARD);
-        return summarize(opened, keycapBoxAccountService.getForUser(userId).getBoxBalance());
+        return summarize(opened, keycapBoxPolicyConfig.isShardEconomyEnabled() ? 0 : keycapBoxAccountService.getForUser(userId).getBoxBalance());
     }
 
     private KeycapBoxBulkOpenResponse replayOrThrow(UUID userId, RuntimeException exception) {

@@ -45,4 +45,5 @@ public interface KeycapRepository extends JpaRepository<Keycap, Long> {
             order by keycap.sortOrder asc, keycap.code asc
             """)
     List<Keycap> findIncompleteActiveRewardCandidates(@Param("userId") UUID userId);
+    List<Keycap> findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType acquisitionType);
 }

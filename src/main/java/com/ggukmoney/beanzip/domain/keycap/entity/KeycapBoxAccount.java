@@ -70,6 +70,23 @@ public class KeycapBoxAccount {
         return account;
     }
 
+    public Integer getShardBalance() { return boxBalance; }
+
+    public void addShards(int count) {
+        if (count <= 0) throw new IllegalArgumentException("Shard count must be positive.");
+        boxBalance = Math.addExact(boxBalance, count);
+    }
+
+    public boolean canAfford(int price) {
+        if (price <= 0) throw new IllegalArgumentException("Price must be positive.");
+        return boxBalance >= price;
+    }
+
+    public void consumeShards(int price) {
+        if (!canAfford(price)) throw new IllegalStateException("Keycap shard balance is insufficient.");
+        boxBalance -= price;
+    }
+
     public void addBoxes(int count) {
         this.boxBalance += count;
     }

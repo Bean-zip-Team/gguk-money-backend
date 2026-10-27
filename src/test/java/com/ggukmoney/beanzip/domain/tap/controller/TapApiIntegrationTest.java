@@ -58,6 +58,8 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.acceptedCount").value(50))
                 .andExpect(jsonPath("$.data.pointsAwarded").exists())
                 .andExpect(jsonPath("$.data.boxesDropped").exists())
+                .andExpect(jsonPath("$.data.shardsDropped").exists())
+                .andExpect(jsonPath("$.data.shardBalance").exists())
                 .andExpect(jsonPath("$.data.balance").exists())
                 .andExpect(jsonPath("$.data.pointDailyCapReached").value(false))
                 .andExpect(jsonPath("$.data.nextPointTarget").doesNotExist())
@@ -75,14 +77,29 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
+                .andExpect(status().isOk()).andReturn();
+        mockMvc.perform(post("/api/tap/batches")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(batchJson(sessionId,2,30)))
                 .andExpect(status().isOk());
+        long before = pointAccountRepository.findByUserId(tokens.session().userId()).orElseThrow().getBalance();
 
         mockMvc.perform(post("/api/tap/batches")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pointsAwarded").value(0));
+                .andExpect(jsonPath("$.data.acceptedCount").value(50))
+                .andExpect(jsonPath("$.data.validTapCount").value(80))
+                .andExpect(jsonPath("$.data.effectiveTapCountToday").value(80))
+                .andExpect(jsonPath("$.data.balance").value(before))
+                .andExpect(jsonPath("$.data.pointsAwarded").value(0))
+                .andExpect(jsonPath("$.data.shardsDropped").value(0))
+                .andExpect(jsonPath("$.data.effectiveCount").value(0))
+                .andExpect(jsonPath("$.data.autoClicksGranted").value(0));
+        org.assertj.core.api.Assertions.assertThat(pointAccountRepository.findByUserId(tokens.session().userId()).orElseThrow().getBalance())
+                .isEqualTo(before);
     }
 
     @Test

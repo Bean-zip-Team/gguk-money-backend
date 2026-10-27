@@ -75,7 +75,7 @@ public class PromotionGrantQueryService {
 
         Optional<UserTapProgress> progress = userTapProgressRepository.findByUserId(userId);
         Long baseline = progress.map(UserTapProgress::getPromotionTapBaseline).orElse(null);
-        Long cumulative = progress.map(UserTapProgress::getCumulativeValidTapCount).orElse(null);
+        Long cumulative = progress.map(UserTapProgress::getCumulativeMissionTapCount).orElse(null);
         Long net = (baseline == null || cumulative == null) ? null : cumulative - baseline;
 
         return new PromotionGrantByUserResponse(userId, grants, baseline, cumulative, net);

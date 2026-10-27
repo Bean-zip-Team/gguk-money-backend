@@ -18,7 +18,7 @@ public interface UserTapProgressRepository extends JpaRepository<UserTapProgress
             FROM UserTapProgress progress
             JOIN FETCH progress.user user
             WHERE user.status = com.ggukmoney.beanzip.domain.user.entity.AppUser$Status.ACTIVE
-              AND progress.cumulativeValidTapCount > 0
+              AND progress.cumulativeRankingTapCount > 0
             ORDER BY progress.updatedAt ASC, progress.id ASC
             """)
     List<UserTapProgress> findActivePositiveProgress(Pageable pageable);

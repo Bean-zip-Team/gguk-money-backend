@@ -67,6 +67,7 @@ public class KeycapBoxOpenService {
     private final KeycapFiveCompletionTrigger keycapFiveCompletionTrigger;
     private final PlatformTransactionManager transactionManager;
     private final Clock clock;
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
 
     public KeycapBoxOpenResponse open(UUID userId, String idempotencyKey, KeycapBoxOpenRequest request) {
         validateIdempotencyKey(idempotencyKey);
@@ -92,6 +93,7 @@ public class KeycapBoxOpenService {
             KeycapBoxOpenRequest request,
             String requestHash
     ) {
+        rewardLock.acquire(userId);
         Optional<KeycapBoxOpenResponse> replay = findReplay(userId, idempotencyKey, requestHash);
         if (replay.isPresent()) {
             return replay.get();

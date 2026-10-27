@@ -113,6 +113,28 @@ public class UserKeycap {
         return userKeycap;
     }
 
+    /**
+     * Keep the legacy completion baseline in shard_count; each duplicate adds one.
+     * Legacy completed rows were capped at requiredShardCount, so they start at Lv1
+     * without a migration. The catalog baseline is historical and must stay fixed.
+     */
+    public Integer getLevel() {
+        if (!isCompleted()) return 0;
+        return Math.addExact(1, Math.max(0, shardCount - keycap.getRequiredShardCount()));
+    }
+
+    public static UserKeycap createOwned(AppUser user, Keycap keycap, Instant acquiredAt) {
+        return createCompletedOnboardingReward(user, keycap, acquiredAt);
+    }
+
+    public boolean isLegacyInProgress() { return status == Status.IN_PROGRESS; }
+
+    public int levelUp() {
+        if (!isCompleted()) throw new IllegalStateException("Only owned keycaps can level up.");
+        shardCount = Math.addExact(Math.max(shardCount, keycap.getRequiredShardCount()), 1);
+        return getLevel();
+    }
+
     public boolean isCompleted() {
         return status == Status.COMPLETED;
     }

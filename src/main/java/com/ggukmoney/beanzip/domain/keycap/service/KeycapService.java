@@ -31,15 +31,36 @@ public class KeycapService {
     private final UserKeycapRepository userKeycapRepository;
     private final KeycapMapper keycapMapper;
     private final OnboardingRewardConfig onboardingRewardConfig;
+    private final com.ggukmoney.beanzip.domain.user.service.UserRewardLock rewardLock;
+    private final KeycapPassiveService passiveService;
+    private final java.time.Clock clock;
+    private final com.ggukmoney.beanzip.global.config.KeycapPassivePolicyConfig passiveConfig;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
 
+    /**
+     * 공개 도감은 상시({@code BOX}) 키캡만 내려준다 (BEA-329). 시즌 키캡은 보유자의 내 키캡 목록에서만 보인다.
+     * 안 거르면 미보유 카드에 이름이 노출되는 지금 구조에서 아직 시작도 안 한 이벤트가 새어 나가고,
+     * 뽑아도 절대 안 나오는 키캡이 목록과 진행도 분모에 남는다.
+     */
     public KeycapListResponse getKeycaps() {
-        return keycapMapper.mapToKeycapListResponse(keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc());
+        var snapshot = passiveConfig.snapshot();
+        boolean shard=economy.isShardEconomyEnabled();
+        var catalog=shard ? keycapRepository.findByAcquisitionTypeAndActiveTrueOrderBySortOrderAscCodeAsc(Keycap.AcquisitionType.BOX)
+                : keycapRepository.findByActiveTrueOrderBySortOrderAscCodeAsc();
+        return new KeycapListResponse(catalog
+                .stream().map(keycap -> keycapMapper.mapToKeycapItemResponse(keycap).withPreview(
+                        com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveEffectResponse.from(
+                                snapshot.policy().effects(keycap.getCode(),1),snapshot.enabled() && shard,1))).toList());
     }
 
     public MyKeycapListResponse getMyKeycaps(UUID userId) {
-        return keycapMapper.mapToMyKeycapListResponse(
-                userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId)
-        );
+        var snapshot = passiveConfig.snapshot();
+        boolean shard=economy.isShardEconomyEnabled();
+        return new MyKeycapListResponse(userKeycapRepository.findByUserIdWithKeycapOrderByKeycapSortOrderAscCodeAsc(userId)
+                .stream().filter(owned -> !shard || owned.isCompleted()).map(owned -> keycapMapper.mapToMyKeycapItemResponse(owned).withEffects(
+                        com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveEffectResponse.from(
+                                owned.getLevel()<1 ? com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE
+                                        : snapshot.policy().effects(owned.getKeycap().getCode(),owned.getLevel()),snapshot.enabled() && shard,null))).toList());
     }
 
     public EquippedKeycapResponse getEquippedKeycap(UUID userId) {
@@ -86,10 +107,16 @@ public class KeycapService {
 
     @Transactional
     public KeycapEquipResponse equipKeycap(UUID userId, UUID keycapId) {
+        var user = rewardLock.acquire(userId);
+        var now=clock.instant();
+        var context=passiveService.requestPolicy(now,economy.isShardEconomyEnabled());
+        passiveService.settleLocked(user, now, "equip:"+UUID.randomUUID(),
+                new com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller(),context);
         userKeycapRepository.findByUserIdForUpdate(userId);
         UserKeycap target = userKeycapRepository.findByUserIdAndKeycapPublicIdWithKeycap(userId, keycapId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "USER_KEYCAP_NOT_FOUND"));
 
+        // 구 코드가 남긴 진행 중 행은 미보유다 (무중단 배포 구간에만 잠깐 존재한다).
         if (!target.isCompleted()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "KEYCAP_NOT_COMPLETED");
         }
@@ -105,6 +132,8 @@ public class KeycapService {
                 });
 
         target.equip();
+        userKeycapRepository.flush();
+        passiveService.refreshEquipmentLocked(userId,context);
         return keycapMapper.mapToKeycapEquipResponse(target);
     }
 }

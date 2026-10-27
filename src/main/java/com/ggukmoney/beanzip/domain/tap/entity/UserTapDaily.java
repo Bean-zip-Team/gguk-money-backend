@@ -53,6 +53,9 @@ public class UserTapDaily {
     @Column(name = "total_valid_tap_count", nullable = false)
     private Integer totalValidTapCount = 0;
 
+    @Column(name = "total_effective_tap_count", nullable = false)
+    private Long totalEffectiveTapCount = 0L;
+
     @Column(name = "point_earned_amount", nullable = false)
     private Integer pointEarnedAmount = 0;
 
@@ -78,11 +81,25 @@ public class UserTapDaily {
     }
 
     public void addTotalValidTaps(int count) {
-        this.totalValidTapCount += count;
+        addSubmittedTaps(count);
+        addEffectiveTaps(count);
+    }
+
+    public void addSubmittedTaps(int count) {
+        this.totalValidTapCount = Math.addExact(this.totalValidTapCount, count);
+    }
+
+    public void addEffectiveTaps(long count) {
+        this.totalEffectiveTapCount = Math.addExact(this.totalEffectiveTapCount, count);
+    }
+
+    public void addPointEarned(int amount) {
+        if (amount < 0) throw new IllegalArgumentException("Negative point credit");
+        this.pointEarnedAmount = Math.addExact(this.pointEarnedAmount, amount);
     }
 
     public void incrementPointEarned() {
-        this.pointEarnedAmount += 1;
+        addPointEarned(1);
     }
 
     @PrePersist

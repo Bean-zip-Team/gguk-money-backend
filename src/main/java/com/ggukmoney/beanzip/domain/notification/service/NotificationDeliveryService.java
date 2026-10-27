@@ -418,6 +418,7 @@ public class NotificationDeliveryService {
     }
 
     public List<NotificationDelivery> sendKeycapBoxOpenAvailableNotifications(Instant now) {
+        if (keycapBoxPolicyConfig.isShardEconomyEnabled()) return List.of();
         NotificationType type = NotificationType.KEYCAP_BOX_OPEN_AVAILABLE;
         if (!templateProperties.isConfigured(type)) {
             return List.of();

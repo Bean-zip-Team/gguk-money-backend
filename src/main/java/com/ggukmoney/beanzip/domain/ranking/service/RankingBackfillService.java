@@ -41,7 +41,7 @@ public class RankingBackfillService {
         UUID lastUserId = null;
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> rows =
-                    userTapDailyRepository.findTotalValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
+                    userTapDailyRepository.findTotalEffectiveTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
             if (rows.isEmpty()) {
                 return processed;
             }
@@ -79,7 +79,7 @@ public class RankingBackfillService {
         );
         while (true) {
             List<UserTapDailyRepository.UserTapAggregateProjection> rows =
-                    userTapDailyRepository.findTotalValidTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
+                    userTapDailyRepository.findTotalEffectiveTapAggregates(startDate, endDate, lastUserId, properties.pageSize());
             if (rows.isEmpty()) {
                 return processed;
             }
@@ -119,7 +119,7 @@ public class RankingBackfillService {
             for (UserTapProgress progress : progressList) {
                 rankingProjectionService.syncAllTimeScore(
                         progress.getUser().getId(),
-                        progress.getCumulativeValidTapCount()
+                        progress.getCumulativeRankingTapCount()
                 );
                 processed++;
             }

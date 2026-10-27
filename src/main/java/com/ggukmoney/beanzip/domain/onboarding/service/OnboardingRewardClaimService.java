@@ -59,7 +59,7 @@ public class OnboardingRewardClaimService {
     private void grantKeycapIfMissing(AppUser user, Keycap keycap, Instant now, boolean equip) {
         UserKeycap userKeycap = userKeycapRepository.findByUserIdAndKeycapIdForUpdate(user.getId(), keycap.getId())
                 .orElseGet(() -> userKeycapRepository.save(
-                        UserKeycap.createCompletedOnboardingReward(user, keycap, now)
+                        UserKeycap.createOwned(user, keycap, now)
                 ));
         if (equip) {
             userKeycap.equip();

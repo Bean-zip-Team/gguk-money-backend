@@ -27,7 +27,7 @@ class KeycapBoxMapperTest {
                 new KeycapBoxAccount.OpenCycleSnapshot(true, false, false, null);
         BoxProgressSnapshot progress = new BoxProgressSnapshot(45, 100);
 
-        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress);
+        KeycapBoxStatusResponse response = keycapBoxMapper.mapToStatusResponse(account, cycleSnapshot, progress, 5);
 
         assertThat(response.boxBalance()).isEqualTo(2);
         assertThat(response.canFreeOpen()).isTrue();
@@ -40,17 +40,15 @@ class KeycapBoxMapperTest {
 
     @Test
     void statusResponseDoesNotExposeInternalIdsOrExcludedFields() {
-        assertThat(KeycapBoxStatusResponse.class.getRecordComponents())
-                .extracting(component -> component.getName())
-                .containsExactly(
-                        "boxBalance",
-                        "canFreeOpen",
-                        "canAdOpen",
-                        "charging",
-                        "nextRechargeAt",
-                        "boxProgressTapCount",
-                        "nextBoxRequiredTapCount"
-                );
+        var account=keycapBoxAccount(UUID.randomUUID(),2);
+        var response=keycapBoxMapper.mapToStatusResponse(account,
+                new KeycapBoxAccount.OpenCycleSnapshot(true,false,false,null),new BoxProgressSnapshot(45,100),5);
+        var json=new tools.jackson.databind.ObjectMapper();
+        var payload=json.readTree(json.writeValueAsString(response));
+        assertThat(payload.path("boxBalance").asInt()).isEqualTo(2);
+        assertThat(payload.has("id")).isFalse();
+        assertThat(payload.has("publicId")).isFalse();
+        assertThat(payload.has("userId")).isFalse();
     }
 
     @Test

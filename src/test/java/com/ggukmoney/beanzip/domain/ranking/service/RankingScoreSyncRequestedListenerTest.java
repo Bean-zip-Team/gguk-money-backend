@@ -18,7 +18,8 @@ import static org.mockito.Mockito.verify;
 class RankingScoreSyncRequestedListenerTest {
 
     private final RankingProjectionService projectionService = mock(RankingProjectionService.class);
-    private final RankingScoreSyncRequestedListener listener = new RankingScoreSyncRequestedListener(projectionService);
+    private final RankingSeasonService seasonService = mock(RankingSeasonService.class);
+    private final RankingScoreSyncRequestedListener listener = new RankingScoreSyncRequestedListener(projectionService, seasonService);
     private final Instant occurredAt = Instant.parse("2026-07-20T15:00:00Z");
 
     @Test
@@ -28,6 +29,9 @@ class RankingScoreSyncRequestedListenerTest {
         listener.handle(new RankingScoreSyncRequestedEvent(userId, occurredAt));
 
         verify(projectionService).syncLatestWeeklyScore(userId, occurredAt);
+        var order = org.mockito.Mockito.inOrder(seasonService, projectionService);
+        order.verify(seasonService).getOrCreateActiveAllTimeSeason();
+        order.verify(projectionService).syncLatestAllTimeScore(userId);
     }
 
     @Test

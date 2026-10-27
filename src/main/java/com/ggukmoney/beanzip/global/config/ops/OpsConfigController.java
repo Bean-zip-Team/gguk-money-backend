@@ -143,7 +143,17 @@ public class OpsConfigController {
     }
 
     private String editPage(String key, Model model) {
-        model.addAttribute("current", row(service.current(key)));
+        AppConfig current;
+        try { current=service.current(key); }
+        catch (org.springframework.web.server.ResponseStatusException unavailable) {
+            if (com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key)
+                    && unavailable.getStatusCode().value()==404) {
+                model.addAttribute("error","전환 설정 기본 행이 없습니다. 시더 상태를 확인하세요");
+                return list(model);
+            }
+            throw unavailable;
+        }
+        model.addAttribute("current", row(current));
         model.addAttribute("rule", rules.find(key).orElse(null));
         model.addAttribute("history", service.history(key).stream().map(this::row).toList());
         return "ops/config-edit";

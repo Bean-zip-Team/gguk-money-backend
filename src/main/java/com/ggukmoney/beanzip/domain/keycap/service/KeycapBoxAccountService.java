@@ -19,6 +19,8 @@ public class KeycapBoxAccountService {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository;
     private final Clock clock;
+    private final com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository userKeycaps;
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig policy;
 
     public KeycapBoxAccount createFor(AppUser user) {
         return keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, clock.instant()));
@@ -33,13 +35,35 @@ public class KeycapBoxAccountService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
     }
 
+    /** Caller holds the common user row lock in its transaction. */
     public KeycapBoxAccount getForUserForUpdate(UUID userId) {
         return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
     }
 
+    /** Draw calls this after phase confirmation, before affordability and candidate lookup. */
+    public void convertLegacyProgressForDraw(UUID userId, KeycapBoxAccount wallet) {
+        var progress = userKeycaps.findLegacyInProgressForUpdate(userId);
+        int shards = Math.toIntExact(progress.stream().mapToLong(k -> k.getShardCount()).sum());
+        if (shards > 0) wallet.addShards(shards);
+        if (!progress.isEmpty()) { userKeycaps.deleteAll(progress); userKeycaps.flush(); }
+    }
+
+    public int getAvailableShardBalance(UUID userId) {
+        return Math.toIntExact(keycapBoxAccountRepository.findAvailableShardBalance(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "KEYCAP_BOX_ACCOUNT_NOT_FOUND")));
+    }
+
+    /** Legacy writes cannot enter the conversion path, including while another pod changes policy. */
+    public KeycapBoxAccount getLegacyAccountForUpdate(UUID userId) {
+        if (policy.isShardEconomyEnabled())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"KEYCAP_BOX_OPEN_RETIRED");
+        return keycapBoxAccountRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"KEYCAP_BOX_ACCOUNT_NOT_FOUND"));
+    }
+
     public KeycapBoxAccount refreshOpenCycleForUpdate(UUID userId, Instant now, Duration cycleDuration) {
-        KeycapBoxAccount account = getForUserForUpdate(userId);
+        KeycapBoxAccount account = getLegacyAccountForUpdate(userId);
         account.refreshOpenCycle(now, cycleDuration);
         return account;
     }
