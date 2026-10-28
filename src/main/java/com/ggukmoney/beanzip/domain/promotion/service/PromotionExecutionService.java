@@ -112,7 +112,7 @@ public class PromotionExecutionService {
                 stateService.markProcessing(grantId, now);
                 return false;
             }
-            return applyErrorDecision(grant, outcome.tossErrorCode(), outcome.reason(), now);
+            return applyErrorDecision(grant, tossUserKey.get(), outcome.tossErrorCode(), outcome.reason(), now);
         } catch (TossPromotionClient.AmbiguousTossFailureException exception) {
             // 토스가 처리했는지 알 수 없다. 같은 key 로 재시도한다. 절대 실패로 확정하지 않는다.
             log.warn("Toss execute-promotion ambiguous; retrying with same key. grantId={}", grantId, exception);
@@ -126,7 +126,8 @@ public class PromotionExecutionService {
         }
     }
 
-    private boolean applyErrorDecision(PromotionGrant grant, String errorCode, String reason, Instant now) {
+    private boolean applyErrorDecision(PromotionGrant grant, String tossUserKey, String errorCode, String reason,
+                                       Instant now) {
         Long grantId = grant.getId();
         PromotionErrorPolicy.Decision decision = errorPolicy.decide(errorCode);
         switch (decision) {
@@ -142,12 +143,44 @@ public class PromotionExecutionService {
             }
             case FAIL -> stateService.markFailed(grantId, errorCode, reason, now);
             case REVIEW -> {
-                log.error("Unknown Toss errorCode; flagging for review. grantId={} errorCode={}", grantId, errorCode);
-                stateService.deferAttempt(grantId, nextBackoff(grant, now), errorCode, now);
-                stateService.flagForReview(grantId, now);
+                // 모르는 코드다. 돈이 나갔는지는 토스에게 직접 묻는 게 유일하게 정확하다 (BEA-326).
+                // key 는 이미 손에 있으므로 재시도 전에 결과부터 본다. 답을 못 얻으면 설계대로 REVIEW 다.
+                TossPromotionClient.PromotionResultStatus settled = settledResult(grant, tossUserKey);
+                if (settled == TossPromotionClient.PromotionResultStatus.SUCCESS) {
+                    log.info("Toss rejected execute but reports the key as granted; converging to SUCCEEDED. "
+                            + "grantId={} errorCode={}", grantId, errorCode);
+                    stateService.markSucceeded(grantId, now);
+                } else if (settled == TossPromotionClient.PromotionResultStatus.PENDING) {
+                    stateService.markProcessing(grantId, now);
+                } else if (settled == TossPromotionClient.PromotionResultStatus.FAILED) {
+                    stateService.markFailed(grantId, errorCode, "TOSS_RESULT_FAILED", now);
+                } else {
+                    log.error("Unknown Toss errorCode; flagging for review. grantId={} errorCode={}", grantId, errorCode);
+                    stateService.deferAttempt(grantId, nextBackoff(grant, now), errorCode, now);
+                    stateService.flagForReview(grantId, now);
+                }
             }
         }
         return false;
+    }
+
+    /**
+     * 거절 응답 뒤 같은 key 의 최종 결과를 토스에 묻는다.
+     *
+     * <p>조회 자체가 실패하면(네트워크, 4111 지급내역 없음도 BAD_GATEWAY 로 온다) 모르는 상태 그대로 null 이다.
+     * 멈춘 2건은 {@code poll_count = 0} 이었다. 거절 경로가 이 질문을 한 번도 하지 않았기 때문이다.
+     */
+    private TossPromotionClient.PromotionResultStatus settledResult(PromotionGrant grant, String tossUserKey) {
+        if (!grant.hasTossKey()) {
+            return null;
+        }
+        try {
+            return tossPromotionClient.getExecutionResult(
+                    tossUserKey, grant.getTossPromotionCode(), grant.getTossPromotionKey());
+        } catch (RuntimeException exception) {
+            log.warn("Toss execution-result lookup after rejection failed; grantId={}", grant.getId(), exception);
+            return null;
+        }
     }
 
     /**
