@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.promotion.scheduler;
 
+import com.ggukmoney.beanzip.domain.abuse.client.DiscordWebhookClient;
 import com.ggukmoney.beanzip.domain.promotion.repository.PromotionGrantRepository;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionExecutionService;
 import com.ggukmoney.beanzip.domain.promotion.service.PromotionGrantStateService;
@@ -34,6 +35,7 @@ public class PromotionGrantRetryScheduler {
 
     private static final int BATCH_SIZE = 20;
     private static final Duration CLAIM_LEASE = Duration.ofMinutes(1);
+    private static final Duration REVIEW_ALERT_INTERVAL = Duration.ofHours(1);
 
     private final PromotionGrantRepository promotionGrantRepository;
     private final PromotionExecutionService promotionExecutionService;
@@ -41,6 +43,10 @@ public class PromotionGrantRetryScheduler {
     private final List<PromotionTrigger> promotionTriggers;
     private final PromotionPolicyConfig policyConfig;
     private final Clock clock;
+    private final DiscordWebhookClient discordWebhookClient;
+
+    /** fixedDelay 라 tick 이 겹치지 않으므로 동기화 없이 쓴다. */
+    private Instant lastReviewAlertAt;
 
     @Scheduled(fixedDelay = 10_000, initialDelay = 30_000)
     public void processDueGrants() {
@@ -89,6 +95,7 @@ public class PromotionGrantRetryScheduler {
                     executionEnabled, claimed, succeeded, failed, walletEmpty);
 
             // 미션별로 찍는다. 하나로 뭉치면 어느 미션이 막혀 있는지 구분되지 않는다.
+            StringBuilder reviewDetail = new StringBuilder();
             for (PromotionTrigger trigger : promotionTriggers) {
                 String promotionCode = trigger.promotionCode();
                 long needsReview = promotionGrantRepository.countByPromotionCodeAndNeedsReviewTrue(promotionCode);
@@ -98,9 +105,33 @@ public class PromotionGrantRetryScheduler {
                         .orElse(0L);
                 log.info("promotion tick: promotionCode={} enabled={} held={} needsReview={} oldestUnsettled={}s",
                         promotionCode, trigger.issuingEnabled(), held, needsReview, oldestSeconds);
+                if (needsReview > 0) {
+                    reviewDetail.append("- ").append(promotionCode)
+                            .append(": 확인 필요 ").append(needsReview).append("건, 자동 진행 정지 ").append(held)
+                            .append("건, 가장 오래된 미정산 ").append(oldestSeconds / 86_400).append("일\n");
+                }
+            }
+            if (!reviewDetail.isEmpty()) {
+                alertNeedsReview(reviewDetail.toString(), now);
             }
         } catch (RuntimeException exception) {
             log.warn("Failed to build promotion tick summary", exception);
         }
+    }
+
+    /**
+     * needs_review 가 남아 있는 동안 한 시간에 한 번 운영 채널에 알린다 (BEA-326).
+     *
+     * <p>로그만으로는 아무도 보지 않아 2건이 44일 방치됐다. 해결될 때까지 반복해서 알리는 게 목적이라
+     * 상태 변화가 아니라 잔존 여부로 보낸다. 재기동 뒤 첫 tick 에 한 번 더 가는 것은 감수한다.
+     */
+    private void alertNeedsReview(String detail, Instant now) {
+        if (lastReviewAlertAt != null && lastReviewAlertAt.plus(REVIEW_ALERT_INTERVAL).isAfter(now)) {
+            return;
+        }
+        lastReviewAlertAt = now;
+        discordWebhookClient.send("[프로모션 지급 확인 필요] 토스 지급 결과를 확정하지 못한 건이 있어요.\n"
+                + detail
+                + "GET /api/ops/promotions/grants 에서 확인해 주세요. 재지급하면 이중 지급이에요.");
     }
 }
