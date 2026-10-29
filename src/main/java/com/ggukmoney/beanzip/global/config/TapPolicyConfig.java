@@ -23,6 +23,9 @@ public class TapPolicyConfig {
     public static final String KEY_CURVE_GENERAL_BASE = "tap.curve.general.base";
     public static final String KEY_CURVE_GENERAL_VARIANCE = "tap.curve.general.variance";
     public static final String KEY_POINT_DAILY_CAP = "tap.point.dailyCap";
+    public static final String KEY_POINT_OVERFLOW_ENABLED = "tap.point.overflow.enabled";
+    public static final String KEY_POINT_OVERFLOW_PROBABILITY = "tap.point.overflow.probability";
+    public static final String KEY_POINT_OVERFLOW_DAILY_CAP = "tap.point.overflow.dailyCap";
     public static final String KEY_BOT_ENABLED = "tap.bot.enabled";
     public static final String KEY_BOT_SAMPLE_SIZE = "tap.bot.sampleSize";
     public static final String KEY_BOT_STDDEV_THRESHOLD_MS = "tap.bot.stddevThresholdMs";
@@ -47,6 +50,9 @@ public class TapPolicyConfig {
             Map.entry(KEY_CURVE_GENERAL_BASE, "20"),
             Map.entry(KEY_CURVE_GENERAL_VARIANCE, "0.25"),
             Map.entry(KEY_POINT_DAILY_CAP, "150"),
+            Map.entry(KEY_POINT_OVERFLOW_ENABLED, "false"),
+            Map.entry(KEY_POINT_OVERFLOW_PROBABILITY, "0.002"),
+            Map.entry(KEY_POINT_OVERFLOW_DAILY_CAP, "10"),
             Map.entry(KEY_BOT_ENABLED, "false"),
             Map.entry(KEY_BOT_SAMPLE_SIZE, "10"),
             Map.entry(KEY_BOT_STDDEV_THRESHOLD_MS, "12"),
@@ -117,6 +123,20 @@ public class TapPolicyConfig {
 
     public int pointDailyCap() {
         return getInt(KEY_POINT_DAILY_CAP);
+    }
+
+    /** BEA-360: rare 1P payouts after the daily caps close the normal payout. Off by default. */
+    public boolean pointOverflowEnabled() {
+        return getBoolean(KEY_POINT_OVERFLOW_ENABLED);
+    }
+
+    public double pointOverflowProbability() {
+        return getDouble(KEY_POINT_OVERFLOW_PROBABILITY);
+    }
+
+    /** Extra points allowed on top of {@link #pointDailyCap()}; the day's hard ceiling is their sum. */
+    public int pointOverflowDailyCap() {
+        return getInt(KEY_POINT_OVERFLOW_DAILY_CAP);
     }
 
     public boolean botDetectionEnabled() {
@@ -202,8 +222,13 @@ public class TapPolicyConfig {
     private boolean isValidPolicyValue(String key, String rawValue) {
         try {
             String value = rawValue.trim();
-            if (KEY_BOT_ENABLED.equals(key) || KEY_RATE_LIMIT_ENABLED.equals(key)) {
+            if (KEY_BOT_ENABLED.equals(key) || KEY_RATE_LIMIT_ENABLED.equals(key)
+                    || KEY_POINT_OVERFLOW_ENABLED.equals(key)) {
                 return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
+            }
+            if (KEY_POINT_OVERFLOW_PROBABILITY.equals(key)) {
+                double probability = Double.parseDouble(value);
+                return probability >= 0 && probability <= 1;
             }
             if (KEY_CURVE_GENERAL_VARIANCE.equals(key)
                     || KEY_BOT_STDDEV_THRESHOLD_MS.equals(key)

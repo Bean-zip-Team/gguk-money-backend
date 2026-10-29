@@ -36,7 +36,7 @@ public class TapController {
     private final TapBatchService tapBatchService;
     private final TapStatusService tapStatusService;
 
-    @Operation(summary = "탭 배치 제출", description = "클라이언트가 모아 둔 탭 수를 배치로 제출해요. 미수령 자동 클릭을 먼저 정산하고 직접 탭에 현재 장착 효과를 적용해요. 같은 `tapSessionId` 필드와 `sequence` 필드 조합을 다시 보내면 추가 적립이나 자동 클릭 정산 없이 처음 인정된 탭 수와 현재 상태를 돌려줘요. 이때 `pointsAwarded`, `shardsDropped`, `effectiveCount`, `autoClicksGranted`는 0이에요. 자동 클릭과 직접 탭은 각각 한 배치로 처리하며 기본 포인트 지급 기회는 배치마다 한 번이에요. 포인트는 일일 탭 상한(`tap.validity.maxPerDay`)과 포인트 상한을 적용해요. 조각과 랭킹은 클릭 크리티컬(②)과 자동 클릭(⑤)을 포함한 클릭 수로 쌓여요. 미션은 ②⑤와 보상 한도의 영향을 받지 않고 직접 제출한 탭 수로 진행돼요.")
+    @Operation(summary = "탭 배치 제출", description = "클라이언트가 모아 둔 탭 수를 배치로 제출해요. 미수령 자동 클릭을 먼저 정산하고 직접 탭에 현재 장착 효과를 적용해요. 같은 `tapSessionId` 필드와 `sequence` 필드 조합을 다시 보내면 추가 적립이나 자동 클릭 정산 없이 처음 인정된 탭 수와 현재 상태를 돌려줘요. 이때 `pointsAwarded`, `shardsDropped`, `effectiveCount`, `autoClicksGranted`는 0이에요. 자동 클릭과 직접 탭은 각각 한 배치로 처리하며 기본 포인트 지급 기회는 배치마다 한 번이에요. 포인트는 일일 탭 상한(`tap.validity.maxPerDay`)과 포인트 상한을 적용해요. 상한 이후 희박 지급(`tap.point.overflow.enabled`)이 켜져 있으면 상한에 닿은 뒤의 직접 탭마다 낮은 확률로 1P 가 더 나올 수 있고, 이때 하루 총 상한은 포인트 상한에 `tap.point.overflow.dailyCap`을 더한 값이에요.조각과 랭킹은 클릭 크리티컬(②)과 자동 클릭(⑤)을 포함한 클릭 수로 쌓여요. 미션은 ②⑤와 보상 한도의 영향을 받지 않고 직접 제출한 탭 수로 진행돼요.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "제출에 성공했어요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않아요. 필수 필드가 빠졌거나 `sequence`, `submittedCount` 필드가 허용 범위를 벗어난 경우예요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),

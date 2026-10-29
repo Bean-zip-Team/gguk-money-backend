@@ -27,7 +27,7 @@ public record TapBatchSubmitResponse(
         int boxesDropped,
         @Schema(description = "제출 후 포인트 잔액이에요.", example = "15")
         long balance,
-        @Schema(description = "오늘 포인트 지급 한도에 도달했는지 여부예요. 한도는 앱 설정의 `pointPolicy.dailyLimit` 필드 값과 같아요.", example = "false")
+        @Schema(description = "오늘 포인트 지급 한도에 도달했는지 여부예요. 한도는 앱 설정의 `pointPolicy.dailyLimit` 필드 값과 같아요. 상한 이후 희박 지급이 켜져 있으면 이 값이 true 여도 `pointEarnedToday` 필드 값이 한도 위로 조금 더 늘 수 있어요.", example = "false")
         boolean pointDailyCapReached,
         @Schema(description = "현재 조각 세션에 쌓인 탭 수예요. 이름은 상자 시절 그대로지만 키캡 조각 진행도를 담는 현역 필드예요. 마지막 탭 뒤 유휴 시간이 지나면 세션이 리셋돼 0부터 다시 세요.", example = "45")
         long boxProgressTapCount,
@@ -37,7 +37,7 @@ public record TapBatchSubmitResponse(
         LocalDate date,
         @Schema(description = "오늘 지급된 포인트예요. 이번 배치에서 지급된 포인트를 포함해요.", example = "12")
         int pointEarnedToday,
-        @Schema(description = "다음 포인트까지 남은 탭 수예요. 0이면 오늘은 더 이상 포인트가 지급되지 않아요. 포인트 상한이나 일일 탭 상한에 도달한 경우예요. 상한에 닿기 전에는 항상 1 이상이에요.", example = "10")
+        @Schema(description = "다음 포인트까지 남은 탭 수예요. 0이면 오늘은 정해진 간격의 포인트가 더 이상 지급되지 않아요. 포인트 상한이나 일일 탭 상한에 도달한 경우이고, 상한 이후 희박 지급만 예외예요. 상한에 닿기 전에는 항상 1 이상이에요.", example = "10")
         int remainingTapsToNextPoint,
         @Schema(description = "[deprecated] 다음 드롭까지 남은 탭 수예요. 경제 전환 후에는 `remainingTapsToNextShard`와 같아요.", example = "55", deprecated = true)
         int remainingTapsToNextBox,
