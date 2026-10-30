@@ -288,10 +288,12 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         var token=saveTokenBackedSession(user.getId(),"passive-api").accessToken();
         mockMvc.perform(get("/api/keycaps/passive").header("Authorization","Bearer "+token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.effects.capLevel").doesNotExist())
+                .andExpect(jsonPath("$.data.effects.bonuses.rankingPercent").value(0.0))
                 .andExpect(jsonPath("$.data.pendingAutoClicks").value(0));
         mockMvc.perform(post("/api/keycaps/passive/settle").header("Authorization","Bearer "+token))
                 .andExpect(status().isBadRequest());
         assertThat(keycaps.getKeycaps().keycaps()).allSatisfy(card -> assertThat(card.previewEffects().previewLevel()).isEqualTo(1));
+        assertThat(keycaps.getKeycaps().keycaps()).anySatisfy(card -> assertThat(card.previewEffects().bonuses().rankingPercent()).isPositive());
         configs.save(AppConfig.createFor(KeycapPassivePolicyConfig.KEY_ENABLED,"false",Instant.now()));
         policy.refresh();
         assertThat(policy.snapshot().enabled()).isFalse();
