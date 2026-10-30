@@ -133,6 +133,7 @@ public class WeeklyRankingReward {
         }
         status = Status.CLAIMED;
         claimedAt = now;
+        markViewed(now);
     }
 
     public boolean expire(Instant now) {
