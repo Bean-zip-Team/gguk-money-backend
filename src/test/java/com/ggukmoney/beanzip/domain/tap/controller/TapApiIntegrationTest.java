@@ -154,6 +154,7 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.validTapCount").value(50))
+                .andExpect(jsonPath("$.data.effectiveTapCountToday").value(50))
                 .andExpect(jsonPath("$.data.boxProgressTapCount").value(50));
     }
 
