@@ -81,6 +81,11 @@ public class PolicyValueRules {
                 raw -> { double value = finite(raw); return value >= 0 && value < 1; },
                 "기준 탭 수의 랜덤 폭 (0.25 = ±25%)", null);
         integer(TapPolicyConfig.KEY_POINT_DAILY_CAP, 0, "하루 최대 적립 포인트");
+        bool(TapPolicyConfig.KEY_POINT_OVERFLOW_ENABLED, "상한 이후 희박 지급 사용 (하루 탭 상한이나 포인트 상한에 닿은 뒤에도 드물게 1P)");
+        add(TapPolicyConfig.KEY_POINT_OVERFLOW_PROBABILITY, Kind.DECIMAL, "0 이상 1 이하의 숫자",
+                raw -> { double value = finite(raw); return value >= 0 && value <= 1; },
+                "상한 이후 탭 1개당 1P 가 나올 확률 (0.002 = 평균 500탭당 1P)", null);
+        integer(TapPolicyConfig.KEY_POINT_OVERFLOW_DAILY_CAP, 0, "상한 이후 추가로 받을 수 있는 하루 최대 포인트 (하루 총 상한 = 하루 최대 적립 포인트 + 이 값)");
         integer(TapPolicyConfig.KEY_MAX_PER_DAY, 1, "하루 최대 인정 탭 수");
         integer(TapPolicyConfig.KEY_MAX_PER_MINUTE, 1, "분당 최대 인정 탭 수");
         integer(TapPolicyConfig.KEY_MIN_INTERVAL_MS, 0, "탭 사이 최소 간격 (ms)");

@@ -65,6 +65,7 @@ public class TapRewardService {
         }
 
         int awarded = 0;
+        boolean pointCapClosedBefore = daily.getPointEarnedAmount() >= tap.pointDailyCap();
         // Manual and automatic batches use the same legacy pacing: one payout, then a target beyond the batch.
         // An already exhausted daily cap preserves the reached target for the next day.
         if (daily.getPointEarnedAmount()<tap.pointDailyCap() && progress.hasReachedPointTarget()) {
@@ -80,6 +81,25 @@ public class TapRewardService {
             int next = progressService.drawNextTarget(batchEnd,tap);
             if (next <= batchEnd) throw new IllegalStateException("Point target must advance");
             progress.advancePointTarget(next);
+        }
+        // BEA-360: once either daily cap has closed the normal payout, every manual tap it left unpaid
+        // gets a rare independent 1P trial. The tap cap (3,000) closes first on most days, so taps past
+        // `eligible` count as unpaid; after the point cap the whole batch does. Automatic clicks never roll.
+        // The day's hard ceiling is pointDailyCap + overflowDailyCap, enforced on point_earned_amount alone.
+        if (!automatic && tap.pointOverflowEnabled()) {
+            int unpaid = pointCapClosedBefore ? count : count - eligible;
+            int remaining = Math.max(tap.pointDailyCap() + tap.pointOverflowDailyCap() - daily.getPointEarnedAmount(), 0);
+            int hits = unpaid > 0 && remaining > 0 ? roller.rollOverflowHits(unpaid, tap.pointOverflowProbability()) : 0;
+            if (hits > 0) {
+                int amount = roller.rollPoint(effects, hits, remaining);
+                if (amount > 0) {
+                    account.credit(amount);
+                    UUID key = UUID.nameUUIDFromBytes((operationId+"-overflow").getBytes(StandardCharsets.UTF_8));
+                    ledger.recordCredit(account,user,amount,"TAP_OVERFLOW_REWARD",key);
+                    daily.addPointEarned(amount);
+                    awarded = Math.addExact(awarded,amount);
+                }
+            }
         }
         int shards = 0;
         session.addValidTaps(clicks.effectiveCount());
