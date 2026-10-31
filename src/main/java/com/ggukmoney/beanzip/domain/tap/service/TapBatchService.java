@@ -1,4 +1,5 @@
 package com.ggukmoney.beanzip.domain.tap.service;
+import com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService;
 import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Critical;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller;
@@ -37,6 +38,7 @@ public class TapBatchService {
     private final Clock clock;
     private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy;
     private final ClickCriticalSchedule clickCriticals;
+    private final BoosterGrantService boosters;
 
     @Transactional
     public TapBatchSubmitResponse submitBatch(UUID userId,TapBatchSubmitRequest request) {
@@ -56,10 +58,15 @@ public class TapBatchService {
             var state=rewards.award(user,now,com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects.NONE,
                     0,true,saved.getPublicId(),new KeycapPassiveRoller());
             var click=passive.displayEffects(userId).click();
-            return response(saved.getAcceptedCount(),0,0,0,0,state,shard,userId,now,click);
+            // acceptedCount echoes the submitted taps; accepted_count holds the points they scored.
+            return response(saved.getSubmittedCount(),0,0,0,0,state,shard,userId,now,click);
         }
+        // The server, not the app, applies the booster: one press scores pressSize points.
+        int pressSize=pressSize(userId,request,now);
+        int points=Math.multiplyExact(request.submittedCount(),pressSize);
         var batch=TapBatch.createFor(user,request.tapSessionId(),request.sequence(),request.submittedCount(),hash);
-        batch.markAccepted(request.submittedCount());
+        // accepted_count stays in points: abuse detection divides it by the booster multiplier.
+        batch.markAccepted(points);
         batch=tapBatchRepository.save(batch);
         var context=passive.requestPolicy(now,shard);
         // The request owns one roller; automatic clicks bypass axis ②.
@@ -67,8 +74,8 @@ public class TapBatchService {
         var automatic=passive.settleLocked(user,now,"tap:"+batch.getPublicId(),roller,context);
         var equipment=passive.activeEquipment(userId,context);
         var effects=equipment.effects();
-        var award=rewards.award(user,now,effects,request.submittedCount(),false,batch.getPublicId(),roller);
-        long startTapNumber=award.progress().getCumulativeMissionTapCount()-request.submittedCount()+1;
+        var award=rewards.award(user,now,effects,points,false,batch.getPublicId(),roller,pressSize);
+        long startTapNumber=award.progress().getCumulativeMissionTapCount()-points+1;
         batch.recordClickCriticals(startTapNumber,equipment.code(),effects.click(),award.clickCriticalCount());
         return response(request.submittedCount(),award.effectiveCount(),automatic.autoClicksGranted(),
                 automatic.pointsAwarded(),automatic.shardsDropped(),award,shard,userId,now,effects.click());
@@ -88,6 +95,12 @@ public class TapBatchService {
                 shard?drops:0,shard?rewards.availableShardBalance(userId):0,remainingShard,
                 effective,automatic,daily.getTotalEffectiveTapCount(),
                 ClickCriticalScheduleResponse.of(clickCriticals,userId,award.progress().getCumulativeMissionTapCount(),click));
+    }
+
+    /** Legacy apps omit the multiplier and send points already multiplied; a claimed multiplier needs a booster that ran. */
+    private int pressSize(UUID userId,TapBatchSubmitRequest request,Instant now) {
+        Integer multiplier=request.boosterMultiplier();
+        return multiplier!=null && multiplier>1 && boosters.wasActive(userId,multiplier,now) ? multiplier : 1;
     }
 
     private String requestHash(TapBatchSubmitRequest request) {

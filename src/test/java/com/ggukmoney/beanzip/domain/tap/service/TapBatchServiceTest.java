@@ -88,7 +88,7 @@ class TapBatchServiceTest {
                     pointAccountService,pointLedgerService,keycapBoxAccountService,tapPolicyConfig,promotionPolicyConfig,
                     promotionGrantIssuer,tapThousandCompletionTrigger,eventPublisher,businessZoneId,clickCriticals),
             passive,rewardLock,userTapProgressService,redisService,tapPolicyConfig,clock
-    ,economy,clickCriticals);
+    ,economy,clickCriticals,mock(com.ggukmoney.beanzip.domain.booster.service.BoosterGrantService.class));
 
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
@@ -147,7 +147,9 @@ class TapBatchServiceTest {
     void duplicateReturnsCurrentStateWithoutPayoutEvenWhenCountChanges(boolean changedCount) {
         AppUser user = stubUser();
         TapBatch existing = mock(TapBatch.class);
-        when(existing.getAcceptedCount()).thenReturn(42);
+        // 부스터 배치는 점수(84)를 저장하지만, 재전송 응답은 처음과 같이 누른 횟수(42)를 돌려준다.
+        when(existing.getSubmittedCount()).thenReturn(42);
+        when(existing.getAcceptedCount()).thenReturn(84);
         when(existing.getRequestHash()).thenAnswer(i -> com.ggukmoney.beanzip.global.util.TokenHash.sha256Base64Url(sessionId+":1:50"));
         when(tapBatchRepository.findByUserIdAndTapSessionIdAndSequence(userId, sessionId, 1L)).thenReturn(Optional.of(existing));
         pointAccount.credit(100L);

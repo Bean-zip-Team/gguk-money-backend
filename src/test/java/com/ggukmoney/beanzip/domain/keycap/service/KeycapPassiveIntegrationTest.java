@@ -56,6 +56,7 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.ggukmoney.beanzip.domain.user.service.UserRewardLock requestLock;
     @Autowired javax.sql.DataSource dataSource;
     @Autowired KeycapBoxPolicyConfig economy;
+    @Autowired com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository boosters;
     @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager projectionEntityManager;
     @Autowired com.ggukmoney.beanzip.domain.ranking.service.RankingProjectionService projection;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.ggukmoney.beanzip.domain.ranking.repository.RankingEntryRepository rankingEntries;
@@ -126,6 +127,51 @@ class KeycapPassiveIntegrationTest extends FullStackIntegrationTestSupport {
         assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,sequence-1,64)).clickCriticalSchedule())
                 .isEqualTo(schedule);
         assertThat(status.getTodayStatus(user.getId()).clickCriticalSchedule()).isEqualTo(schedule);
+    }
+
+    @Test void aBoosterPressIsCriticalAsAWholeAndTheServerAppliesTheBoosterOnlyWhileOneRan() {
+        var user=user("pudding");
+        var session=UUID.randomUUID();
+        var schedule=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,1L,100)).clickCriticalSchedule();
+
+        // No booster ran: the claimed multiplier is ignored, so ten presses score ten points.
+        var ignored=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,2L,10,2));
+        assertThat(ignored.acceptedCount()).isEqualTo(10);
+        assertThat(ignored.validTapCount()).isEqualTo(110);
+        assertThat(ignored.effectiveCount()).isEqualTo(10+(int)schedule.tapOffsets().stream().filter(offset -> offset<=10).count());
+
+        boosters.save(com.ggukmoney.beanzip.domain.booster.entity.BoosterGrant.activate(user,LocalDate.now(),1,Duration.ofMinutes(5)));
+        var announced=ignored.clickCriticalSchedule();
+        var boosted=taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,3L,50,2));
+        // Fifty presses take numbers 1..100 after the base; a press is critical when its first (odd) number is announced.
+        int critical=(int)announced.tapOffsets().stream().filter(offset -> offset<=100 && offset%2==1).count();
+        assertThat(boosted.acceptedCount()).isEqualTo(50);
+        assertThat(boosted.validTapCount()).isEqualTo(210);
+        assertThat(boosted.effectiveCount()).isEqualTo(100+critical*2);
+        assertThat(boosted.clickCriticalSchedule().baseTapNumber()).isEqualTo(announced.baseTapNumber()+100);
+        assertThat(jdbcTemplate.queryForMap("select submitted_count,accepted_count,start_tap_number,click_critical_count "
+                +"from tap_batch where user_id=? and sequence=3",user.getId()))
+                .containsEntry("submitted_count",50).containsEntry("accepted_count",100)
+                .containsEntry("start_tap_number",announced.baseTapNumber()+1).containsEntry("click_critical_count",critical);
+        // A replay echoes the presses, not the points it stored.
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,3L,50,2)).acceptedCount()).isEqualTo(50);
+    }
+
+    @Test void aBoosterThatJustEndedStillCountsForFiveSecondsAndOnlyAtItsOwnMultiplier() {
+        var user=user("main");
+        var session=UUID.randomUUID();
+        boosters.save(com.ggukmoney.beanzip.domain.booster.entity.BoosterGrant.activate(user,LocalDate.now(),1,Duration.ofMinutes(5)));
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,1L,10,3)).validTapCount()).isEqualTo(10);
+
+        var now=Instant.now();
+        jdbcTemplate.update("update booster_grant set starts_at=?,expires_at=? where user_id=?",
+                java.sql.Timestamp.from(now.minus(Duration.ofMinutes(5))),java.sql.Timestamp.from(now.minusSeconds(3)),user.getId());
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,2L,10,2)).validTapCount()).isEqualTo(30);
+
+        jdbcTemplate.update("update booster_grant set expires_at=? where user_id=?",java.sql.Timestamp.from(now.minusSeconds(10)),user.getId());
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,3L,10,2)).validTapCount()).isEqualTo(40);
+        // Legacy apps still send points they already multiplied.
+        assertThat(taps.submitBatch(user.getId(),new TapBatchSubmitRequest(session,4L,20)).validTapCount()).isEqualTo(60);
     }
 
     @Test void keycapsWithoutClickCriticalAnnounceNothing() {

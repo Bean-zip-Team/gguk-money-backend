@@ -24,6 +24,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class BoosterGrantService {
+    private static final Duration LATE_BATCH_GRACE = Duration.ofSeconds(5);
 
     private final BoosterGrantRepository boosterGrantRepository;
     private final UserService userService;
@@ -87,6 +88,15 @@ public class BoosterGrantService {
     private long countWithinLimitWindow(UUID userId, Instant now) {
         Instant windowStart = now.minusSeconds(tapPolicyConfig.boosterLimitWindowSeconds());
         return boosterGrantRepository.countByUserIdAndStartsAtAfter(userId, windowStart);
+    }
+
+    /**
+     * 탭 배치가 주장한 부스터 배율을 인정할지 정한다. 끝나기 직전에 누른 탭이 조금 늦게 도착할 수 있어
+     * 끝난 뒤 {@link #LATE_BATCH_GRACE} 까지는 켜져 있던 것으로 본다. status 는 만료돼도 ACTIVE 로 남으므로 보지 않는다.
+     */
+    public boolean wasActive(UUID userId, int multiplier, Instant now) {
+        return boosterGrantRepository.existsByUserIdAndMultiplierAndStartsAtLessThanEqualAndExpiresAtAfter(
+                userId, BigDecimal.valueOf(multiplier), now, now.minus(LATE_BATCH_GRACE));
     }
 
     public BigDecimal findActiveMultiplier(UUID userId, Instant now) {
