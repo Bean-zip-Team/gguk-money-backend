@@ -42,6 +42,13 @@ public class TapRewardService {
     @Transactional(propagation = Propagation.MANDATORY)
     public Award award(AppUser user, Instant now, Effects effects, int count, boolean automatic,
                        UUID operationId, KeycapPassiveRoller roller) {
+        return award(user, now, effects, count, automatic, operationId, roller, 1);
+    }
+
+    /** {@code count} is in points; {@code pressSize} points make one manual press for click criticals. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Award award(AppUser user, Instant now, Effects effects, int count, boolean automatic,
+                       UUID operationId, KeycapPassiveRoller roller, int pressSize) {
         if (count < 0) throw new IllegalArgumentException("Negative click count");
         var daily = dailyService.getOrCreate(user, LocalDate.ofInstant(now, businessZoneId));
         var progress = progressService.getForUser(user.getId());
@@ -52,7 +59,7 @@ public class TapRewardService {
         int eligible = Math.min(count, Math.max(tap.maxPerDay() - daily.getValidTapCount(), 0));
         // Automatic clicks bypass axis ② and do not advance the manual tap numbers it is announced on.
         var clicks = automatic ? new ClickCriticalSchedule.ClickResult(count,count,eligible,0)
-                : clickCriticals.roll(user.getId(),progress.getCumulativeMissionTapCount(),effects.click(),count,eligible);
+                : clickCriticals.roll(user.getId(),progress.getCumulativeMissionTapCount(),effects.click(),count,eligible,pressSize);
         if (!automatic) daily.addSubmittedTaps(count);
         daily.addEffectiveTaps(clicks.effectiveCount());
         daily.addValidTaps(eligible);
