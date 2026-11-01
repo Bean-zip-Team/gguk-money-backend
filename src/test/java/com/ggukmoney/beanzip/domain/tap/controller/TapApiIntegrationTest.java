@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.tap.controller;
 
+import com.ggukmoney.beanzip.domain.booster.entity.BoosterGrant;
+import com.ggukmoney.beanzip.domain.booster.repository.BoosterGrantRepository;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
 import com.ggukmoney.beanzip.domain.point.entity.PointAccount;
@@ -16,7 +18,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,6 +47,9 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
 
     @Autowired
     private AppConfigRepository appConfigRepository;
+
+    @Autowired
+    private BoosterGrantRepository boosterGrantRepository;
 
     @Test
     void submitsBatchAndReturnsAcceptedCountAndBalanceWithoutExposingPointTarget() throws Exception {
@@ -158,12 +165,32 @@ class TapApiIntegrationTest extends FullStackIntegrationTestSupport {
                 .andExpect(jsonPath("$.data.boxProgressTapCount").value(50));
     }
 
+    @Test
+    void scoresEachPressAtTheBoosterRateFromTheRequestBody() throws Exception {
+        AppUser user = registerUser("tester-6");
+        TestTokens tokens = saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+        boosterGrantRepository.save(BoosterGrant.activate(user, LocalDate.now(), 1, Duration.ofMinutes(5)));
+
+        mockMvc.perform(post("/api/tap/batches")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"tapSessionId\":\"" + UUID.randomUUID() + "\",\"sequence\":1,\"submittedCount\":10,\"boosterMultiplier\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.acceptedCount").value(10))
+                .andExpect(jsonPath("$.data.validTapCount").value(20))
+                .andExpect(jsonPath("$.data.effectiveTapCountToday").value(20));
+    }
+
     private TestTokens registerUserWithSession(String nickname) {
+        return saveTokenBackedSession(registerUser(nickname).getId(), UUID.randomUUID().toString());
+    }
+
+    private AppUser registerUser(String nickname) {
         AppUser user = appUserRepository.save(AppUser.createActive(nickname, null));
         pointAccountRepository.save(PointAccount.createFor(user));
         keycapBoxAccountRepository.save(KeycapBoxAccount.createFor(user, Instant.now()));
         userTapProgressService.createFor(user, tapPolicyConfig);
-        return saveTokenBackedSession(user.getId(), UUID.randomUUID().toString());
+        return user;
     }
 
     private String batchJson(UUID tapSessionId, long sequence, int submittedCount) {

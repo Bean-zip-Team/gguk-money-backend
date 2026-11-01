@@ -38,15 +38,29 @@ public class ClickCriticalSchedule {
 
     /** Applies the criticals of the {@code acceptedCount} manual taps after the first {@code countedTaps}. */
     public ClickResult roll(UUID userId, long countedTaps, Critical click, int acceptedCount, int pointEligibleRawCount) {
-        if (acceptedCount < 0 || pointEligibleRawCount < 0 || pointEligibleRawCount > acceptedCount) {
+        return roll(userId, countedTaps, click, acceptedCount, pointEligibleRawCount, 1);
+    }
+
+    /**
+     * Same, when one press is worth {@code pressSize} numbered points (a booster tap). The press is critical as a
+     * whole when its first number is, so a booster press stays critical with the announced probability and
+     * multiplies all its points. {@code criticalCount} counts critical presses.
+     */
+    public ClickResult roll(UUID userId, long countedTaps, Critical click, int acceptedCount, int pointEligibleRawCount,
+                            int pressSize) {
+        if (acceptedCount < 0 || pointEligibleRawCount < 0 || pointEligibleRawCount > acceptedCount
+                || pressSize < 1 || acceptedCount % pressSize != 0) {
             throw new IllegalArgumentException("Invalid accepted tap prefix");
         }
         var hits = criticals(userId, countedTaps, acceptedCount, click);
+        for (int i = 0; pressSize > 1 && i < acceptedCount; i += pressSize) {
+            if (hits.get(i)) hits.set(i, i + pressSize); else hits.clear(i, i + pressSize);
+        }
         int extra = click.multiplier() - 1;
         int all = hits.cardinality();
         int eligible = hits.get(0, pointEligibleRawCount).cardinality();
         return new ClickResult(acceptedCount, Math.addExact(acceptedCount, Math.multiplyExact(all, extra)),
-                Math.addExact(pointEligibleRawCount, Math.multiplyExact(eligible, extra)), all);
+                Math.addExact(pointEligibleRawCount, Math.multiplyExact(eligible, extra)), all / pressSize);
     }
 
     /** 1-based offsets of the criticals among the next {@link #WINDOW} manual taps, or null without the effect. */

@@ -44,4 +44,17 @@ class TapBatchSubmitRequestValidationTest {
                 .satisfies(violation ->
                         assertThat(violation.getMessage()).isEqualTo("submittedCount는 1 이상이어야 합니다."));
     }
+
+    @Test
+    void rejectsNonPositiveBoosterMultiplierButAllowsItToBeOmitted() {
+        TapBatchSubmitRequest request = new TapBatchSubmitRequest(UUID.randomUUID(), 0L, 10, 0);
+
+        assertThat(validator.validate(request))
+                .singleElement()
+                .satisfies(violation -> {
+                    assertThat(violation.getPropertyPath()).hasToString("boosterMultiplier");
+                    assertThat(violation.getMessage()).isEqualTo("boosterMultiplier는 1 이상이어야 합니다.");
+                });
+        assertThat(validator.validate(new TapBatchSubmitRequest(UUID.randomUUID(), 0L, 10, 2))).isEmpty();
+    }
 }

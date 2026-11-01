@@ -19,7 +19,7 @@ import java.time.LocalDate;
 public record TapBatchSubmitResponse(
         @Schema(description = "인정된 탭 수예요. 지금은 `submittedCount` 필드 값을 그대로 인정해요. 이미 처리한 배치를 다시 보내면 처음 인정된 탭 수를 돌려줘요.", example = "10")
         int acceptedCount,
-        @Schema(description = "오늘 실제로 친 탭 수예요. 보상 상한(3000탭)과 무관하게 계속 늘어나요.", example = "3763")
+        @Schema(description = "오늘 직접 탭으로 쌓인 점수예요. 부스터 배율을 포함하고 클릭 크리티컬과 자동 클릭은 빼요. 보상 상한(3000탭)과 무관하게 계속 늘어나요.", example = "3763")
         int validTapCount,
         @Schema(description = "이번 요청에서 자동 클릭 정산과 직접 탭 배치로 지급된 포인트의 합계예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "1")
         int pointsAwarded,
@@ -57,7 +57,7 @@ public record TapBatchSubmitResponse(
         int shardBalance,
         @Schema(description = "다음 조각까지 남은 탭 수예요. `nextBoxRequiredTapCount` 필드 값에서 `boxProgressTapCount` 필드 값을 뺀 값이에요.", example = "55")
         int remainingTapsToNextShard,
-        @Schema(description = "이번 직접 탭에 클릭 크리티컬(②)을 반영한 클릭 수예요. 자동 클릭(⑤)은 포함하지 않아요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "12")
+        @Schema(description = "이번 직접 탭에 부스터와 클릭 크리티컬(②)을 반영한 클릭 수예요. 부스터 중 크리티컬이 난 탭은 탭 전체 점수에 크리티컬 배율을 곱해요. 자동 클릭(⑤)은 포함하지 않아요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "12")
         int effectiveCount,
         @Schema(description = "이번 요청에서 직접 탭보다 먼저 정산한 자동 클릭(⑤) 수예요. 이미 처리한 배치를 다시 보내면 0이에요.", example = "60")
         int autoClicksGranted,
