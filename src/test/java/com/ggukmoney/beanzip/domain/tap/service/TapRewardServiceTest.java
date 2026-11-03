@@ -167,4 +167,60 @@ class TapRewardServiceTest {
         assertThat(progress.getCumulativeMissionTapCount()).isZero();
         if(count==0) assertThat(result.pointsAwarded()).isZero();
     }
+
+    private void prepareOverflow(double probability) {
+        prepare();
+        when(tap.pointOverflowEnabled()).thenReturn(true);
+        when(tap.pointOverflowProbability()).thenReturn(probability);
+        when(tap.pointOverflowDailyCap()).thenReturn(10);
+    }
+
+    @Test void overflowIsOffByDefaultSoTapsPastTheTapCapEarnNothing() {
+        prepare();
+        daily.addValidTaps(3000); daily.addPointEarned(147);
+        var result=rewards.award(user,now,Effects.NONE,100,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isZero();
+        verifyNoInteractions(ledger);
+    }
+
+    @Test void tapsLeftUnpaidByTheTapCapRollOverflowUpToTheCombinedCeiling() {
+        prepareOverflow(1.0);
+        daily.addValidTaps(3000); daily.addPointEarned(147);
+        var result=rewards.award(user,now,Effects.NONE,100,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isEqualTo(13);
+        assertThat(daily.getPointEarnedAmount()).isEqualTo(160);
+        assertThat(account.getBalance()).isEqualTo(13);
+        verify(ledger).recordCredit(any(),any(),eq(13L),eq("TAP_OVERFLOW_REWARD"),any());
+        verify(progressService,never()).drawNextTarget(anyLong(),any());
+    }
+
+    @Test void afterThePointCapEveryManualTapIsUnpaidAndRolls() {
+        prepareOverflow(1.0);
+        daily.addValidTaps(1000); daily.addPointEarned(150);
+        var result=rewards.award(user,now,Effects.NONE,20,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isEqualTo(10);
+        assertThat(daily.getPointEarnedAmount()).isEqualTo(160);
+        var again=rewards.award(user,now,Effects.NONE,20,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(again.pointsAwarded()).isZero();
+    }
+
+    @Test void aBatchCrossingTheTapCapRollsOnlyTheTapsPastIt() {
+        prepareOverflow(1.0);
+        daily.addValidTaps(2990);
+        var result=rewards.award(user,now,Effects.NONE,25,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(result.pointsAwarded()).isEqualTo(16);
+        verify(ledger).recordCredit(any(),any(),eq(1L),eq("TAP_REWARD"),any());
+        verify(ledger).recordCredit(any(),any(),eq(15L),eq("TAP_OVERFLOW_REWARD"),any());
+    }
+
+    @Test void overflowNeverRollsBeforeEitherCapClosesOrForAutomaticClicks() {
+        prepareOverflow(1.0);
+        daily.addValidTaps(1000); daily.addPointEarned(100);
+        var open=rewards.award(user,now,Effects.NONE,50,false,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(open.pointsAwarded()).isEqualTo(1);
+        daily.addValidTaps(1950); daily.addPointEarned(49);
+        var automatic=rewards.award(user,now,Effects.NONE,500,true,UUID.randomUUID(),new KeycapPassiveRoller());
+        assertThat(automatic.pointsAwarded()).isZero();
+        verify(ledger,never()).recordCredit(any(),any(),anyLong(),eq("TAP_OVERFLOW_REWARD"),any());
+    }
 }

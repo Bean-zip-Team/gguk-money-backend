@@ -57,6 +57,16 @@ class KeycapPassiveRollerTest {
         assertThat(points).isEqualTo(wholePoints);
     }
 
+    @Test
+    void overflowTrialsDrawOncePerTapFromThePointStream() {
+        var points = new SequenceRandom(0.001, 0.5, 0.0019, 0.002);
+        var roller = new KeycapPassiveRoller(new SequenceRandom(), points);
+        assertThat(roller.rollOverflowHits(4, 0.002)).isEqualTo(2);
+        assertThat(points.remaining()).isZero();
+        assertThat(roller.rollOverflowHits(3, 0)).isZero();
+        assertThatThrownBy(() -> roller.rollOverflowHits(1, 1.5)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static final class SequenceRandom implements RandomGenerator {
         private final ArrayDeque<Double> values = new ArrayDeque<>();
         SequenceRandom(double... values) { Arrays.stream(values).forEach(this.values::add); }

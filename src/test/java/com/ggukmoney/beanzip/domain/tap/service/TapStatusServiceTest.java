@@ -130,4 +130,29 @@ class TapStatusServiceTest {
         // 10탭 남은 것처럼 보이면 안 된다. 오늘은 더 지급되지 않는다.
         assertThat(response.remainingTapsToNextPoint()).isZero();
     }
+
+    @Test
+    void returnsTheEffectiveTotalIncludingCriticalsAndAutomaticClicks() {
+        AppUser user = mock(AppUser.class);
+        when(userService.getById(userId)).thenReturn(user);
+
+        UserTapDaily daily = UserTapDaily.createFor(user, today);
+        daily.addValidTaps(100);
+        daily.addTotalValidTaps(100);
+        // 크리티컬 보너스와 자동 클릭은 effective 에만 더해진다.
+        daily.addEffectiveTaps(60);
+        when(userTapDailyService.getOrCreate(eq(user), eq(today))).thenReturn(daily);
+
+        UserTapProgress progress = UserTapProgress.createFor(user, 300);
+        progress.addValidTaps(100);
+        when(userTapProgressService.getForUser(userId)).thenReturn(progress);
+
+        when(userTapSessionService.getBoxProgress(user, now, tapPolicyConfig))
+                .thenReturn(new BoxProgressSnapshot(100, 200));
+
+        TapTodayStatusResponse response = tapStatusService.getTodayStatus(userId);
+
+        assertThat(response.validTapCount()).isEqualTo(100);
+        assertThat(response.effectiveTapCountToday()).isEqualTo(160);
+    }
 }

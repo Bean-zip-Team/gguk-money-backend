@@ -35,4 +35,26 @@ class WeeklyRankingRewardTest {
 
         assertThat(reward.getViewedAt()).isEqualTo(firstViewedAt);
     }
+
+    @Test
+    void claimingRecordsTheViewUnlessItWasAlreadyRecorded() {
+        Instant expiresAt = Instant.parse("2026-09-24T00:00:00Z");
+        Instant claimedAt = Instant.parse("2026-09-22T00:00:00Z");
+        WeeklyRankingReward unseen = WeeklyRankingReward.open(
+                mock(RankingSeason.class), mock(AppUser.class), 1L, 1, 100L, 10_000L, expiresAt);
+
+        unseen.claim(claimedAt);
+
+        assertThat(unseen.getViewedAt()).isEqualTo(claimedAt);
+
+        WeeklyRankingReward seen = WeeklyRankingReward.open(
+                mock(RankingSeason.class), mock(AppUser.class), 1L, 2, 90L, 5_000L, expiresAt);
+        Instant viewedAt = claimedAt.minusSeconds(600);
+        seen.markViewed(viewedAt);
+
+        seen.claim(claimedAt);
+
+        assertThat(seen.getViewedAt()).isEqualTo(viewedAt);
+        assertThat(seen.getClaimedAt()).isEqualTo(claimedAt);
+    }
 }

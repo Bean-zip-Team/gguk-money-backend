@@ -40,6 +40,18 @@ public final class KeycapPassiveRoller {
         return (int) Math.min(candidate, remainingDailyPoints);
     }
 
+    /** BEA-360: one independent trial per unpaid tap; returns how many hit. Shares the point stream. */
+    public int rollOverflowHits(int taps, double probability) {
+        if (taps < 0 || probability < 0 || probability > 1) {
+            throw new IllegalArgumentException("Invalid overflow trial");
+        }
+        int hits = 0;
+        for (int i = 0; i < taps; i++) {
+            if (probability > 0 && pointRandom.nextDouble() < probability) hits++;
+        }
+        return hits;
+    }
+
     private int roll(Critical effect, RandomGenerator random) {
         return effect.probability() > 0 && random.nextDouble() < effect.probability() ? effect.multiplier() : 1;
     }

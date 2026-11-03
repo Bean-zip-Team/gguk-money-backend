@@ -57,7 +57,8 @@ public class TapStatusService {
                 boxProgress.cumulativeValidTapCount(),
                 boxProgress.nextBoxTarget(),
                 ClickCriticalScheduleResponse.of(clickCriticals, userId, progress.getCumulativeMissionTapCount(),
-                        passive.displayEffects(userId).click())
+                        passive.displayEffects(userId).click()),
+                daily.getTotalEffectiveTapCount()
         );
     }
 }

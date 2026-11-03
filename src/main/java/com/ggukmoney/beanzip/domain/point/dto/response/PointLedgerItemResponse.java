@@ -13,7 +13,7 @@ public record PointLedgerItemResponse(
         String entryType,
         @Schema(description = "변동한 포인트 양이에요. 늘었는지 줄었는지는 `entryType` 필드로 구분해요.", example = "10")
         long amount,
-        @Schema(description = "원장 사유 코드예요. 예를 들어 `TAP_REWARD`는 탭 보상, `CASHOUT`은 출금 차감, `CASHOUT_FAILED`는 출금 실패 환불이에요.", example = "TAP_REWARD")
+        @Schema(description = "원장 사유 코드예요. 예를 들어 `TAP_REWARD`는 탭 보상, `TAP_OVERFLOW_REWARD`는 일일 상한 이후의 희박 탭 보상, `CASHOUT`은 출금 차감, `CASHOUT_FAILED`는 출금 실패 환불이에요.", example = "TAP_REWARD")
         String reason,
         @Schema(description = "발생 시각이에요.", example = "2026-07-15T01:00:00Z")
         Instant occurredAt

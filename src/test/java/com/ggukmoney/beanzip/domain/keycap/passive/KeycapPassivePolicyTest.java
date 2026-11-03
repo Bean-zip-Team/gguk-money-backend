@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.keycap.passive;
 
+import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapPassiveEffectResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -95,5 +96,16 @@ class KeycapPassivePolicyTest {
     @Test
     void rejectsInvalidOwnedLevels() {
         assertThatThrownBy(() -> policy.effects("radio", 0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"cheer,50,0,0,0", "dolphin,50,0,0,6", "lucky,50,0,0,6", "yellowlego,50,0,10,0",
+        "earth,20,15,0,9", "pudding,5,20,20,13", "main,5,4.49,0,0"})
+    void summarizesExpectedGainPerAxisWithoutMixingClickIntoShardOrPoint(String code, int level,
+            double shardPercent, double pointPercent, double rankingPercent) {
+        var bonuses = KeycapPassiveEffectResponse.from(policy.effects(code, level), true, null).bonuses();
+        assertThat(bonuses.shardPercent()).isEqualTo(shardPercent);
+        assertThat(bonuses.pointPercent()).isEqualTo(pointPercent);
+        assertThat(bonuses.rankingPercent()).isEqualTo(rankingPercent);
     }
 }

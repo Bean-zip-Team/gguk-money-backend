@@ -26,11 +26,32 @@ public record KeycapPassiveEffectResponse(
         @Schema(description = "신규 패시브 적립과 직접 탭 효과의 활성 여부예요. false여도 비활성화 전에 쌓인 자동 클릭은 다음 정산 때 지급해요.", example = "false")
         boolean enabled,
         @Schema(description = "미보유 카드 미리보기의 기준 레벨이에요. 미리보기는 1이며 보유 키캡의 실제 효과 응답에서는 이 필드가 null이에요.", nullable = true, example = "1")
-        Integer previewLevel
+        Integer previewLevel,
+        @Schema(description = "현재 레벨 효과로 조각, 포인트, 랭킹 점수가 평균 몇 % 더 쌓이는지예요. 조각은 조각 크리티컬, 포인트는 포인트 크리티컬, 랭킹은 클릭 크리티컬만 반영하고 자동 클릭은 세 값 모두 0이에요. 소수점 둘째 자리까지 반올림해요.")
+        Bonuses bonuses
 ) {
+    @Schema(description = "효과 기대 증가율(%)이에요. 효과가 없는 축은 0이에요.")
+    public record Bonuses(
+            @Schema(description = "조각 획득량 기대 증가율(%)이에요.", example = "15")
+            double shardPercent,
+            @Schema(description = "포인트 획득량 기대 증가율(%)이에요.", example = "0")
+            double pointPercent,
+            @Schema(description = "랭킹 점수 기대 증가율(%)이에요.", example = "9")
+            double rankingPercent
+    ) {
+        static Bonuses from(Effects effect) {
+            return new Bonuses(percent(effect.shard()), percent(effect.point()), percent(effect.click()));
+        }
+
+        private static double percent(Critical critical) {
+            return Math.round((critical.expectedMultiplier() - 1) * 10_000) / 100.0;
+        }
+    }
+
     public static KeycapPassiveEffectResponse from(Effects effect,boolean enabled,Integer previewLevel) {
         return new KeycapPassiveEffectResponse(effect.shard(),effect.click(),effect.point(),
                 effect.capLevel()==0?null:effect.capLevel(),effect.capReached(),effect.autoClicksPerDay(),
-                effect.autoClickCap()==0?null:effect.autoClickCap(),effect.autoClickCapReached(),enabled,previewLevel);
+                effect.autoClickCap()==0?null:effect.autoClickCap(),effect.autoClickCapReached(),enabled,previewLevel,
+                Bonuses.from(effect));
     }
 }

@@ -97,4 +97,43 @@ class ClickCriticalScheduleTest {
         assertThatThrownBy(() -> schedule.roll(user, 0, Critical.NONE, 2, 3)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> schedule.roll(user, 0, Critical.NONE, -1, 0)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void aBoosterPressScoresItsWholeTwoPointsTimesTheMultiplierOnlyWhenItsFirstNumberIsAnnounced() {
+        long base = 1_000;
+        var announced = schedule.upcoming(user, base, dolphin);
+        int k = announced.stream().filter(offset -> offset >= 2 && !announced.contains(offset - 1)).findFirst().orElseThrow();
+
+        // The press takes numbers k and k+1: (1 + 1) x 2.
+        var first = schedule.roll(user, base + k - 1, dolphin, 2, 2, 2);
+        assertThat(first.effectiveCount()).isEqualTo(4);
+        assertThat(first.criticalCount()).isEqualTo(1);
+
+        // The press takes numbers k-1 and k: only its second number is announced, so it is not critical.
+        var second = schedule.roll(user, base + k - 2, dolphin, 2, 2, 2);
+        assertThat(second.effectiveCount()).isEqualTo(2);
+        assertThat(second.criticalCount()).isZero();
+    }
+
+    @Test
+    void aBoosterBatchMultipliesEveryPressWhoseFirstNumberIsAnnounced() {
+        var announced = schedule.upcoming(user, 0, dolphin);
+        long presses = announced.stream().filter(offset -> offset <= 100 && offset % 2 == 1).count();
+        long pressesInPrefix = announced.stream().filter(offset -> offset <= 60 && offset % 2 == 1).count();
+        assertThat(presses).isPositive();
+        assertThat(announced).anySatisfy(offset -> assertThat(offset).isLessThanOrEqualTo(100).isEven());
+
+        var result = schedule.roll(user, 0, dolphin, 100, 60, 2);
+
+        assertThat(result.criticalCount()).isEqualTo(presses);
+        assertThat(result.effectiveCount()).isEqualTo(100 + presses * 2);
+        assertThat(result.pointEligibleEffectiveCount()).isEqualTo(60 + pressesInPrefix * 2);
+        assertThat(schedule.roll(user, 0, dolphin, 100, 60, 1)).isEqualTo(schedule.roll(user, 0, dolphin, 100, 60));
+    }
+
+    @Test
+    void rejectsABatchThatSplitsAPress() {
+        assertThatThrownBy(() -> schedule.roll(user, 0, dolphin, 3, 3, 2)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> schedule.roll(user, 0, dolphin, 2, 2, 0)).isInstanceOf(IllegalArgumentException.class);
+    }
 }

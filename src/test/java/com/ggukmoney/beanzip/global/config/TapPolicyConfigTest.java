@@ -93,6 +93,32 @@ class TapPolicyConfigTest {
     }
 
     @Test
+    void overflowKeysDefaultOffAndAcceptBooleanAndProbabilityValues() {
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(anyString(), any(Instant.class)))
+                .thenReturn(Optional.empty());
+        tapPolicyConfig.refresh();
+        assertThat(tapPolicyConfig.pointOverflowEnabled()).isFalse();
+        assertThat(tapPolicyConfig.pointOverflowProbability()).isEqualTo(0.002);
+        assertThat(tapPolicyConfig.pointOverflowDailyCap()).isEqualTo(10);
+
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                org.mockito.ArgumentMatchers.eq(TapPolicyConfig.KEY_POINT_OVERFLOW_ENABLED), any(Instant.class)
+        )).thenReturn(Optional.of(AppConfig.createFor(TapPolicyConfig.KEY_POINT_OVERFLOW_ENABLED, "true", Instant.EPOCH)));
+        when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
+                org.mockito.ArgumentMatchers.eq(TapPolicyConfig.KEY_POINT_OVERFLOW_PROBABILITY), any(Instant.class)
+        )).thenReturn(
+                Optional.of(AppConfig.createFor(TapPolicyConfig.KEY_POINT_OVERFLOW_PROBABILITY, "0.01", Instant.EPOCH)),
+                Optional.of(AppConfig.createFor(TapPolicyConfig.KEY_POINT_OVERFLOW_PROBABILITY, "1.5", Instant.EPOCH))
+        );
+        tapPolicyConfig.refresh();
+        assertThat(tapPolicyConfig.pointOverflowEnabled()).isTrue();
+        assertThat(tapPolicyConfig.pointOverflowProbability()).isEqualTo(0.01);
+
+        tapPolicyConfig.refresh();
+        assertThat(tapPolicyConfig.pointOverflowProbability()).isEqualTo(0.01);
+    }
+
+    @Test
     void keepsLastKnownGoodForInvalidKeyAndUpdatesOtherValidKey() {
         when(appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(
                 org.mockito.ArgumentMatchers.eq(TapPolicyConfig.KEY_POINT_DAILY_CAP), any(Instant.class)
