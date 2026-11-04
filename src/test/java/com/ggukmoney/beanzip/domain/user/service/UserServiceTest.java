@@ -46,7 +46,7 @@ class UserServiceTest {
         when(appUserRepository.save(org.mockito.ArgumentMatchers.any(AppUser.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        AppUser created = userService.createActive("김토스", null);
+        AppUser created = userService.createActive("김토스", null, null);
 
         assertThat(created.getNickname()).isEqualTo("김토스");
         assertThat(created.getNicknameNormalized()).isEqualTo("김토스");

@@ -61,6 +61,10 @@ public class AppUser {
     @Column(name = "suspended_at")
     private Instant suspendedAt;
 
+    // 가입할 때 미니앱이 열린 유입 경로(토스 referrer 파라미터). 이후 로그인이나 탈퇴 후 재가입에서는 바꾸지 않는다.
+    @Column(name = "signup_referrer", columnDefinition = "text")
+    private String signupReferrer;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -68,8 +72,13 @@ public class AppUser {
     private Instant updatedAt;
 
     public static AppUser createActive(String nickname, String profileImageUrl) {
+        return createActive(nickname, profileImageUrl, null);
+    }
+
+    public static AppUser createActive(String nickname, String profileImageUrl, String signupReferrer) {
         AppUser user = new AppUser();
         user.status = Status.ACTIVE;
+        user.signupReferrer = normalizeNullable(signupReferrer);
         user.recordLogin(nickname, profileImageUrl);
         return user;
     }
