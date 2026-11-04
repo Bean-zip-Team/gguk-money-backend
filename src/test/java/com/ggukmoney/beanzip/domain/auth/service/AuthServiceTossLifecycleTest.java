@@ -113,16 +113,16 @@ class AuthServiceTossLifecycleTest {
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe(
                 "user-key-1", "Bean", "https://img", List.of("service_terms_v1", "privacy_v2")
         ));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2")))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2"), "search"))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
 
-        AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
+        AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, "search"));
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isTrue();
         assertThat(response.onboardingRewardApplied()).isFalse();
         assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2"));
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2"), "search");
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -132,7 +132,7 @@ class AuthServiceTossLifecycleTest {
         UUID attemptId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of()))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of(), null))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, true));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", attemptId));
@@ -140,7 +140,7 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isTrue();
         assertThat(response.onboardingRewardApplied()).isTrue();
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of());
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", attemptId, List.of(), null);
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -149,7 +149,7 @@ class AuthServiceTossLifecycleTest {
         UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", "https://img"));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of()))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
@@ -157,11 +157,11 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isFalse();
         assertThat(response.onboardingRewardApplied()).isFalse();
-        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).createActive(any(), any(), any());
         verify(pointAccountService, never()).createFor(any());
         verify(keycapBoxAccountService, never()).createFor(any());
         verify(userTapProgressService, never()).createFor(any(), any());
-        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of());
+        verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null);
         verify(redisService).putAllHash(anyString(), anyMap());
     }
 
@@ -170,7 +170,7 @@ class AuthServiceTossLifecycleTest {
         UUID userId = UUID.randomUUID();
         when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
         when(tossAuthClient.loginMe("toss-access")).thenReturn(new TossAuthClient.TossLoginMe("user-key-1", "Bean", null));
-        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", null, null, List.of()))
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", null, null, List.of(), null))
                 .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
 
         AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
@@ -178,7 +178,7 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.newUser()).isFalse();
         assertThat(response.onboardingRewardApplied()).isFalse();
-        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).createActive(any(), any(), any());
         verify(userService, never()).recordLogin(any(), any(), any());
         verify(redisService).putAllHash(anyString(), anyMap());
     }

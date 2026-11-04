@@ -100,7 +100,8 @@ public class AuthService {
                 loginMe.nickname(),
                 loginMe.profileImageUrl(),
                 request.onboardingAttemptId(),
-                loginMe.agreedTerms()
+                loginMe.agreedTerms(),
+                request.signupReferrer()
         );
 
         return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());

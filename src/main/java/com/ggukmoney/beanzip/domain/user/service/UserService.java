@@ -32,8 +32,8 @@ public class UserService {
     private final RankingEligibilityChangeService rankingEligibilityChangeService;
 
     @Transactional
-    public AppUser createActive(String nickname, String profileImageUrl) {
-        return appUserRepository.save(AppUser.createActive(nickname, profileImageUrl));
+    public AppUser createActive(String nickname, String profileImageUrl, String signupReferrer) {
+        return appUserRepository.save(AppUser.createActive(nickname, profileImageUrl, signupReferrer));
     }
 
     public AppUser getById(UUID userId) {

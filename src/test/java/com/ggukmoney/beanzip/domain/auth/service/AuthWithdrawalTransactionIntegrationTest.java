@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
 import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
+import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.entity.TossLoginConsentHistory;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
@@ -135,5 +136,25 @@ class AuthWithdrawalTransactionIntegrationTest extends FullStackIntegrationTestS
         assertThat(reactivated.getStatus()).isEqualTo(AppUser.Status.SUSPENDED);
         assertThat(reactivated.isSuspended()).isTrue();
         assertThat(reactivated.getSuspendedAt()).isNotNull();
+    }
+
+    @Test
+    void keepsTheSignupReferrerThroughLaterLoginsAndRejoining() {
+        String providerUserId = "toss-user-key-" + UUID.randomUUID();
+        when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
+        when(tossAuthClient.loginMe("toss-access"))
+                .thenReturn(new TossAuthClient.TossLoginMe(providerUserId, "Bean", null, List.of()));
+
+        UUID userId = authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, "search")).userId();
+        assertThat(appUserRepository.findById(userId).orElseThrow().getSignupReferrer()).isEqualTo("search");
+
+        assertThat(authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, "push")).newUser()).isFalse();
+        assertThat(appUserRepository.findById(userId).orElseThrow().getSignupReferrer()).isEqualTo("search");
+
+        authWithdrawalTransactionService.completeFromWebhook(providerUserId, "UNLINK");
+        authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, "tossads"));
+        AppUser rejoined = appUserRepository.findById(userId).orElseThrow();
+        assertThat(rejoined.isWithdrawn()).isFalse();
+        assertThat(rejoined.getSignupReferrer()).isEqualTo("search");
     }
 }

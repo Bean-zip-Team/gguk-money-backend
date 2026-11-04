@@ -44,7 +44,7 @@ public class AuthController {
     @Operation(summary = "Toss 로그인", description = "Toss 인가 코드로 로그인하고 액세스 토큰과 리프레시 토큰을 발급해요. 처음 보는 Toss 계정이면 회원을 새로 만들어요. 탈퇴한 회원이 다시 로그인하면 계정을 다시 활성화해요.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그인에 성공했어요."),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않아요. `authorizationCode` 필드가 비어 있으면 이 응답을 받아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않아요. `authorizationCode` 필드가 비어 있거나 `signupReferrer` 가 100자를 넘으면 이 응답을 받아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Toss 인가 코드가 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "502", description = "Toss API 호출이 실패했거나 Toss 응답이 올바르지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
