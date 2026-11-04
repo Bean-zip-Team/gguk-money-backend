@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 public record UserWithdrawalRequest(
         @Schema(description = "본인 확인과 Toss 연결 해제에 쓸 Toss 인가 코드예요.", example = "toss-authorization-code")
         @NotBlank String authorizationCode,
-        @Schema(description = "Toss 유입 경로(referrer) 값이에요. Toss 토큰을 발급할 때 함께 보내요.", example = "beanzip")
+        @Schema(description = "`appLogin()` 응답의 referrer 예요. 토스 앱이면 `DEFAULT`, 샌드박스 앱이면 `SANDBOX` 예요. Toss 토큰을 발급할 때 그대로 넘겨요.", example = "DEFAULT")
         String referrer
 ) {
 }

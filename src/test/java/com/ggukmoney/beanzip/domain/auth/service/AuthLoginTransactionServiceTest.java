@@ -69,7 +69,7 @@ class AuthLoginTransactionServiceTest {
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
                 .thenReturn(Optional.empty());
-        when(userService.createActive("Bean", "https://img")).thenReturn(user);
+        when(userService.createActive("Bean", "https://img", null)).thenReturn(user);
         when(onboardingRewardClaimService.claimForNewUser(user, attemptId)).thenReturn(30);
         LocalDate today = LocalDate.ofInstant(now, businessZoneId);
         UserTapDaily daily = UserTapDaily.createFor(user, today);
@@ -104,7 +104,7 @@ class AuthLoginTransactionServiceTest {
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
                 .thenReturn(Optional.empty());
-        when(userService.createActive("Bean", "https://img")).thenReturn(user);
+        when(userService.createActive("Bean", "https://img", null)).thenReturn(user);
 
         AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
                 "toss-user",
@@ -211,7 +211,7 @@ class AuthLoginTransactionServiceTest {
         assertThat(result.newUser()).isFalse();
         assertThat(result.onboardingRewardApplied()).isFalse();
         verify(userService).reactivate(user, "Bean", "https://img");
-        verify(userService, never()).createActive(any(), any());
+        verify(userService, never()).createActive(any(), any(), any());
         verify(userService, never()).recordLogin(any(), any(), any());
         verify(authIdentityRepository, never()).save(any(AuthIdentity.class));
         verify(pointAccountService, never()).createFor(any());

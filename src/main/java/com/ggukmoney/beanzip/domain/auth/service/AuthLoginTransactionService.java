@@ -57,12 +57,24 @@ public class AuthLoginTransactionService {
             UUID onboardingAttemptId,
             List<String> agreedTerms
     ) {
+        return loginWithTossUser(providerUserId, nickname, profileImageUrl, onboardingAttemptId, agreedTerms, null);
+    }
+
+    @Transactional
+    public LoginTransactionResult loginWithTossUser(
+            String providerUserId,
+            String nickname,
+            String profileImageUrl,
+            UUID onboardingAttemptId,
+            List<String> agreedTerms,
+            String signupReferrer
+    ) {
         AuthIdentity identity = authIdentityRepository
                 .findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, providerUserId)
                 .orElse(null);
 
         if (identity == null) {
-            AppUser user = userService.createActive(nickname, profileImageUrl);
+            AppUser user = userService.createActive(nickname, profileImageUrl, signupReferrer);
             authIdentityRepository.save(AuthIdentity.toss(user, providerUserId));
             pointAccountService.createFor(user);
             keycapBoxAccountService.createFor(user);
