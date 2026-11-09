@@ -126,7 +126,7 @@ class RankingQueryServiceTest {
         when(entryRepository.findMyParticipant(season, me)).thenReturn(Optional.empty());
         when(entryRepository.countParticipants(season)).thenReturn(2L);
         EquippedKeycapResponse moon = new EquippedKeycapResponse(UUID.randomUUID(), "moon", "달 키캡", "https://cdn/moonKeycap.webp");
-        EquippedKeycapResponse main = new EquippedKeycapResponse(UUID.randomUUID(), "main", "메인 키캡", "https://cdn/mainKeycap.webp");
+        EquippedKeycapResponse main = new EquippedKeycapResponse(UUID.randomUUID(), "main", "기본 키캡", "https://cdn/mainKeycap.webp");
         when(keycapService.getEquippedKeycaps(List.of(first, second))).thenReturn(java.util.Map.of(first, moon, second, main));
 
         CurrentRankingResponse response = service.getCurrentRanking(me, null);

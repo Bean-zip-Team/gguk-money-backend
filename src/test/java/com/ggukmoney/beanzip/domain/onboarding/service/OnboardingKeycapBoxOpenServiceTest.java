@@ -237,7 +237,7 @@ class OnboardingKeycapBoxOpenServiceTest {
     private static OnboardingKeycapBoxOpenResponse response(boolean completed) {
         return new OnboardingKeycapBoxOpenResponse(
                 UUID.randomUUID(),
-                UUID.randomUUID(), "cheer", "치어 키캡", "COMMON",
+                UUID.randomUUID(), "cheer", "응원 키캡", "COMMON",
                 "https://example.com/keycaps/cheer.webp", "https://example.com/keycaps/cheer.mp3",
                 completed,
                 2,
