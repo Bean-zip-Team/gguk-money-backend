@@ -13,7 +13,7 @@ public record OnboardingKeycapBoxOpenResponse(
         UUID keycapId,
         @Schema(description = "키캡 코드예요.", example = "cheer")
         String code,
-        @Schema(description = "키캡 이름이에요.", example = "치어 키캡")
+        @Schema(description = "키캡 이름이에요.", example = "응원 키캡")
         String name,
         @Schema(description = "키캡 등급이에요. `COMMON`, `RARE`, `EPIC`, `LEGENDARY` 중 하나예요.", example = "COMMON")
         String grade,

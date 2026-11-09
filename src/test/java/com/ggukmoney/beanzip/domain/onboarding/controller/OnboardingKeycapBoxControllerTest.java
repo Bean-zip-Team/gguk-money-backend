@@ -44,7 +44,7 @@ class OnboardingKeycapBoxControllerTest {
         UUID bonusKeycapId = UUID.randomUUID();
         when(service.open(any())).thenReturn(new OnboardingKeycapBoxOpenResponse(
                 attemptId,
-                bonusKeycapId, "cheer", "치어 키캡", "COMMON",
+                bonusKeycapId, "cheer", "응원 키캡", "COMMON",
                 "https://example.com/keycaps/cheer.webp", "https://example.com/keycaps/cheer.mp3",
                 true,
                 2,
