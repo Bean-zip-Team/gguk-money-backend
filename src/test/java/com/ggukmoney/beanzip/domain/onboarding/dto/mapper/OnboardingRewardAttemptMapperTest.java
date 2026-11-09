@@ -70,7 +70,7 @@ class OnboardingRewardAttemptMapperTest {
         Keycap mainKeycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(mainKeycap, "publicId", mainKeycapId);
         ReflectionTestUtils.setField(mainKeycap, "code", "main");
-        ReflectionTestUtils.setField(mainKeycap, "name", "메인 키캡");
+        ReflectionTestUtils.setField(mainKeycap, "name", "기본 키캡");
         ReflectionTestUtils.setField(mainKeycap, "grade", Keycap.Grade.COMMON);
         ReflectionTestUtils.setField(mainKeycap, "imageUrl", "https://example.com/keycaps/main.webp");
         ReflectionTestUtils.setField(mainKeycap, "soundUrl", "https://example.com/keycaps/main.mp3");

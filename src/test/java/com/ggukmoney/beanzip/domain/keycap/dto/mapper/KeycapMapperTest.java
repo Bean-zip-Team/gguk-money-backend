@@ -46,7 +46,7 @@ class KeycapMapperTest {
 
     @Test
     void mapsSoundNameToTheNameShownOnTheAppCard() {
-        assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "main", "메인 키캡", Keycap.Grade.COMMON, 10, 1, true, 1)).soundName()).isEqualTo("기본");
+        assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "main", "기본 키캡", Keycap.Grade.COMMON, 10, 1, true, 1)).soundName()).isEqualTo("기본");
         assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "cheer", "응원 키캡", Keycap.Grade.COMMON, 10, 1, true, 2)).soundName()).isEqualTo("응원");
         assertThat(keycapMapper.mapToKeycapItemResponse(keycap(UUID.randomUUID(), "dolphin", "돌고래 키캡", Keycap.Grade.COMMON, 10, 1, true, 3)).soundName()).isEqualTo("돌고래");
     }
