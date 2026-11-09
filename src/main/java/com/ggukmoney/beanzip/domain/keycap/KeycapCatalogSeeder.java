@@ -27,7 +27,7 @@ public class KeycapCatalogSeeder implements CommandLineRunner {
 
     private static final List<CatalogEntry> CATALOG = List.of(
             new CatalogEntry("biscuit", "비스킷 키캡", Grade.RARE, "c01_biscuit_crack.wav"),
-            new CatalogEntry("cheer", "치어 키캡", Grade.COMMON, "37_chime.wav"),
+            new CatalogEntry("cheer", "응원 키캡", Grade.COMMON, "37_chime.wav"),
             new CatalogEntry("dolphin", "돌고래 키캡", Grade.COMMON, "35_droplet.wav"),
             new CatalogEntry("earth", "지구 키캡", Grade.EPIC, "c10_earth_thunder.wav"),
             new CatalogEntry("jellyfoot", "젤리발 키캡", Grade.RARE, "55_soft_tap.wav"),

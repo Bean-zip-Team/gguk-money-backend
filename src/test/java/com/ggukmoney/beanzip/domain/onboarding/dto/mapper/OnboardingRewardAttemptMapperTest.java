@@ -31,7 +31,7 @@ class OnboardingRewardAttemptMapperTest {
         assertThat(response.onboardingAttemptId()).isEqualTo(attemptId);
         assertThat(response.keycapId()).isEqualTo(bonusKeycapId);
         assertThat(response.code()).isEqualTo("cheer");
-        assertThat(response.name()).isEqualTo("치어 키캡");
+        assertThat(response.name()).isEqualTo("응원 키캡");
         assertThat(response.grade()).isEqualTo("COMMON");
         assertThat(response.imageUrl()).isEqualTo("https://example.com/keycaps/cheer.webp");
         assertThat(response.soundUrl()).isEqualTo("https://example.com/keycaps/cheer.mp3");
@@ -78,7 +78,7 @@ class OnboardingRewardAttemptMapperTest {
         Keycap bonusKeycap = newInstance(Keycap.class);
         ReflectionTestUtils.setField(bonusKeycap, "publicId", bonusKeycapId);
         ReflectionTestUtils.setField(bonusKeycap, "code", "cheer");
-        ReflectionTestUtils.setField(bonusKeycap, "name", "치어 키캡");
+        ReflectionTestUtils.setField(bonusKeycap, "name", "응원 키캡");
         ReflectionTestUtils.setField(bonusKeycap, "grade", Keycap.Grade.COMMON);
         ReflectionTestUtils.setField(bonusKeycap, "imageUrl", "https://example.com/keycaps/cheer.webp");
         ReflectionTestUtils.setField(bonusKeycap, "soundUrl", "https://example.com/keycaps/cheer.mp3");
