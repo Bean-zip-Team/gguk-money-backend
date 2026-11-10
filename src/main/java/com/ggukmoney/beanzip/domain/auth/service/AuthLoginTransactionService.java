@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.auth.service;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingDefaultRewardService;
 import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingRewardClaimService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
@@ -35,6 +36,7 @@ public class AuthLoginTransactionService {
     private final UserTapDailyService userTapDailyService;
     private final TapPolicyConfig tapPolicyConfig;
     private final OnboardingRewardClaimService onboardingRewardClaimService;
+    private final OnboardingDefaultRewardService onboardingDefaultRewardService;
     private final TossLoginConsentHistoryService tossLoginConsentHistoryService;
     private final Clock clock;
     private final ZoneId businessZoneId;
@@ -80,13 +82,7 @@ public class AuthLoginTransactionService {
             keycapBoxAccountService.createFor(user);
             userTapProgressService.createFor(user, tapPolicyConfig);
             userTapSessionService.createFor(user, clock.instant(), tapPolicyConfig);
-            int onboardingTapCount = onboardingAttemptId == null
-                    ? 0
-                    : onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
-            boolean onboardingRewardApplied = onboardingTapCount > 0;
-            if (onboardingRewardApplied) {
-                seedTodayTapCountFromOnboarding(user, onboardingTapCount);
-            }
+            boolean onboardingRewardApplied = applyOnboardingRewardForNewUser(user, onboardingAttemptId);
             tossLoginConsentHistoryService.recordAgreements(user.getId(), agreedTerms, "LOGIN");
             return new LoginTransactionResult(user.getId(), true, onboardingRewardApplied);
         }
@@ -104,6 +100,21 @@ public class AuthLoginTransactionService {
         );
         tossLoginConsentHistoryService.recordAgreements(loggedInUser.getId(), agreedTerms, "LOGIN");
         return new LoginTransactionResult(loggedInUser.getId(), false, onboardingRewardApplied);
+    }
+
+    /**
+     * 상자 온보딩을 거친 구버전 앱은 attempt를 정산하고, 한 장 온보딩(attempt 없음)은 기본 보상을 준다.
+     */
+    private boolean applyOnboardingRewardForNewUser(AppUser user, UUID onboardingAttemptId) {
+        if (onboardingAttemptId == null) {
+            return onboardingDefaultRewardService.grantForNewUser(user);
+        }
+        int onboardingTapCount = onboardingRewardClaimService.claimForNewUser(user, onboardingAttemptId);
+        if (onboardingTapCount <= 0) {
+            return false;
+        }
+        seedTodayTapCountFromOnboarding(user, onboardingTapCount);
+        return true;
     }
 
     private void seedTodayTapCountFromOnboarding(AppUser user, int onboardingTapCount) {

@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.auth.service;
 import com.ggukmoney.beanzip.domain.auth.entity.AuthIdentity;
 import com.ggukmoney.beanzip.domain.auth.repository.AuthIdentityRepository;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingDefaultRewardService;
 import com.ggukmoney.beanzip.domain.onboarding.service.OnboardingRewardClaimService;
 import com.ggukmoney.beanzip.domain.point.service.PointAccountService;
 import com.ggukmoney.beanzip.domain.tap.entity.UserTapDaily;
@@ -43,6 +44,7 @@ class AuthLoginTransactionServiceTest {
     private final UserTapDailyService userTapDailyService = mock(UserTapDailyService.class);
     private final TapPolicyConfig tapPolicyConfig = mock(TapPolicyConfig.class);
     private final OnboardingRewardClaimService onboardingRewardClaimService = mock(OnboardingRewardClaimService.class);
+    private final OnboardingDefaultRewardService onboardingDefaultRewardService = mock(OnboardingDefaultRewardService.class);
     private final TossLoginConsentHistoryService tossLoginConsentHistoryService = mock(TossLoginConsentHistoryService.class);
     private final Instant now = Instant.parse("2026-07-20T15:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
@@ -57,6 +59,7 @@ class AuthLoginTransactionServiceTest {
             userTapDailyService,
             tapPolicyConfig,
             onboardingRewardClaimService,
+            onboardingDefaultRewardService,
             tossLoginConsentHistoryService,
             clock,
             businessZoneId
@@ -92,6 +95,7 @@ class AuthLoginTransactionServiceTest {
         verify(userTapProgressService).createFor(user, tapPolicyConfig);
         verify(userTapSessionService).createFor(user, now, tapPolicyConfig);
         verify(onboardingRewardClaimService).claimForNewUser(user, attemptId);
+        verify(onboardingDefaultRewardService, never()).grantForNewUser(any());
         verify(tossLoginConsentHistoryService).recordAgreements(userId, List.of("service_terms_v1", "privacy_v2"), "LOGIN");
         assertThat(daily.getValidTapCount()).isEqualTo(30);
         assertThat(daily.getTotalValidTapCount()).isEqualTo(30);
@@ -99,12 +103,37 @@ class AuthLoginTransactionServiceTest {
     }
 
     @Test
-    void newUserWithoutOnboardingAttemptDoesNotSeedTodayTapCount() {
+    void newUserWithoutOnboardingAttemptGetsDefaultRewardWithoutSeedingTodayTapCount() {
         UUID userId = UUID.randomUUID();
         AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
         when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
                 .thenReturn(Optional.empty());
         when(userService.createActive("Bean", "https://img", null)).thenReturn(user);
+        when(onboardingDefaultRewardService.grantForNewUser(user)).thenReturn(true);
+
+        AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
+                "toss-user",
+                "Bean",
+                "https://img",
+                null
+        );
+
+        assertThat(result.newUser()).isTrue();
+        assertThat(result.onboardingRewardApplied()).isTrue();
+        verify(onboardingDefaultRewardService).grantForNewUser(user);
+        verify(onboardingRewardClaimService, never()).claimForNewUser(any(), any());
+        verify(userTapDailyService, never()).getOrCreate(any(), any());
+        verify(userTapDailyService, never()).save(any());
+    }
+
+    @Test
+    void newUserStillLogsInWhenDefaultRewardIsUnavailable() {
+        UUID userId = UUID.randomUUID();
+        AppUser user = withId(AppUser.createActive("Bean", "https://img"), userId);
+        when(authIdentityRepository.findByProviderAndProviderUserId(AuthIdentity.Provider.TOSS, "toss-user"))
+                .thenReturn(Optional.empty());
+        when(userService.createActive("Bean", "https://img", null)).thenReturn(user);
+        when(onboardingDefaultRewardService.grantForNewUser(user)).thenReturn(false);
 
         AuthLoginTransactionService.LoginTransactionResult result = service.loginWithTossUser(
                 "toss-user",
