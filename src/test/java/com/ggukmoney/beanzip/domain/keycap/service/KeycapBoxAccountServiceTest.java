@@ -2,8 +2,11 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapBoxAccountRepository;
+import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
+import com.ggukmoney.beanzip.domain.keycap.repository.ShardLedgerRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -25,7 +28,9 @@ class KeycapBoxAccountServiceTest {
 
     private final KeycapBoxAccountRepository keycapBoxAccountRepository = mock(KeycapBoxAccountRepository.class);
     private final com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository userKeycaps = mock(com.ggukmoney.beanzip.domain.keycap.repository.UserKeycapRepository.class);
-    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository, clock, userKeycaps, org.mockito.Mockito.mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class));
+    private final com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig economy = mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
+    private final ShardLedgerRepository shardLedgers = mock(ShardLedgerRepository.class);
+    private final KeycapBoxAccountService keycapBoxAccountService = new KeycapBoxAccountService(keycapBoxAccountRepository, clock, userKeycaps, economy, shardLedgers);
 
     @Test
     void createsEmptyWalletForNewUser() {
@@ -86,9 +91,68 @@ class KeycapBoxAccountServiceTest {
     @Test void rawWalletLockDoesNotReadEconomicPolicyOrLegacyProgress() {
         UUID userId=UUID.randomUUID();
         var policy=mock(com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig.class);
-        var service=new KeycapBoxAccountService(keycapBoxAccountRepository,clock,userKeycaps,policy);
+        var service=new KeycapBoxAccountService(keycapBoxAccountRepository,clock,userKeycaps,policy,shardLedgers);
         when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(KeycapBoxAccount.createFor(null, clock.instant())));
         service.getForUserForUpdate(userId);
         org.mockito.Mockito.verifyNoInteractions(policy,userKeycaps);
+    }
+
+    @Test
+    void recordsShardChangeWithBalanceAfterInShardEconomy() {
+        UUID userId = UUID.randomUUID();
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
+        wallet.addShards(7);
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
+
+        keycapBoxAccountService.recordShardChange(userId, wallet, 7, ShardLedger.Reason.TAP_DROP, "batch-1");
+
+        ArgumentCaptor<ShardLedger> saved = ArgumentCaptor.forClass(ShardLedger.class);
+        verify(shardLedgers).save(saved.capture());
+        assertThat(saved.getValue().getUserId()).isEqualTo(userId);
+        assertThat(saved.getValue().getDelta()).isEqualTo(7);
+        assertThat(saved.getValue().getReason()).isEqualTo(ShardLedger.Reason.TAP_DROP);
+        assertThat(saved.getValue().getRefId()).isEqualTo("batch-1");
+        assertThat(saved.getValue().getBalanceAfter()).isEqualTo(7);
+        assertThat(saved.getValue().getCreatedAt()).isEqualTo(clock.instant());
+    }
+
+    @Test
+    void doesNotRecordBoxesBeforeTheShardEconomy() {
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
+        wallet.addShards(1);
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(false);
+
+        keycapBoxAccountService.recordShardChange(UUID.randomUUID(), wallet, 1, ShardLedger.Reason.TAP_DROP, "batch-1");
+
+        org.mockito.Mockito.verifyNoInteractions(shardLedgers);
+    }
+
+    @Test
+    void zeroDeltaLeavesNoLedgerRow() {
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
+
+        keycapBoxAccountService.recordShardChange(UUID.randomUUID(), KeycapBoxAccount.createFor(null, clock.instant()), 0,
+                ShardLedger.Reason.DRAW_SPEND, null);
+
+        org.mockito.Mockito.verifyNoInteractions(shardLedgers);
+    }
+
+    @Test
+    void grantShardsAddsToTheLockedWalletAndRecordsTheReason() {
+        UUID userId = UUID.randomUUID();
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
+        wallet.addShards(5);
+        when(keycapBoxAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(wallet));
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
+
+        KeycapBoxAccount result = keycapBoxAccountService.grantShards(userId, 10, ShardLedger.Reason.INVITE_SUCCESS_INVITEE, "invite-1");
+
+        assertThat(result.getShardBalance()).isEqualTo(15);
+        verify(keycapBoxAccountRepository).save(wallet);
+        ArgumentCaptor<ShardLedger> saved = ArgumentCaptor.forClass(ShardLedger.class);
+        verify(shardLedgers).save(saved.capture());
+        assertThat(saved.getValue().getDelta()).isEqualTo(10);
+        assertThat(saved.getValue().getReason()).isEqualTo(ShardLedger.Reason.INVITE_SUCCESS_INVITEE);
+        assertThat(saved.getValue().getBalanceAfter()).isEqualTo(15);
     }
 }
