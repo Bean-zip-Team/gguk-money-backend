@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapDrawResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapDraw;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapDrawRepository;
@@ -127,6 +128,7 @@ public class KeycapDrawService {
         }
 
         wallet.consumeShards(price);
+        keycapBoxAccountService.recordShardChange(userId, wallet, -price, ShardLedger.Reason.DRAW_SPEND, idempotencyKey);
         userKeycapRepository.flush();
         passiveService.refreshEquipmentLocked(userId,context);
 

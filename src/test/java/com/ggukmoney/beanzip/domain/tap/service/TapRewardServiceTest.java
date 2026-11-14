@@ -128,10 +128,17 @@ class TapRewardServiceTest {
         when(tap.boxSessionStep3()).thenReturn(50);
         when(sessionService.drawNextBoxTargetInSession(anyLong(),anyInt(),any())).thenCallRealMethod();
 
-        var result=rewards.award(user,now,Effects.NONE,100,automatic,UUID.randomUUID(),new KeycapPassiveRoller());
+        UUID operationId=UUID.randomUUID();
+        var result=rewards.award(user,now,Effects.NONE,100,automatic,operationId,new KeycapPassiveRoller());
 
         assertThat(result.shardsDropped()).isEqualTo(1);
         assertThat(wallet.getShardBalance()).isEqualTo(1);
+        // BEA-390: every drop is written to the shard ledger under the batch's own operation id.
+        verify(wallets).recordShardChange(any(), org.mockito.ArgumentMatchers.eq(wallet), org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.eq(automatic
+                        ? com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger.Reason.PASSIVE_DROP
+                        : com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger.Reason.TAP_DROP),
+                org.mockito.ArgumentMatchers.eq(operationId.toString()));
         assertThat(session.getNextBoxTarget()).isEqualTo(125);
         assertThat(session.getBoxesDroppedInSession()).isEqualTo(1);
     }
