@@ -37,7 +37,10 @@ class AppConfigControllerTest {
         when(appConfigService.getAppConfig()).thenReturn(new AppConfigResponse(
                 new AppConfigResponse.PointPolicy(20),
                 new AppConfigResponse.BoxPolicy(java.util.List.of(25, 35, 50, 70, 100), 180, 1800),
-                new AppConfigResponse.BoosterPolicy(300, 3)
+                new AppConfigResponse.BoosterPolicy(300, 3),
+                true,
+                false,
+                new AppConfigResponse.FriendPolicy(10, 10, 3, 1)
         ));
 
         mockMvc.perform(get("/api/app-config")
@@ -50,6 +53,13 @@ class AppConfigControllerTest {
                 .andExpect(jsonPath("$.data.boxPolicy.sessionIdleTimeoutSeconds").value(1800))
                 .andExpect(jsonPath("$.data.boosterPolicy.durationSeconds").value(300))
                 .andExpect(jsonPath("$.data.boosterPolicy.dailyLimit").value(3))
+                // BEA-390: the app reads the two switches at the top level of data.
+                .andExpect(jsonPath("$.data.friendsEnabled").value(true))
+                .andExpect(jsonPath("$.data.contactsSmsEnabled").value(false))
+                .andExpect(jsonPath("$.data.friendPolicy.inviteReward").value(10))
+                .andExpect(jsonPath("$.data.friendPolicy.cheerDailyLimit").value(10))
+                .andExpect(jsonPath("$.data.friendPolicy.cheerReceiveReward").value(3))
+                .andExpect(jsonPath("$.data.friendPolicy.cheerSendFirstReward").value(1))
                 .andExpect(jsonPath("$.data.configKey").doesNotExist())
                 .andExpect(jsonPath("$.data.configValue").doesNotExist())
                 .andExpect(jsonPath("$.data.publicId").doesNotExist())

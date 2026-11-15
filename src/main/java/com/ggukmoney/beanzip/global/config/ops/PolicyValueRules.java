@@ -5,6 +5,7 @@ import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPolicy;
 import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.OnboardingRewardConfig;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
@@ -177,6 +178,17 @@ public class PolicyValueRules {
                 },
                 "지급 제외 유저 (테스터 등)",
                 raw -> mapper.readValue(raw, String[].class).length + "명");
+
+        group = "친구";
+        bool(FriendPolicyConfig.KEY_ENABLED, "친구 기능 전체 스위치 (끄면 친구·초대·응원 API 가 모두 막히고 앱에서 화면이 사라짐)");
+        bool(FriendPolicyConfig.KEY_CONTACTS_SMS_ENABLED, "연락처에서 골라 문자 보내기 (검수 반려 대비, 끄면 링크 공유만 남음)");
+        integer(FriendPolicyConfig.KEY_INVITE_REWARD, 0, "초대 성공 때 양쪽이 각각 받는 조각 수");
+        integer(FriendPolicyConfig.KEY_CHEER_DAILY_LIMIT, 0, "하루에 응원할 수 있는 친구 수");
+        integer(FriendPolicyConfig.KEY_CHEER_RECEIVE_REWARD, 0, "받은 응원 1건당 조각 수");
+        integer(FriendPolicyConfig.KEY_CHEER_RECEIVE_DAILY_CAP, 0, "하루에 응원으로 받을 수 있는 조각 상한 (확인한 날 기준)");
+        integer(FriendPolicyConfig.KEY_CHEER_SEND_FIRST_REWARD, 0, "하루 첫 응원을 보낸 사람이 받는 조각 수");
+        integer(FriendPolicyConfig.KEY_CHEER_CLAP_THRESHOLD, 1, "박수(CLAP): 받는 사람의 오늘 탭 수가 이 값 이상");
+        integer(FriendPolicyConfig.KEY_CHEER_GIFT_LAPSED_DAYS, 1, "선물(GIFT): 받는 사람의 마지막 탭이 이 일수 이상 전");
 
         // 랭킹: 로더의 파서를 그대로 쓴다.
         group = "랭킹·알림";
