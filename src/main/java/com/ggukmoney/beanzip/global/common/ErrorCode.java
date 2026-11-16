@@ -39,6 +39,8 @@ public enum ErrorCode {
     JWT_SIGN_FAILED("JWT_SIGN_FAILED", "인증 토큰 서명에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
 
     ACCOUNT_WITHDRAWN("ACCOUNT_WITHDRAWN", "탈퇴한 계정입니다.", HttpStatus.FORBIDDEN),
+    // 출금이 먼저 던지던 코드다. 여기 없어서 400 COMMON_INVALID_REQUEST 로 바뀌어 나갔다(BEA-390).
+    ACCOUNT_SUSPENDED("ACCOUNT_SUSPENDED", "정지된 계정입니다.", HttpStatus.FORBIDDEN),
     MEMBER_NOT_FOUND("MEMBER_NOT_FOUND", "회원을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     NICKNAME_ALREADY_EXISTS("NICKNAME_ALREADY_EXISTS", "이미 사용 중인 닉네임입니다.", HttpStatus.CONFLICT),
 
@@ -112,6 +114,13 @@ public enum ErrorCode {
     CASHOUT_MINIMUM_NOT_MET("CASHOUT_MINIMUM_NOT_MET", "최소 출금 포인트 미달", HttpStatus.BAD_REQUEST),
     CASHOUT_ALREADY_PROCESSING("CASHOUT_ALREADY_PROCESSING", "처리 중인 출금 존재", HttpStatus.CONFLICT),
     CASHOUT_NOT_FOUND("CASHOUT_NOT_FOUND", "출금 요청을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+
+    FRIENDS_DISABLED("FRIENDS_DISABLED", "친구 기능을 사용할 수 없습니다.", HttpStatus.CONFLICT),
+    INVITE_CODE_NOT_FOUND("INVITE_CODE_NOT_FOUND", "초대 코드를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    INVITE_SELF("INVITE_SELF", "자신의 초대 코드는 사용할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    NOT_FRIENDS("NOT_FRIENDS", "친구가 아닌 사용자입니다.", HttpStatus.FORBIDDEN),
+    CHEER_ALREADY_SENT_TODAY("CHEER_ALREADY_SENT_TODAY", "오늘 이미 응원한 친구입니다.", HttpStatus.CONFLICT),
+    CHEER_DAILY_LIMIT_EXCEEDED("CHEER_DAILY_LIMIT_EXCEEDED", "오늘 응원 횟수를 모두 사용했습니다.", HttpStatus.TOO_MANY_REQUESTS),
 
     RANKING_SEASON_NOT_FOUND("RANKING_SEASON_NOT_FOUND", "랭킹 시즌을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     RANKING_REWARD_RESULT_NOT_FOUND("RANKING_REWARD_RESULT_NOT_FOUND", "종료된 주간 랭킹 결과를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
