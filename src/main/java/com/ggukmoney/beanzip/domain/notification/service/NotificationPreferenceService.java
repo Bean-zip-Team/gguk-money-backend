@@ -29,6 +29,7 @@ public class NotificationPreferenceService {
     public NotificationPreferenceListResponse list(UUID userId) {
         return new NotificationPreferenceListResponse(
                 Arrays.stream(NotificationType.values())
+                        .filter(NotificationType::hasOwnConsent)
                         .filter(templateProperties::isConfigured)
                         .map(type -> resolvePreference(userId, type))
                         .map(preference -> toResponse(preference, promptEligible(userId, preference.getType())))
@@ -67,6 +68,9 @@ public class NotificationPreferenceService {
     }
 
     private NotificationPreference preferenceFor(UUID userId, NotificationType type) {
+        if (!type.hasOwnConsent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "COMMON_INVALID_REQUEST");
+        }
         return preferenceRepository.findByUserIdAndType(userId, type)
                 .orElseGet(() -> preferenceRepository.save(NotificationPreference.defaultOf(userId, type)));
     }

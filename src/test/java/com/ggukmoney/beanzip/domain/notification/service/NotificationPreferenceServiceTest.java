@@ -29,7 +29,9 @@ class NotificationPreferenceServiceTest {
             null,
             null,
             null,
-            "clickmoney-box"
+            "clickmoney-box",
+            null,
+            null
     );
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
     private final NotificationPreferenceService service =
@@ -45,7 +47,10 @@ class NotificationPreferenceServiceTest {
                         NotificationType.DAILY_REMINDER,
                         NotificationType.DAILY_MISSION,
                         NotificationType.BOOSTER_UNUSED,
-                        NotificationType.KEYCAP_BOX_OPEN_AVAILABLE
+                        NotificationType.KEYCAP_BOX_OPEN_AVAILABLE,
+                        NotificationType.FRIEND,
+                        NotificationType.FRIEND_CHEER,
+                        NotificationType.FRIEND_INVITE_SUCCESS
                 );
         assertThat(Arrays.stream(NotificationType.values()).map(Enum::name))
                 .doesNotContain("RANK_DROP");
@@ -116,6 +121,61 @@ class NotificationPreferenceServiceTest {
         assertThatThrownBy(() -> service.updateEnabled(userId, NotificationType.RANK_CHANGE, true))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("NOTIFICATION_AGREEMENT_REQUIRED");
+    }
+
+    @Test
+    void friendConsentIsListedOnceWithTheCheerCampaignCodeAndDeliveryOnlyTypesAreHidden() {
+        UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
+        NotificationPreferenceService friendService = new NotificationPreferenceService(
+                preferenceRepository,
+                new NotificationTemplateProperties(
+                        null, null, null, null, null, null, null, "clickmoney-friend-cheer", "clickmoney-friend-connected"),
+                persistenceService
+        );
+
+        var response = friendService.list(userId);
+
+        // Both delivery types are configured, but the settings screen shows one consent.
+        assertThat(response.items()).singleElement().satisfies(item -> {
+            assertThat(item.type()).isEqualTo(NotificationType.FRIEND);
+            assertThat(item.templateCode()).isEqualTo("clickmoney-friend-cheer");
+            assertThat(item.agreementStatus()).isEqualTo(NotificationAgreementStatus.NOT_REQUESTED);
+            assertThat(item.promptEligible()).isFalse();
+        });
+    }
+
+    @Test
+    void friendAgreementIsStoredUnderTheFriendType() {
+        UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
+
+        var response = service.agree(
+                userId, new UpdateNotificationPreferenceAgreementRequest(NotificationType.FRIEND, "newAgreement"));
+
+        assertThat(response.type()).isEqualTo(NotificationType.FRIEND);
+        assertThat(response.enabled()).isTrue();
+        assertThat(response.agreementStatus()).isEqualTo(NotificationAgreementStatus.AGREED);
+        org.mockito.Mockito.verifyNoInteractions(persistenceService);
+    }
+
+    @Test
+    void deliveryOnlyFriendTypesCannotBeAgreedOrToggled() {
+        UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
+
+        for (NotificationType type : new NotificationType[]{
+                NotificationType.FRIEND_CHEER, NotificationType.FRIEND_INVITE_SUCCESS}) {
+            assertThatThrownBy(() -> service.agree(
+                    userId, new UpdateNotificationPreferenceAgreementRequest(type, "newAgreement")))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("400");
+            assertThatThrownBy(() -> service.updateEnabled(userId, type, false))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("400");
+        }
+        // A stored row would look like consent while sending only ever checks FRIEND.
+        verify(preferenceRepository, org.mockito.Mockito.never()).save(any(NotificationPreference.class));
     }
 
     private void stubMissingPreferences() {
