@@ -1,14 +1,19 @@
 package com.ggukmoney.beanzip.domain.friend;
 
 import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
+import com.ggukmoney.beanzip.domain.friend.repository.InviteRepository;
 import com.ggukmoney.beanzip.domain.friend.service.FriendshipService;
 import com.ggukmoney.beanzip.domain.friend.service.InviteCodeService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
-import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -17,9 +22,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** 초대 코드, 친구 관계, 초대 흐름을 실제 PostgreSQL 에서 확인한다 (BEA-390). */
-class FriendInviteIntegrationTest extends FullStackIntegrationTestSupport {
+class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
 
     @Autowired
     private InviteCodeService inviteCodeService;
@@ -27,6 +34,10 @@ class FriendInviteIntegrationTest extends FullStackIntegrationTestSupport {
     private FriendshipService friendshipService;
     @Autowired
     private AppUserRepository appUserRepository;
+    @Autowired
+    private InviteRepository invites;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void aUserKeepsOneInviteCodeEvenWhenAskedTwiceAtOnce() throws Exception {
@@ -67,6 +78,65 @@ class FriendInviteIntegrationTest extends FullStackIntegrationTestSupport {
                 .containsEntry("user_low", small)
                 .containsEntry("user_high", large)
                 .containsEntry("source", "INVITE_SIGNUP");
+    }
+
+    @Test
+    void aLinkVisitBecomesOnePendingInviteHoweverOftenItIsReported() throws Exception {
+        UUID inviter = signUp("김민지");
+        String code = inviteCodeService.getOrCreate(inviter);
+        UUID phone = UUID.randomUUID();
+        UUID anotherPhone = UUID.randomUUID();
+
+        visit(code, phone);
+        visit(code, phone);
+        assertThat(pendingInvites(inviter)).as("the same link opened twice on one phone").isEqualTo(1);
+
+        visit(code, anotherPhone);
+        assertThat(pendingInvites(inviter)).isEqualTo(2);
+
+        // No such code: still 204, nothing stored.
+        visit("ZZZZZZZZ", UUID.randomUUID());
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM invite", Long.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM invite WHERE inviter_id = ? AND invitee_id IS NULL AND succeeded_at IS NULL",
+                Long.class, inviter)).isEqualTo(2);
+    }
+
+    @Test
+    void aLinkVisitStoresNothingWhileTheFriendFeatureIsOff() throws Exception {
+        UUID inviter = signUp("김민지");
+        String code = inviteCodeService.getOrCreate(inviter);
+        setConfig(FriendPolicyConfig.KEY_ENABLED, "false");
+
+        visit(code, UUID.randomUUID());
+
+        assertThat(pendingInvites(inviter)).isZero();
+    }
+
+    @Test
+    void pendingInvitesPerInviterStopAtTheCap() {
+        UUID inviter = signUp("김민지");
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        for (int i = 0; i < 4; i++) {
+            transaction.executeWithoutResult(status -> invites.insertPendingIfAbsent(
+                    UUID.randomUUID(), inviter, UUID.randomUUID(), Instant.now(), 3));
+        }
+
+        // The endpoint needs no login, so this is what keeps a script from filling the table.
+        assertThat(pendingInvites(inviter)).isEqualTo(3);
+    }
+
+    private void visit(String code, UUID visitKey) throws Exception {
+        mockMvc.perform(post("/api/invites/visits")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"inviteCode\":\"%s\",\"visitKey\":\"%s\"}".formatted(code, visitKey)))
+                .andExpect(status().isNoContent());
+    }
+
+    private long pendingInvites(UUID inviter) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM invite WHERE inviter_id = ? AND status = 'PENDING'", Long.class, inviter);
     }
 
     private UUID newUser() {
