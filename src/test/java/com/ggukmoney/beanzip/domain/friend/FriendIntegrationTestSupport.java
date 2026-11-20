@@ -8,6 +8,8 @@ import com.ggukmoney.beanzip.global.config.repository.AppConfigRepository;
 import com.ggukmoney.beanzip.support.FullStackIntegrationTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -28,6 +30,14 @@ public abstract class FriendIntegrationTestSupport extends FullStackIntegrationT
     protected FriendPolicyConfig friendPolicy;
     @Autowired
     protected AuthLoginTransactionService logins;
+
+    @DynamicPropertySource
+    static void registerFriendCampaigns(DynamicPropertyRegistry registry) {
+        // 캠페인 코드가 없으면 친구 푸시는 대기 행조차 만들지 않는다.
+        registry.add("app.smart-message.templates.friend-cheer.campaign-code", () -> "clickmoney-friend-cheer");
+        registry.add(
+                "app.smart-message.templates.friend-invite-success.campaign-code", () -> "clickmoney-friend-connected");
+    }
 
     @BeforeEach
     void enableFriends() {

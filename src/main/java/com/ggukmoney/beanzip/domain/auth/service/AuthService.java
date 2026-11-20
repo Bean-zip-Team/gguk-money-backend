@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
+import com.ggukmoney.beanzip.domain.friend.service.InviteService;
 import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
 import com.ggukmoney.beanzip.domain.auth.dto.request.RefreshTokenRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
@@ -61,6 +63,7 @@ public class AuthService {
     private final TossAuthClient tossAuthClient;
     private final AuthLoginTransactionService authLoginTransactionService;
     private final AuthWithdrawalTransactionService authWithdrawalTransactionService;
+    private final InviteService inviteService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -104,7 +107,27 @@ public class AuthService {
                 request.signupReferrer()
         );
 
-        return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());
+        return issueSessionTokens(
+                result.userId(), result.newUser(), result.onboardingRewardApplied(), linkInvite(result, request));
+    }
+
+    /**
+     * 로그인에 딸려 온 초대 코드를 처리한다 (BEA-390).
+     *
+     * <p>가입과 로그인은 위 트랜잭션에서 이미 끝났다. 초대 처리는 그 뒤에 따로 돌리고, 실패해도 로그인을
+     * 실패시키지 않는다. 초대 링크로 들어온 사람의 가입이 초대 처리의 오류 때문에 막히면 안 된다.
+     */
+    private InviteSignupResponse linkInvite(
+            AuthLoginTransactionService.LoginTransactionResult result, TossLoginRequest request
+    ) {
+        try {
+            return inviteService
+                    .linkOnLogin(result.userId(), result.newUser(), request.inviteCode(), request.visitKey())
+                    .orElse(null);
+        } catch (RuntimeException exception) {
+            log.error("INVITE_LINK_FAILED userId={} newUser={}", result.userId(), result.newUser(), exception);
+            return null;
+        }
     }
 
     public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -269,7 +292,9 @@ public class AuthService {
         }
     }
 
-    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser, boolean onboardingRewardApplied) {
+    private AuthTokenResponse issueSessionTokens(
+            UUID userId, boolean newUser, boolean onboardingRewardApplied, InviteSignupResponse invite
+    ) {
         UUID sessionId = UUID.randomUUID();
         String refreshJti = UUID.randomUUID().toString();
         String accessJti = UUID.randomUUID().toString();
@@ -308,7 +333,8 @@ public class AuthService {
                 accessClaims.expiresAt(),
                 refreshClaims.expiresAt(),
                 newUser,
-                onboardingRewardApplied
+                onboardingRewardApplied,
+                invite
         );
     }
 
