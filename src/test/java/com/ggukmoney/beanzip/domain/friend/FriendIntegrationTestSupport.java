@@ -1,6 +1,12 @@
 package com.ggukmoney.beanzip.domain.friend;
 
 import com.ggukmoney.beanzip.domain.auth.service.AuthLoginTransactionService;
+import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
+import com.ggukmoney.beanzip.domain.friend.service.FriendshipService;
+import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
+import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
+import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.entity.AppConfig;
@@ -12,6 +18,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 /**
@@ -30,6 +38,12 @@ public abstract class FriendIntegrationTestSupport extends FullStackIntegrationT
     protected FriendPolicyConfig friendPolicy;
     @Autowired
     protected AuthLoginTransactionService logins;
+    @Autowired
+    protected FriendshipService friendships;
+    @Autowired
+    protected NotificationPreferenceRepository preferences;
+    @Autowired
+    protected KeycapBoxAccountService wallets;
 
     @DynamicPropertySource
     static void registerFriendCampaigns(DynamicPropertyRegistry registry) {
@@ -56,5 +70,40 @@ public abstract class FriendIntegrationTestSupport extends FullStackIntegrationT
     /** 토스 로그인으로 새로 가입한 사용자. */
     protected UUID signUp(String name) {
         return logins.loginWithTossUser("toss-" + UUID.randomUUID(), name, null, null).userId();
+    }
+
+    protected void befriend(UUID userId, UUID otherUserId) {
+        friendships.connect(userId, otherUserId, Friendship.Source.INVITE_SIGNUP);
+    }
+
+    protected void agreeToFriendPushes(UUID userId) {
+        NotificationPreference friend = NotificationPreference.defaultOf(userId, NotificationType.FRIEND);
+        friend.applyAgreement("newAgreement");
+        preferences.save(friend);
+    }
+
+    /** 그 날짜에 누른 수(자동 클릭 포함)를 정한다. */
+    protected void setTaps(UUID userId, LocalDate date, long effectiveTaps) {
+        jdbcTemplate.update("""
+                INSERT INTO user_tap_daily (
+                    public_id, user_id, tap_date, valid_tap_count, total_valid_tap_count,
+                    total_effective_tap_count, point_earned_amount, version, created_at, updated_at
+                ) VALUES (?, ?, ?, 0, 0, ?, 0, 0, now(), now())
+                ON CONFLICT (user_id, tap_date)
+                    DO UPDATE SET total_effective_tap_count = EXCLUDED.total_effective_tap_count
+                """, UUID.randomUUID(), userId, date, effectiveTaps);
+    }
+
+    protected LocalDate today() {
+        return LocalDate.now(ZoneId.of("Asia/Seoul"));
+    }
+
+    protected int shards(UUID userId) {
+        return wallets.getAvailableShardBalance(userId);
+    }
+
+    /** 이 사용자의 액세스 토큰이 든 Authorization 헤더 값. */
+    protected String bearer(UUID userId) {
+        return "Bearer " + saveTokenBackedSession(userId, "device-" + userId).accessToken();
     }
 }

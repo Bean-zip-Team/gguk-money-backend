@@ -4,13 +4,8 @@ import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
 import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
 import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
 import com.ggukmoney.beanzip.domain.friend.repository.InviteRepository;
-import com.ggukmoney.beanzip.domain.friend.service.FriendshipService;
 import com.ggukmoney.beanzip.domain.friend.service.InviteCodeService;
 import com.ggukmoney.beanzip.domain.friend.service.InviteService;
-import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
-import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
-import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
-import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
@@ -44,17 +39,11 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
     @Autowired
     private InviteCodeService inviteCodeService;
     @Autowired
-    private FriendshipService friendshipService;
-    @Autowired
     private AppUserRepository appUserRepository;
     @Autowired
     private InviteRepository invites;
     @Autowired
     private InviteService inviteService;
-    @Autowired
-    private KeycapBoxAccountService wallets;
-    @Autowired
-    private NotificationPreferenceRepository preferences;
 
     @MockitoBean
     private TossAuthClient tossAuthClient;
@@ -88,13 +77,13 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
         UUID small = newUser(UUID.fromString("00000000-0000-4000-8000-" + randomHex12()));
         UUID large = newUser(UUID.fromString("ffffffff-ffff-4fff-bfff-" + randomHex12()));
 
-        assertThat(friendshipService.areFriends(small, large)).isFalse();
-        assertThat(friendshipService.connect(large, small, Friendship.Source.INVITE_SIGNUP)).isTrue();
+        assertThat(friendships.areFriends(small, large)).isFalse();
+        assertThat(friendships.connect(large, small, Friendship.Source.INVITE_SIGNUP)).isTrue();
         // The database's own CHECK (user_low < user_high) accepted the order chosen in Java.
-        assertThat(friendshipService.connect(small, large, Friendship.Source.INVITE_LINK)).isFalse();
+        assertThat(friendships.connect(small, large, Friendship.Source.INVITE_LINK)).isFalse();
 
-        assertThat(friendshipService.areFriends(small, large)).isTrue();
-        assertThat(friendshipService.areFriends(large, small)).isTrue();
+        assertThat(friendships.areFriends(small, large)).isTrue();
+        assertThat(friendships.areFriends(large, small)).isTrue();
         assertThat(jdbcTemplate.queryForMap(
                 "SELECT user_low, user_high, source FROM friendship WHERE user_low = ? OR user_high = ?", small, small))
                 .containsEntry("user_low", small)
@@ -172,7 +161,7 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
                 .containsEntry("visit_key", visitKey)
                 .containsEntry("inviter_acked_at", null);
         assertThat(invite.get("succeeded_at")).isNotNull();
-        assertThat(friendshipService.areFriends(inviter, invitee)).isTrue();
+        assertThat(friendships.areFriends(inviter, invitee)).isTrue();
         // The invitee is paid now; the inviter is paid when they open the success modal.
         assertThat(wallets.getAvailableShardBalance(invitee)).isEqualTo(inviteeBalance + 10);
         assertThat(wallets.getAvailableShardBalance(inviter)).isEqualTo(inviterBalance);
@@ -207,12 +196,12 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
         assertThat(jdbcTemplate.queryForList(
                 "SELECT invitee_id FROM invite WHERE inviter_id = ? AND status = 'SUCCESS'", UUID.class, inviter))
                 .containsExactlyInAnyOrder(first, second);
-        assertThat(friendshipService.areFriends(inviter, second)).isTrue();
+        assertThat(friendships.areFriends(inviter, second)).isTrue();
         // Being invited counts once per person, whoever's link it is.
         UUID otherInviter = signUp("최다은");
         assertThat(inviteService.linkOnLogin(first, true, inviteCodeService.getOrCreate(otherInviter), null))
                 .isEmpty();
-        assertThat(friendshipService.areFriends(otherInviter, first)).isFalse();
+        assertThat(friendships.areFriends(otherInviter, first)).isFalse();
     }
 
     @Test
@@ -228,7 +217,7 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
         assertThat(inviteService.linkOnLogin(member, false, code, visitKey.toString())).isEmpty();
         assertThat(inviteService.linkOnLogin(member, false, code, visitKey.toString())).isEmpty();
 
-        assertThat(friendshipService.areFriends(inviter, member)).isTrue();
+        assertThat(friendships.areFriends(inviter, member)).isTrue();
         assertThat(wallets.getAvailableShardBalance(member)).isEqualTo(memberBalance);
         assertThat(pendingInvites(inviter)).as("the visit stays pending").isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
@@ -276,12 +265,6 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.newUser").value(true))
                 .andExpect(jsonPath("$.data.invite").value(nullValue()));
-    }
-
-    private void agreeToFriendPushes(UUID userId) {
-        NotificationPreference friend = NotificationPreference.defaultOf(userId, NotificationType.FRIEND);
-        friend.applyAgreement("newAgreement");
-        preferences.save(friend);
     }
 
     private void visit(String code, UUID visitKey) throws Exception {
