@@ -1,12 +1,15 @@
 package com.ggukmoney.beanzip.domain.friend.repository;
 
 import com.ggukmoney.beanzip.domain.friend.entity.Invite;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -84,4 +87,39 @@ public interface InviteRepository extends JpaRepository<Invite, Long> {
     );
 
     Optional<Invite> findByInviteeId(UUID inviteeId);
+
+    /** 초대한 사람이 아직 확인하지 않은 초대 성공. 초대받은 사람이 탈퇴한 건은 빠진다. 오래된 것부터다. */
+    @Query("""
+            SELECT invite.publicId AS inviteId, invitee.id AS userId, invitee.nickname AS name
+            FROM Invite invite
+            JOIN AppUser invitee ON invitee.id = invite.inviteeId
+            WHERE invite.inviterId = :inviterId
+              AND invite.status = com.ggukmoney.beanzip.domain.friend.entity.Invite.Status.SUCCESS
+              AND invite.inviterAckedAt IS NULL
+              AND invitee.status <> com.ggukmoney.beanzip.domain.user.entity.AppUser.Status.WITHDRAWN
+            ORDER BY invite.succeededAt, invite.id
+            """)
+    List<UnreadSuccess> findUnreadSuccesses(@Param("inviterId") UUID inviterId, Pageable pageable);
+
+    /** 넘긴 ID 중에서 지금 확인할 수 있는 것만. 남의 것, 이미 확인한 것, 초대받은 사람이 탈퇴한 것은 빠진다. */
+    @Query("""
+            SELECT invite
+            FROM Invite invite
+            JOIN AppUser invitee ON invitee.id = invite.inviteeId
+            WHERE invite.inviterId = :inviterId
+              AND invite.publicId IN :publicIds
+              AND invite.status = com.ggukmoney.beanzip.domain.friend.entity.Invite.Status.SUCCESS
+              AND invite.inviterAckedAt IS NULL
+              AND invitee.status <> com.ggukmoney.beanzip.domain.user.entity.AppUser.Status.WITHDRAWN
+            ORDER BY invite.id
+            """)
+    List<Invite> findAckable(@Param("inviterId") UUID inviterId, @Param("publicIds") Collection<UUID> publicIds);
+
+    interface UnreadSuccess {
+        UUID getInviteId();
+
+        UUID getUserId();
+
+        String getName();
+    }
 }

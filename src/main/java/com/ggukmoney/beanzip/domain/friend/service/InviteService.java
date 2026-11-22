@@ -1,8 +1,13 @@
 package com.ggukmoney.beanzip.domain.friend.service;
 
+import com.ggukmoney.beanzip.domain.friend.dto.response.FriendProfileResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteAcceptResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteAckResponse;
 import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSuccessListResponse;
 import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
 import com.ggukmoney.beanzip.domain.friend.entity.Invite;
+import com.ggukmoney.beanzip.domain.friend.repository.CheerRepository;
 import com.ggukmoney.beanzip.domain.friend.repository.InviteRepository;
 import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
@@ -12,13 +17,21 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /** 초대의 흐름: 링크 방문(PENDING) → 가입(SUCCESS) → 초대한 사람의 확인 (BEA-390). */
@@ -31,15 +44,19 @@ public class InviteService {
      * visitKey 로 반복 호출해도 테이블이 끝없이 늘지 않게 한다. 성공한 초대는 세지 않는다.
      */
     static final int PENDING_CAP_PER_INVITER = 500;
+    /** 확인(ack) 요청 하나가 받는 ID 수이자, 안 읽은 목록이 한 번에 돌려주는 건수. */
+    public static final int MAX_IDS_PER_REQUEST = 100;
 
     private final InviteRepository invites;
     private final InviteCodeService inviteCodes;
+    private final CheerRepository cheers;
     private final FriendshipService friendships;
     private final KeycapBoxAccountService wallets;
     private final UserRewardLock userRewardLock;
     private final FriendNotificationService friendNotifications;
     private final FriendPolicyConfig policy;
     private final Clock clock;
+    private final ZoneId businessZoneId;
 
     /**
      * 초대 링크로 앱이 열린 것을 남긴다.
@@ -120,6 +137,61 @@ public class InviteService {
             friendNotifications.enqueue(inviterId, NotificationType.FRIEND_INVITE_SUCCESS);
         }
         return connected;
+    }
+
+    /**
+     * 로그인된 회원이 초대 링크로 들어왔다. 보상 없이 친구만 맺는다.
+     *
+     * <p>앱은 성공하거나 아래 두 오류를 받으면 보관한 초대 코드를 지운다.
+     */
+    @Transactional
+    public InviteAcceptResponse accept(UUID userId, String inviteCode) {
+        AppUser inviter = inviteCodes.findInviter(inviteCode)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "INVITE_CODE_NOT_FOUND"));
+        if (inviter.getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVITE_SELF");
+        }
+        boolean connected = befriend(userId, inviter.getId());
+        return new InviteAcceptResponse(new FriendProfileResponse(inviter.getId(), inviter.getNickname()), !connected);
+    }
+
+    /** 내 초대로 가입했고 내가 아직 확인하지 않은 친구들. */
+    @Transactional(readOnly = true)
+    public InviteSuccessListResponse unreadSuccesses(UUID userId) {
+        Set<UUID> cheeredToday = Set.copyOf(
+                cheers.findCheeredUserIds(userId, LocalDate.ofInstant(clock.instant(), businessZoneId)));
+        List<InviteSuccessListResponse.Item> items = invites
+                .findUnreadSuccesses(userId, PageRequest.of(0, MAX_IDS_PER_REQUEST)).stream()
+                .map(row -> new InviteSuccessListResponse.Item(
+                        row.getInviteId(),
+                        new FriendProfileResponse(row.getUserId(), row.getName()),
+                        cheeredToday.contains(row.getUserId())))
+                .toList();
+        return new InviteSuccessListResponse(items, policy.inviteReward());
+    }
+
+    /**
+     * 초대 성공을 확인하고 초대한 사람의 조각을 준다.
+     *
+     * <p>앱은 성공 모달을 띄우기 직전에 부른다. 내 행을 잠그고 아직 확인하지 않은 건만 처리하므로 같은
+     * 요청이 두 번 와도 한 번만 준다. 정지된 사용자는 확인만 되고 조각은 받지 못한다.
+     */
+    @Transactional
+    public InviteAckResponse ackSuccesses(UUID userId, Collection<UUID> inviteIds) {
+        AppUser inviter = userRewardLock.acquire(userId);
+        List<Invite> ackable = inviteIds.isEmpty() ? List.of() : invites.findAckable(userId, inviteIds);
+        int rewardEach = inviter.getStatus() == AppUser.Status.SUSPENDED ? 0 : policy.inviteReward();
+        Instant now = clock.instant();
+        int granted = 0;
+        for (Invite invite : ackable) {
+            invite.markAcked(now);
+            if (rewardEach > 0) {
+                wallets.grantShards(
+                        userId, rewardEach, ShardLedger.Reason.INVITE_SUCCESS_INVITER, invite.getPublicId().toString());
+                granted += rewardEach;
+            }
+        }
+        return new InviteAckResponse(granted, wallets.getAvailableShardBalance(userId));
     }
 
     private static UUID parseUuid(String raw) {

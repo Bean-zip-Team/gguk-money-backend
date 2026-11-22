@@ -1,8 +1,13 @@
 package com.ggukmoney.beanzip.domain.friend.service;
 
+import com.ggukmoney.beanzip.domain.friend.dto.response.FriendProfileResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteAcceptResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteAckResponse;
 import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSuccessListResponse;
 import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
 import com.ggukmoney.beanzip.domain.friend.entity.Invite;
+import com.ggukmoney.beanzip.domain.friend.repository.CheerRepository;
 import com.ggukmoney.beanzip.domain.friend.repository.InviteRepository;
 import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
 import com.ggukmoney.beanzip.domain.keycap.service.KeycapBoxAccountService;
@@ -17,16 +22,23 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -47,9 +59,10 @@ class InviteServiceTest {
     private final UserRewardLock userRewardLock = mock(UserRewardLock.class);
     private final FriendNotificationService friendNotifications = mock(FriendNotificationService.class);
     private final FriendPolicyConfig policy = mock(FriendPolicyConfig.class);
+    private final CheerRepository cheers = mock(CheerRepository.class);
     private final InviteService service = new InviteService(
-            invites, inviteCodes, friendships, wallets, userRewardLock, friendNotifications, policy,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            invites, inviteCodes, cheers, friendships, wallets, userRewardLock, friendNotifications, policy,
+            Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Asia/Seoul"));
 
     @Test
     void aVisitIsStoredAsPendingForTheOwnerOfTheCode() {
@@ -208,6 +221,137 @@ class InviteServiceTest {
         // grantShards rejects a zero amount, so it must not be called at all.
         verifyNoInteractions(wallets, userRewardLock);
         verify(friendships).connect(invitee, inviter.getId(), Friendship.Source.INVITE_SIGNUP);
+    }
+
+    @Test
+    void acceptingALinkMakesFriendsWithoutAnyReward() {
+        AppUser inviter = user();
+        UUID member = UUID.randomUUID();
+        when(inviteCodes.findInviter("K7P2QX9A")).thenReturn(Optional.of(inviter));
+        when(friendships.connect(member, inviter.getId(), Friendship.Source.INVITE_LINK))
+                .thenReturn(true).thenReturn(false);
+
+        InviteAcceptResponse first = service.accept(member, "K7P2QX9A");
+        InviteAcceptResponse again = service.accept(member, "K7P2QX9A");
+
+        assertThat(first).isEqualTo(new InviteAcceptResponse(
+                new FriendProfileResponse(inviter.getId(), inviter.getNickname()), false));
+        assertThat(again.alreadyFriends()).isTrue();
+        verify(friendNotifications, times(1)).enqueue(inviter.getId(), NotificationType.FRIEND_INVITE_SUCCESS);
+        verifyNoInteractions(invites, wallets, userRewardLock);
+    }
+
+    @Test
+    void acceptingAnUnknownOrOwnCodeIsRefused() {
+        AppUser self = user();
+        when(inviteCodes.findInviter("ZZZZZZZZ")).thenReturn(Optional.empty());
+        when(inviteCodes.findInviter("MYOWNCOD")).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> service.accept(UUID.randomUUID(), "ZZZZZZZZ"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("404 NOT_FOUND \"INVITE_CODE_NOT_FOUND\"");
+        assertThatThrownBy(() -> service.accept(self.getId(), "MYOWNCOD"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("400 BAD_REQUEST \"INVITE_SELF\"");
+
+        verifyNoInteractions(friendships, friendNotifications);
+    }
+
+    @Test
+    void unreadSuccessesShowWhoJoinedAndWhetherIAlreadyCheeredThemToday() {
+        UUID me = UUID.randomUUID();
+        UUID cheered = UUID.randomUUID();
+        UUID notYet = UUID.randomUUID();
+        UUID firstInvite = UUID.randomUUID();
+        UUID secondInvite = UUID.randomUUID();
+        when(policy.inviteReward()).thenReturn(10);
+        // 05:00 UTC is 14:00 in Korea, the same calendar day.
+        when(cheers.findCheeredUserIds(me, LocalDate.parse("2026-11-24"))).thenReturn(List.of(cheered));
+        when(invites.findUnreadSuccesses(me, PageRequest.of(0, 100))).thenReturn(List.of(
+                unread(firstInvite, cheered, "이지우"), unread(secondInvite, notYet, null)));
+
+        InviteSuccessListResponse response = service.unreadSuccesses(me);
+
+        assertThat(response.shardsPerInvite()).isEqualTo(10);
+        assertThat(response.invites()).containsExactly(
+                new InviteSuccessListResponse.Item(firstInvite, new FriendProfileResponse(cheered, "이지우"), true),
+                new InviteSuccessListResponse.Item(secondInvite, new FriendProfileResponse(notYet, null), false));
+    }
+
+    @Test
+    void acknowledgingPaysTheInviterOncePerInvite() {
+        AppUser me = user();
+        Invite first = invite(me.getId(), UUID.randomUUID());
+        Invite second = invite(me.getId(), UUID.randomUUID());
+        List<UUID> ids = List.of(first.getPublicId(), second.getPublicId(), UUID.randomUUID());
+        when(userRewardLock.acquire(me.getId())).thenReturn(me);
+        when(policy.inviteReward()).thenReturn(10);
+        when(invites.findAckable(me.getId(), ids)).thenReturn(List.of(first, second));
+        when(wallets.getAvailableShardBalance(me.getId())).thenReturn(135);
+
+        InviteAckResponse response = service.ackSuccesses(me.getId(), ids);
+
+        assertThat(response).isEqualTo(new InviteAckResponse(20, 135));
+        assertThat(first.getInviterAckedAt()).isEqualTo(NOW);
+        assertThat(second.getInviterAckedAt()).isEqualTo(NOW);
+        verify(wallets).grantShards(
+                me.getId(), 10, ShardLedger.Reason.INVITE_SUCCESS_INVITER, first.getPublicId().toString());
+        verify(wallets).grantShards(
+                me.getId(), 10, ShardLedger.Reason.INVITE_SUCCESS_INVITER, second.getPublicId().toString());
+    }
+
+    @Test
+    void acknowledgingNothingNewPaysNothing() {
+        AppUser me = user();
+        List<UUID> ids = List.of(UUID.randomUUID());
+        when(userRewardLock.acquire(me.getId())).thenReturn(me);
+        when(policy.inviteReward()).thenReturn(10);
+        when(invites.findAckable(me.getId(), ids)).thenReturn(List.of());
+        when(wallets.getAvailableShardBalance(me.getId())).thenReturn(125);
+
+        assertThat(service.ackSuccesses(me.getId(), ids)).isEqualTo(new InviteAckResponse(0, 125));
+        assertThat(service.ackSuccesses(me.getId(), List.of())).isEqualTo(new InviteAckResponse(0, 125));
+
+        verify(wallets, never()).grantShards(any(), anyInt(), any(), any());
+        // An empty id list is not sent to the database as an empty IN ().
+        verify(invites, times(1)).findAckable(any(), any());
+    }
+
+    @Test
+    void aSuspendedInviterSeesTheSuccessButIsNotPaid() {
+        AppUser me = user();
+        me.suspend();
+        Invite invite = invite(me.getId(), UUID.randomUUID());
+        when(userRewardLock.acquire(me.getId())).thenReturn(me);
+        when(policy.inviteReward()).thenReturn(10);
+        when(invites.findAckable(me.getId(), List.of(invite.getPublicId()))).thenReturn(List.of(invite));
+        when(wallets.getAvailableShardBalance(me.getId())).thenReturn(40);
+
+        assertThat(service.ackSuccesses(me.getId(), List.of(invite.getPublicId())))
+                .isEqualTo(new InviteAckResponse(0, 40));
+
+        // Marked as seen, so the modal does not come back on every launch.
+        assertThat(invite.getInviterAckedAt()).isEqualTo(NOW);
+        verify(wallets, never()).grantShards(any(), anyInt(), any(), any());
+    }
+
+    private static InviteRepository.UnreadSuccess unread(UUID inviteId, UUID userId, String name) {
+        return new InviteRepository.UnreadSuccess() {
+            @Override
+            public UUID getInviteId() {
+                return inviteId;
+            }
+
+            @Override
+            public UUID getUserId() {
+                return userId;
+            }
+
+            @Override
+            public String getName() {
+                return name;
+            }
+        };
     }
 
     private void enabledWithReward(int reward) {

@@ -9,10 +9,14 @@ import com.ggukmoney.beanzip.domain.friend.service.InviteService;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -29,6 +33,7 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -265,6 +270,137 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.newUser").value(true))
                 .andExpect(jsonPath("$.data.invite").value(nullValue()));
+    }
+
+    @Test
+    void theInviterIsPaidWhenTheyConfirmTheSuccessAndOnlyOnce() throws Exception {
+        UUID inviter = signUp("김민지");
+        String code = inviteCodeService.getOrCreate(inviter);
+        UUID invitee = signUp("이지우");
+        UUID leaver = signUp("탈퇴할사람");
+        inviteService.linkOnLogin(invitee, true, code, null);
+        inviteService.linkOnLogin(leaver, true, code, null);
+        jdbcTemplate.update("UPDATE app_user SET status = 'WITHDRAWN', withdrawn_at = now() WHERE id = ?", leaver);
+        int before = shards(inviter);
+        String me = bearer(inviter);
+
+        MvcResult unread = mockMvc.perform(get("/api/invites/success/unread").header(HttpHeaders.AUTHORIZATION, me))
+                .andExpect(status().isOk())
+                // The invitee who withdrew is left out.
+                .andExpect(jsonPath("$.data.invites.length()").value(1))
+                .andExpect(jsonPath("$.data.invites[0].friend.userId").value(invitee.toString()))
+                .andExpect(jsonPath("$.data.invites[0].friend.name").value("이지우"))
+                .andExpect(jsonPath("$.data.invites[0].cheeredToday").value(false))
+                .andExpect(jsonPath("$.data.shardsPerInvite").value(10))
+                .andReturn();
+        String inviteId = JsonPath.read(unread.getResponse().getContentAsString(), "$.data.invites[0].inviteId");
+        String leaverInviteId = jdbcTemplate.queryForObject(
+                "SELECT public_id::text FROM invite WHERE invitee_id = ?", String.class, leaver);
+
+        // Someone else cannot confirm (and collect) my invite.
+        ack(bearer(invitee), inviteId).andExpect(jsonPath("$.data.shardsGranted").value(0));
+
+        // Four confirmations at once, as when the app is opened on two devices: paid once.
+        String body = "{\"inviteIds\":[\"%s\",\"%s\",\"%s\"]}".formatted(inviteId, leaverInviteId, UUID.randomUUID());
+        Callable<Integer> confirm = () -> JsonPath.read(
+                mockMvc.perform(post("/api/invites/success/ack")
+                                .header(HttpHeaders.AUTHORIZATION, me)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                        .andReturn().getResponse().getContentAsString(),
+                "$.data.shardsGranted");
+        int granted = 0;
+        try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
+            for (Future<Integer> result : executor.invokeAll(List.of(confirm, confirm, confirm, confirm))) {
+                granted += result.get();
+            }
+        }
+
+        assertThat(granted).isEqualTo(10);
+        assertThat(shards(inviter)).isEqualTo(before + 10);
+        ack(me, inviteId)
+                .andExpect(jsonPath("$.data.shardsGranted").value(0))
+                .andExpect(jsonPath("$.data.shardBalance").value(before + 10));
+        assertThat(jdbcTemplate.queryForMap(
+                "SELECT delta, ref_id FROM shard_ledger WHERE user_id = ? AND reason = 'INVITE_SUCCESS_INVITER'", inviter))
+                .containsEntry("delta", 10)
+                .containsEntry("ref_id", inviteId);
+        mockMvc.perform(get("/api/invites/success/unread").header(HttpHeaders.AUTHORIZATION, me))
+                .andExpect(jsonPath("$.data.invites.length()").value(0));
+        // The withdrawn invitee's success stays unconfirmed and unpaid.
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT inviter_acked_at IS NULL FROM invite WHERE invitee_id = ?", Boolean.class, leaver)).isTrue();
+    }
+
+    @Test
+    void aSuspendedInviterConfirmsWithoutBeingPaid() throws Exception {
+        UUID inviter = signUp("김민지");
+        UUID invitee = signUp("이지우");
+        inviteService.linkOnLogin(invitee, true, inviteCodeService.getOrCreate(inviter), null);
+        jdbcTemplate.update("UPDATE app_user SET status = 'SUSPENDED', suspended_at = now() WHERE id = ?", inviter);
+        int before = shards(inviter);
+        String inviteId = jdbcTemplate.queryForObject(
+                "SELECT public_id::text FROM invite WHERE invitee_id = ?", String.class, invitee);
+
+        ack(bearer(inviter), inviteId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shardsGranted").value(0))
+                .andExpect(jsonPath("$.data.shardBalance").value(before));
+
+        assertThat(shards(inviter)).isEqualTo(before);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT inviter_acked_at IS NOT NULL FROM invite WHERE invitee_id = ?", Boolean.class, invitee))
+                .as("seen, so the modal does not return on every launch").isTrue();
+    }
+
+    @Test
+    void aLoggedInMemberAcceptsALinkAndOnlyBecomesAFriend() throws Exception {
+        UUID inviter = signUp("김민지");
+        agreeToFriendPushes(inviter);
+        String code = inviteCodeService.getOrCreate(inviter);
+        UUID member = signUp("이지우");
+        UUID gone = signUp("탈퇴한초대자");
+        String goneCode = inviteCodeService.getOrCreate(gone);
+        jdbcTemplate.update("UPDATE app_user SET status = 'WITHDRAWN', withdrawn_at = now() WHERE id = ?", gone);
+        int before = shards(member);
+        String me = bearer(member);
+
+        accept(me, code)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.friend.userId").value(inviter.toString()))
+                .andExpect(jsonPath("$.data.friend.name").value("김민지"))
+                .andExpect(jsonPath("$.data.alreadyFriends").value(false));
+        accept(me, code).andExpect(status().isOk()).andExpect(jsonPath("$.data.alreadyFriends").value(true));
+        accept(me, inviteCodeService.getOrCreate(member))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVITE_SELF"));
+        accept(me, "ZZZZZZZZ").andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("INVITE_CODE_NOT_FOUND"));
+        accept(me, goneCode).andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("INVITE_CODE_NOT_FOUND"));
+
+        assertThat(friendships.areFriends(inviter, member)).isTrue();
+        assertThat(shards(member)).isEqualTo(before);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM invite WHERE inviter_id = ?", Long.class, inviter)).isZero();
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT notification_type FROM notification_delivery WHERE user_id = ?", String.class, inviter))
+                .containsExactly("FRIEND_INVITE_SUCCESS");
+        // Nothing for the inviter to confirm: an existing member joining is not an invite success.
+        mockMvc.perform(get("/api/invites/success/unread").header(HttpHeaders.AUTHORIZATION, bearer(inviter)))
+                .andExpect(jsonPath("$.data.invites.length()").value(0));
+    }
+
+    private ResultActions ack(String authorization, String inviteId) throws Exception {
+        return mockMvc.perform(post("/api/invites/success/ack")
+                .header(HttpHeaders.AUTHORIZATION, authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"inviteIds\":[\"" + inviteId + "\"]}"));
+    }
+
+    private ResultActions accept(String authorization, String code) throws Exception {
+        return mockMvc.perform(post("/api/invites/accept")
+                .header(HttpHeaders.AUTHORIZATION, authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"inviteCode\":\"" + code + "\"}"));
     }
 
     private void visit(String code, UUID visitKey) throws Exception {

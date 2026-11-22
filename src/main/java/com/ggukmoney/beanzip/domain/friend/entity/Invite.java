@@ -73,6 +73,14 @@ public class Invite {
     @Column(name = "inviter_acked_at")
     private Instant inviterAckedAt;
 
+    /** 초대한 사람이 성공 모달을 봤다. */
+    public void markAcked(Instant now) {
+        if (status != Status.SUCCESS || inviterAckedAt != null) {
+            throw new IllegalStateException("invite cannot be acknowledged; id=" + id);
+        }
+        this.inviterAckedAt = now;
+    }
+
     public enum Status {
         PENDING,
         SUCCESS
