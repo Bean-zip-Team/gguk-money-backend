@@ -16,6 +16,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -182,6 +184,71 @@ class FriendCheerIntegrationTest extends FriendIntegrationTestSupport {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM cheer WHERE from_user_id = ?", Long.class, me)).isEqualTo(6);
         assertThat(shards(me)).as("the first-cheer reward is paid once").isEqualTo(before + 1);
+    }
+
+    @Test
+    void theFriendListShowsEachFriendsDayAndPutsTheOnesToCheerFirst() throws Exception {
+        UUID me = signUp("김민지");
+        UUID activeToday = signUp("오늘누름");
+        UUID away = signUp("사흘전");
+        UUID cheered = signUp("응원함");
+        UUID withdrawn = signUp("탈퇴");
+        UUID suspended = signUp("정지");
+        for (UUID friend : List.of(activeToday, away, cheered, withdrawn, suspended)) {
+            befriend(me, friend);
+        }
+        setTaps(activeToday, today(), 1240);
+        setTaps(away, today().minusDays(3), 40);
+        setTaps(away, today(), 0);
+        setTaps(cheered, today().minusDays(9), 7);
+        setTaps(suspended, today().minusDays(1), 5);
+        cheer(me, cheered).andExpect(status().isOk());
+        jdbcTemplate.update("UPDATE app_user SET status = 'WITHDRAWN', withdrawn_at = now() WHERE id = ?", withdrawn);
+        jdbcTemplate.update("UPDATE app_user SET status = 'SUSPENDED', suspended_at = now() WHERE id = ?", suspended);
+
+        mockMvc.perform(get("/api/friends").header(HttpHeaders.AUTHORIZATION, bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cheerDailyLimit").value(10))
+                .andExpect(jsonPath("$.data.cheersLeft").value(9))
+                // Not cheered yet, away longest first; the cheered friend last; the withdrawn one gone.
+                .andExpect(jsonPath("$.data.friends.length()").value(4))
+                .andExpect(jsonPath("$.data.friends[0].userId").value(away.toString()))
+                .andExpect(jsonPath("$.data.friends[0].name").value("사흘전"))
+                .andExpect(jsonPath("$.data.friends[0].todayTapCount").value(0))
+                .andExpect(jsonPath("$.data.friends[0].lastTapDate").value(today().minusDays(3).toString()))
+                .andExpect(jsonPath("$.data.friends[0].cheeredToday").value(false))
+                .andExpect(jsonPath("$.data.friends[1].userId").value(suspended.toString()))
+                .andExpect(jsonPath("$.data.friends[1].lastTapDate").value(today().minusDays(1).toString()))
+                .andExpect(jsonPath("$.data.friends[2].userId").value(activeToday.toString()))
+                .andExpect(jsonPath("$.data.friends[2].todayTapCount").value(1240))
+                .andExpect(jsonPath("$.data.friends[2].lastTapDate").value(today().toString()))
+                .andExpect(jsonPath("$.data.friends[3].userId").value(cheered.toString()))
+                .andExpect(jsonPath("$.data.friends[3].cheeredToday").value(true));
+
+        mockMvc.perform(get("/api/friends/summary").header(HttpHeaders.AUTHORIZATION, bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.friendCount").value(4))
+                .andExpect(jsonPath("$.data.todayTappedCount").value(1))
+                .andExpect(jsonPath("$.data.todayTappedFriends.length()").value(1))
+                .andExpect(jsonPath("$.data.todayTappedFriends[0].userId").value(activeToday.toString()))
+                .andExpect(jsonPath("$.data.todayTappedFriends[0].name").value("오늘누름"))
+                .andExpect(jsonPath("$.data.unreadCheerCount").value(0));
+        // The friend I cheered has one unread cheer waiting.
+        mockMvc.perform(get("/api/friends/summary").header(HttpHeaders.AUTHORIZATION, bearer(cheered)))
+                .andExpect(jsonPath("$.data.friendCount").value(1))
+                .andExpect(jsonPath("$.data.unreadCheerCount").value(1));
+    }
+
+    @Test
+    void aFriendWhoHasNeverTappedHasNoLastTapDate() throws Exception {
+        UUID me = signUp("김민지");
+        UUID newcomer = signUp("이지우");
+        befriend(me, newcomer);
+
+        // Signed up without the onboarding reward, so nothing has been tapped yet.
+        mockMvc.perform(get("/api/friends").header(HttpHeaders.AUTHORIZATION, bearer(me)))
+                .andExpect(jsonPath("$.data.friends[0].todayTapCount").value(0))
+                .andExpect(jsonPath("$.data.friends[0].lastTapDate").value(nullValue()));
     }
 
     private ResultActions cheer(UUID from, UUID to) throws Exception {

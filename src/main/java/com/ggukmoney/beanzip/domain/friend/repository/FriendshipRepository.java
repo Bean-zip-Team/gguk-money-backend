@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
@@ -30,4 +31,12 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
     );
 
     boolean existsByUserLowAndUserHigh(UUID userLow, UUID userHigh);
+
+    /** 이 사용자의 친구들. 탈퇴한 친구도 들어 있다. */
+    @Query("""
+            SELECT CASE WHEN friendship.userLow = :userId THEN friendship.userHigh ELSE friendship.userLow END
+            FROM Friendship friendship
+            WHERE friendship.userLow = :userId OR friendship.userHigh = :userId
+            """)
+    List<UUID> findFriendIds(@Param("userId") UUID userId);
 }
