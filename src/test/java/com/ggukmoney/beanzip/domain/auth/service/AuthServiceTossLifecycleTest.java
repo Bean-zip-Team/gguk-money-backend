@@ -193,6 +193,40 @@ class AuthServiceTossLifecycleTest {
     }
 
     @Test
+    void aLostInviteLeavesWhatIsNeededToRepairItByHandInTheLog() {
+        UUID userId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        when(inviteService.linkOnLogin(any(), anyBoolean(), any(), any()))
+                .thenThrow(new IllegalStateException("invite table is unavailable"));
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            // The code is accepted with stray spaces, so it is logged without them. The visit key is request
+            // text that was never validated; anything that is not shaped like a key is not written out.
+            authService.loginWithToss(new TossLoginRequest(
+                    "code", "DEFAULT", null, null, " K7P2QX9A ", "x\nINVITE_LINK_FAILED userId=forged"));
+            authService.loginWithToss(new TossLoginRequest(
+                    "code", "DEFAULT", null, null, "K7P2QX9A", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"));
+
+            assertThat(appender.list)
+                    .filteredOn(event -> event.getFormattedMessage().startsWith("INVITE_LINK_FAILED"))
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .containsExactly(
+                            "INVITE_LINK_FAILED userId=" + userId + " newUser=true inviteCode=K7P2QX9A visitKey=(malformed)",
+                            "INVITE_LINK_FAILED userId=" + userId
+                                    + " newUser=true inviteCode=K7P2QX9A visitKey=3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
     void tossLoginWithoutAnInviteCodeDoesNotTouchTheInviteService() {
         UUID userId = UUID.randomUUID();
         stubTossUser("user-key-1");

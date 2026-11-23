@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS shard_ledger (
     CONSTRAINT ck_shard_ledger_delta CHECK (delta <> 0)
 );
 
+-- 이 파일의 이전 판은 ref_id 를 80자로 만들었다. 뽑기의 Idempotency-Key 는 100자까지라서 그 길이로는
+-- 긴 키의 뽑기가 실패한다. 이전 판으로 이미 만든 테이블이면 여기서 넓힌다(길이만 늘리는 변경이라
+-- 테이블을 다시 쓰지 않는다). 이미 128자면 아무 일도 일어나지 않는다.
+ALTER TABLE shard_ledger ALTER COLUMN ref_id TYPE VARCHAR(128);
+
 -- 사용자별 이력 조회와 하루 발행량 집계에 쓴다.
 CREATE INDEX IF NOT EXISTS ix_shard_ledger_user_created ON shard_ledger (user_id, created_at);
 CREATE INDEX IF NOT EXISTS ix_shard_ledger_created_reason ON shard_ledger (created_at, reason);

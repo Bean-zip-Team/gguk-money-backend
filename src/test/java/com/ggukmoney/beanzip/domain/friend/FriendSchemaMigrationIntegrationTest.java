@@ -66,7 +66,12 @@ class FriendSchemaMigrationIntegrationTest extends FriendIntegrationTestSupport 
         }
         givenTheMissionTypeCheckAsProductionHasIt();
         run(BEFORE_DEPLOY);
-        // Applying it again, as happens when a deploy is retried, changes nothing and fails nothing.
+        assertThat(columns()).containsExactlyElementsOf(columnsFromEntities);
+
+        // A database where an earlier revision of the ledger script was applied has ref_id at 80 characters.
+        // CREATE TABLE IF NOT EXISTS would leave it that way, and a draw with a long Idempotency-Key would fail.
+        jdbcTemplate.execute("ALTER TABLE shard_ledger ALTER COLUMN ref_id TYPE VARCHAR(80)");
+        // Applying everything again, as also happens when a deploy is retried, repairs that and breaks nothing.
         run(BEFORE_DEPLOY);
 
         assertThat(columns()).containsExactlyElementsOf(columnsFromEntities);
@@ -90,8 +95,14 @@ class FriendSchemaMigrationIntegrationTest extends FriendIntegrationTestSupport 
                 WHERE conrelid = 'mission_definition'::regclass AND contype = 'c'
                   AND pg_get_constraintdef(oid) LIKE '%mission_type%'
                 """, String.class))
-                .as("the old type check is replaced, not left beside the new one")
+                .as("both old type checks are replaced, not left beside the new one")
                 .containsExactly("ck_mission_definition_type");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM pg_constraint
+                WHERE conrelid = 'mission_definition'::regclass AND conname = 'ck_mission_definition_target'
+                """, Long.class))
+                .as("a check that is not about the mission type is left alone")
+                .isEqualTo(1);
 
         theWholeFlowRuns();
         thePairOrderCheckIsThere();
@@ -179,6 +190,15 @@ class FriendSchemaMigrationIntegrationTest extends FriendIntegrationTestSupport 
         jdbcTemplate.execute("""
                 ALTER TABLE mission_definition ADD CONSTRAINT ck_mission_definition_type
                 CHECK (mission_type IN ('ATTENDANCE', 'TAP_COUNT', 'RANK_UP', 'NOTIFICATION_OPT_IN'))
+                """);
+        // A second copy under the name Hibernate would have given it. The script finds the type check by
+        // what it checks, so it must replace this one too, and must leave the other checks alone.
+        jdbcTemplate.execute("""
+                ALTER TABLE mission_definition ADD CONSTRAINT mission_definition_mission_type_check
+                CHECK (mission_type IN ('ATTENDANCE', 'TAP_COUNT', 'RANK_UP', 'NOTIFICATION_OPT_IN'))
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE mission_definition ADD CONSTRAINT ck_mission_definition_target CHECK (target_value > 0)
                 """);
         assertThatThrownBy(() -> jdbcTemplate.update("""
                 INSERT INTO mission_definition

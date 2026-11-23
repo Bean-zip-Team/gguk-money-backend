@@ -76,7 +76,8 @@ CREATE INDEX IF NOT EXISTS ix_cheer_to_read ON cheer (to_user_id, read_at);
 -- 상시 미션 '새 친구 데려오기'. 미션 종류가 늘어서 종류 CHECK 를 다시 만든다.
 -- 이 CHECK 를 고치지 않으면 아래 INSERT 가 실패하고 이 파일 전체가 취소된다.
 -- 운영의 제약 이름은 ck_mission_definition_type 이지만, 이름이 다르게 만들어진 DB 에서도 돌도록
--- 이름이 아니라 내용(mission_type 을 검사하는 CHECK)으로 찾아서 지운다.
+-- 이름이 아니라 내용으로 찾아서 지운다. 종류 목록을 검사하는 CHECK 만 고른다(mission_type 을
+-- 언급하고 기존 종류 이름이 들어 있는 것).
 DO $$
 DECLARE
     type_check RECORD;
@@ -87,6 +88,7 @@ BEGIN
         WHERE conrelid = 'mission_definition'::regclass
           AND contype = 'c'
           AND pg_get_constraintdef(oid) LIKE '%mission_type%'
+          AND pg_get_constraintdef(oid) LIKE '%ATTENDANCE%'
     LOOP
         EXECUTE format('ALTER TABLE mission_definition DROP CONSTRAINT %I', type_check.conname);
     END LOOP;

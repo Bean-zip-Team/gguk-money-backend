@@ -6,9 +6,9 @@
 BEGIN;
 
 -- ADD CONSTRAINT takes an ACCESS EXCLUSIVE lock. Queued behind a long transaction it would hold up
--- every read and write on these tables, so give up quickly and retry instead.
+-- every read and write on these tables, so give up quickly and retry instead. No statement timeout:
+-- validating the check reads the whole table, and how long that takes depends on its size.
 SET LOCAL lock_timeout = '3s';
-SET LOCAL statement_timeout = '30s';
 
 ALTER TABLE notification_preference
     DROP CONSTRAINT IF EXISTS notification_preference_notification_type_check;

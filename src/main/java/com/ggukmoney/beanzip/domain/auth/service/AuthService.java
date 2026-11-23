@@ -154,7 +154,9 @@ public class AuthService {
         if (value == null) {
             return null;
         }
-        return value.matches("[A-Za-z0-9_-]{1,64}") ? value : "(malformed)";
+        // 초대 코드는 앞뒤 공백이 있어도 받아들이므로 여기서도 잘라 낸 뒤에 본다.
+        String trimmed = value.trim();
+        return trimmed.matches("[A-Za-z0-9_-]{1,64}") ? trimmed : "(malformed)";
     }
 
     public AuthTokenResponse refresh(RefreshTokenRequest request) {
