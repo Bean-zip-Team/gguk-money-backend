@@ -75,6 +75,36 @@ class FriendPolicyConfigTest {
     }
 
     @Test
+    void ignoresARewardAboveItsCeilingEvenIfItWasWrittenStraightToTheTable() {
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
+        when(batchLoader.load(eq(FriendPolicyConfig.DEFAULT_VALUES.keySet()), any())).thenReturn(Map.of(
+                FriendPolicyConfig.KEY_INVITE_REWARD, "1000",
+                FriendPolicyConfig.KEY_CHEER_RECEIVE_REWARD, "300",
+                FriendPolicyConfig.KEY_CHEER_RECEIVE_DAILY_CAP, "300",
+                FriendPolicyConfig.KEY_CHEER_DAILY_LIMIT, "100"
+        ));
+
+        config.refresh();
+
+        // The ops page rejects these too; this is the second line for a row edited by hand.
+        assertThat(config.inviteReward()).isEqualTo(10);
+        assertThat(config.cheerReceiveReward()).isEqualTo(3);
+        // Exactly at the ceiling is accepted.
+        assertThat(config.cheerReceiveDailyCap()).isEqualTo(300);
+        assertThat(config.cheerDailyLimit()).isEqualTo(100);
+    }
+
+    @Test
+    void everyNumericKeyHasARange() {
+        assertThat(FriendPolicyConfig.INT_RANGES.keySet())
+                .containsExactlyInAnyOrderElementsOf(FriendPolicyConfig.DEFAULT_VALUES.keySet().stream()
+                        .filter(key -> !key.endsWith("enabled"))
+                        .toList());
+        FriendPolicyConfig.DEFAULT_VALUES.forEach((key, value) ->
+                assertThat(FriendPolicyConfig.isValid(key, value)).as(key).isTrue());
+    }
+
+    @Test
     void keepsTheLastGoodValuesWhenTheReadFails() {
         when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
         when(batchLoader.load(eq(FriendPolicyConfig.DEFAULT_VALUES.keySet()), any()))

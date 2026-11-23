@@ -154,6 +154,24 @@ class CheerServiceTest {
     }
 
     @Test
+    void aWithdrawnAccountWhoseTokenStillWorksCanNeitherSendNorCollect() {
+        sender.withdraw();
+        Cheer cheer = received();
+
+        assertRefused(receiver.getId(), "403 FORBIDDEN \"ACCOUNT_WITHDRAWN\"");
+        assertThatThrownBy(() -> service.reply(sender.getId(), List.of(cheer.getPublicId())))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("403 FORBIDDEN \"ACCOUNT_WITHDRAWN\"");
+        assertThatThrownBy(() -> service.ack(sender.getId(), List.of(cheer.getPublicId())))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("403 FORBIDDEN \"ACCOUNT_WITHDRAWN\"");
+
+        // The shards would still be in the wallet after signing up again, so nothing may be paid or marked read.
+        assertThat(cheer.isRead()).isFalse();
+        verifyNoInteractions(cheers);
+    }
+
+    @Test
     void onlyAFriendWhoHasNotWithdrawnCanBeCheered() {
         UUID stranger = UUID.randomUUID();
         AppUser withdrawn = InviteServiceTest.user();

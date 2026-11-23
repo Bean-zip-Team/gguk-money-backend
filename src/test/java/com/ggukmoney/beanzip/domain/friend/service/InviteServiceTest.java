@@ -61,8 +61,8 @@ class InviteServiceTest {
     private final FriendPolicyConfig policy = mock(FriendPolicyConfig.class);
     private final CheerRepository cheers = mock(CheerRepository.class);
     private final InviteService service = new InviteService(
-            invites, inviteCodes, cheers, friendships, wallets, userRewardLock, friendNotifications, policy,
-            Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Asia/Seoul"));
+            invites, inviteCodes, cheers, friendships, wallets, userRewardLock, friendNotifications,
+            new FriendAccess(policy), policy, Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Asia/Seoul"));
 
     @Test
     void aVisitIsStoredAsPendingForTheOwnerOfTheCode() {
@@ -333,6 +333,23 @@ class InviteServiceTest {
         // Marked as seen, so the modal does not come back on every launch.
         assertThat(invite.getInviterAckedAt()).isEqualTo(NOW);
         verify(wallets, never()).grantShards(any(), anyInt(), any(), any());
+    }
+
+    @Test
+    void aWithdrawnAccountWhoseTokenStillWorksCannotCollectAnInviteReward() {
+        AppUser me = user();
+        me.withdraw();
+        Invite invite = invite(me.getId(), UUID.randomUUID());
+        when(userRewardLock.acquire(me.getId())).thenReturn(me);
+        when(policy.inviteReward()).thenReturn(10);
+
+        assertThatThrownBy(() -> service.ackSuccesses(me.getId(), List.of(invite.getPublicId())))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("403 FORBIDDEN \"ACCOUNT_WITHDRAWN\"");
+
+        // Nothing is marked seen: the invite is still there if the account comes back.
+        assertThat(invite.getInviterAckedAt()).isNull();
+        verifyNoInteractions(invites, wallets);
     }
 
     private static InviteRepository.UnreadSuccess unread(UUID inviteId, UUID userId, String name) {

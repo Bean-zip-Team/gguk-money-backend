@@ -1,10 +1,12 @@
--- BEA-390: 친구 초대·응원 테이블.
+-- BEA-390: 친구 초대·응원 테이블과 친구 초대 미션.
 -- 운영은 ddl-auto=validate 라 이 테이블들이 없으면 새 버전이 뜨지 않는다. 배포 **전에** 적용한다.
 -- develop 에 머지하면 알파에 바로 배포되므로 알파 DB 에는 머지 전에 적용한다.
--- 다시 실행해도 안전하다(IF NOT EXISTS). 이 테이블들을 모르는 이전 버전은 영향을 받지 않으므로
--- 배포를 되돌려도 그대로 두면 된다.
+-- 다시 실행해도 안전하다. 이전 버전은 새 테이블을 읽지 않고, 미션 두 행은 꺼진 채로 들어가므로
+-- 이 파일만 적용한 상태에서는 이전 버전이 다시 떠도, 배포를 되돌려도 문제없다.
 --
--- 같이 적용할 것: manual-bea-390-shard-ledger.sql, manual-notification-type-check.sql
+-- 같이 적용할 것(배포 전): manual-bea-390-shard-ledger.sql, manual-notification-type-check.sql
+-- 배포한 뒤에 적용할 것: manual-bea-390-friend-mission-activate.sql (미션 두 행을 켠다)
+-- 따로 적용할 것: manual-index-contracts.sql 의 ix_notification_delivery_friend_due (트랜잭션 밖에서)
 BEGIN;
 
 SET LOCAL lock_timeout = '3s';
@@ -71,20 +73,46 @@ CREATE TABLE IF NOT EXISTS cheer (
 -- 안 읽은 응원 조회와, 확인한 날 기준 하루 상한 계산에 쓴다.
 CREATE INDEX IF NOT EXISTS ix_cheer_to_read ON cheer (to_user_id, read_at);
 
--- 상시 미션 '새 친구 데려오기'. 미션 종류가 늘어서 CHECK 를 다시 만든다.
--- 이 CHECK 를 고치지 않으면 아래 INSERT 가 실패한다.
-ALTER TABLE mission_definition DROP CONSTRAINT IF EXISTS ck_mission_definition_type;
+-- 상시 미션 '새 친구 데려오기'. 미션 종류가 늘어서 종류 CHECK 를 다시 만든다.
+-- 이 CHECK 를 고치지 않으면 아래 INSERT 가 실패하고 이 파일 전체가 취소된다.
+-- 운영의 제약 이름은 ck_mission_definition_type 이지만, 이름이 다르게 만들어진 DB 에서도 돌도록
+-- 이름이 아니라 내용(mission_type 을 검사하는 CHECK)으로 찾아서 지운다.
+DO $$
+DECLARE
+    type_check RECORD;
+BEGIN
+    FOR type_check IN
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'mission_definition'::regclass
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%mission_type%'
+    LOOP
+        EXECUTE format('ALTER TABLE mission_definition DROP CONSTRAINT %I', type_check.conname);
+    END LOOP;
+END $$;
+
 ALTER TABLE mission_definition
     ADD CONSTRAINT ck_mission_definition_type
     CHECK (mission_type IN ('ATTENDANCE', 'TAP_COUNT', 'RANK_UP', 'NOTIFICATION_OPT_IN', 'FRIEND_INVITE'));
 
 -- 3명 보상을 받아야 10명 단계가 보인다. 수는 이어서 센다. 금액은 UPDATE 로 바꾼다.
--- 친구 스위치(friends.enabled)가 꺼져 있는 동안에는 목록에 나오지 않는다.
+--
+-- **꺼진 채로(active = FALSE) 넣는다.** 이전 버전은 FRIEND_INVITE 라는 종류를 모른다. 이 행이 켜진
+-- 채로 이전 버전이 뜨면 미션 정의를 읽다가 실패해서 데일리 미션 목록 전체가 빈다(응답은 200 이라
+-- 겉으로 드러나지 않는다). 켜는 일은 새 버전을 배포한 뒤 manual-bea-390-friend-mission-activate.sql 이 한다.
 INSERT INTO mission_definition
     (code, mission_type, period_type, name, description, target_value, reward_point_amount, sort_order, active, created_at, updated_at)
 VALUES
-    ('FRIEND_INVITE_3',  'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 3명이 가입하면 달성돼요',   3,  50, 90, TRUE, now(), now()),
-    ('FRIEND_INVITE_10', 'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 10명이 가입하면 달성돼요', 10, 100, 91, TRUE, now(), now())
+    ('FRIEND_INVITE_3',  'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 3명이 가입하면 달성돼요',   3,  50, 90, FALSE, now(), now()),
+    ('FRIEND_INVITE_10', 'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 10명이 가입하면 달성돼요', 10, 100, 91, FALSE, now(), now())
 ON CONFLICT (code) DO NOTHING;
 
 COMMIT;
+
+-- 확인:
+--   SELECT table_name FROM information_schema.tables
+--    WHERE table_name IN ('invite_code', 'friendship', 'invite', 'cheer');
+--   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+--    WHERE conrelid = 'mission_definition'::regclass AND contype = 'c';
+--   SELECT code, active FROM mission_definition WHERE mission_type = 'FRIEND_INVITE';   -- 둘 다 f

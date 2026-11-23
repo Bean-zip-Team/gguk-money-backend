@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -397,12 +398,17 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
     @Test
     void theInviteMissionOpensStageByStageAndPaysPointsWhenClaimed() throws Exception {
         // The two mission rows come from the SQL that operations will run, so this also proves that SQL.
-        jdbcTemplate.execute(new ClassPathResource("db/manual-bea-390-friends.sql")
-                .getContentAsString(StandardCharsets.UTF_8));
-        missionCatalog.refresh();
         UUID inviter = signUp("김민지");
         String code = inviteCodeService.getOrCreate(inviter);
         String me = bearer(inviter);
+        jdbcTemplate.execute(new ClassPathResource("db/manual-bea-390-friends.sql")
+                .getContentAsString(StandardCharsets.UTF_8));
+        missionCatalog.refresh();
+        // Before the deploy the rows are switched off: a version that does not know FRIEND_INVITE never reads them.
+        assertThat(friendMissions(me)).isEmpty();
+        jdbcTemplate.execute(new ClassPathResource("db/manual-bea-390-friend-mission-activate.sql")
+                .getContentAsString(StandardCharsets.UTF_8));
+        missionCatalog.refresh();
         inviteService.linkOnLogin(signUp("새친구1"), true, code, null);
         inviteService.linkOnLogin(signUp("새친구2"), true, code, null);
         // An existing member who opens the link becomes a friend but is not a new signup.
@@ -449,6 +455,46 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
 
         setConfig(FriendPolicyConfig.KEY_ENABLED, "false");
         assertThat(friendMissions(me)).as("hidden while the friend feature is off").isEmpty();
+    }
+
+    @Test
+    void aVisitAndALoginArrivingTogetherEndAsOneSuccessfulInvite() throws Exception {
+        UUID inviter = signUp("김민지");
+        String code = inviteCodeService.getOrCreate(inviter);
+
+        // The app fires both requests when it opens from a link, so they race on the same (inviter, visitKey).
+        for (int round = 0; round < 12; round++) {
+            UUID invitee = signUp("새친구" + round);
+            UUID visitKey = UUID.randomUUID();
+            CountDownLatch start = new CountDownLatch(1);
+            Callable<Boolean> visit = () -> {
+                start.await();
+                inviteService.recordVisit(code, visitKey);
+                return true;
+            };
+            Callable<Boolean> login = () -> {
+                start.await();
+                return inviteService.linkOnLogin(invitee, true, code, visitKey.toString()).isPresent();
+            };
+            try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+                Future<Boolean> visited = round % 2 == 0 ? executor.submit(visit) : null;
+                Future<Boolean> linked = executor.submit(login);
+                if (visited == null) {
+                    visited = executor.submit(visit);
+                }
+                start.countDown();
+                assertThat(visited.get()).isTrue();
+                assertThat(linked.get()).as("round %d: the signup must not be lost to the race", round).isTrue();
+            }
+
+            assertThat(jdbcTemplate.queryForList(
+                    "SELECT status, invitee_id FROM invite WHERE inviter_id = ? AND visit_key = ?", inviter, visitKey))
+                    .as("round %d", round)
+                    .singleElement()
+                    .satisfies(row -> assertThat(row).containsEntry("status", "SUCCESS").containsEntry("invitee_id", invitee));
+            assertThat(friendships.areFriends(inviter, invitee)).isTrue();
+        }
+        assertThat(pendingInvites(inviter)).isZero();
     }
 
     private List<Map<String, Object>> friendMissions(String authorization) throws Exception {

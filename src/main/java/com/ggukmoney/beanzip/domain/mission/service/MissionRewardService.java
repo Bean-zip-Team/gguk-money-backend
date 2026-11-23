@@ -150,7 +150,7 @@ public class MissionRewardService {
             // 친구 미션은 기능이 켜져 있고 정지되지 않은 사용자에게만 보인다. 보이지 않는 동안에는 전에
             // 달성해 둔 보상도 받을 수 없다 (BEA-390).
             friendAccess.requireEnabled();
-            friendAccess.requireNotSuspended(user);
+            friendAccess.requireActive(user);
         }
         reward.claim(now);
         long credited = credit(user, reward, internalUserIds(now));

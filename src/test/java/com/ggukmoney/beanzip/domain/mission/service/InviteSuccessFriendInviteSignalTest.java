@@ -37,7 +37,7 @@ class InviteSuccessFriendInviteSignalTest {
     }
 
     @Test
-    void hasNoValueWhileTheFriendFeatureIsOffOrTheUserIsSuspended() {
+    void hasNoValueWhileTheFriendFeatureIsOffOrTheUserIsNotActive() {
         when(users.findById(userId)).thenReturn(Optional.of(user));
 
         when(policy.friendsEnabled()).thenReturn(false);
@@ -46,6 +46,8 @@ class InviteSuccessFriendInviteSignalTest {
         when(policy.friendsEnabled()).thenReturn(true);
         user.suspend();
         assertThat(signal.successCountOf(userId)).as("suspended").isEmpty();
+        user.withdraw();
+        assertThat(signal.successCountOf(userId)).as("withdrawn").isEmpty();
 
         // An empty value hides the mission; it is not the same as zero invites.
         verifyNoInteractions(invites);

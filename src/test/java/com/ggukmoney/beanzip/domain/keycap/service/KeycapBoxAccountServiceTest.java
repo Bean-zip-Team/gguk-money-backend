@@ -117,6 +117,41 @@ class KeycapBoxAccountServiceTest {
     }
 
     @Test
+    void confirmsAgainstTheConfigBeforeTrustingACacheThatSaysTheEconomyIsOff() {
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
+        wallet.addShards(3);
+        // Right after boot, a failed first read leaves the cache at its default for up to a minute.
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(false);
+        when(economy.isShardEconomyEnabled()).thenReturn(true);
+
+        keycapBoxAccountService.recordShardChange(UUID.randomUUID(), wallet, 3, ShardLedger.Reason.TAP_DROP, "batch-1");
+
+        // A hole here would be a hole in the shard-issuance baseline.
+        verify(shardLedgers).save(org.mockito.ArgumentMatchers.any(ShardLedger.class));
+    }
+
+    @Test
+    void doesNotReadTheConfigAgainOnceTheCacheSaysTheEconomyIsOn() {
+        KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
+        wallet.addShards(3);
+        when(economy.shardEconomyAtLastRefresh()).thenReturn(true);
+
+        keycapBoxAccountService.recordShardChange(UUID.randomUUID(), wallet, 3, ShardLedger.Reason.TAP_DROP, "batch-1");
+
+        // This runs on every tap batch.
+        verify(economy, org.mockito.Mockito.never()).isShardEconomyEnabled();
+    }
+
+    @Test
+    void theLedgerReferenceColumnHoldsTheLongestDrawIdempotencyKey() throws NoSuchFieldException {
+        int columnLength = ShardLedger.class.getDeclaredField("refId")
+                .getAnnotation(jakarta.persistence.Column.class).length();
+
+        // A draw stores its Idempotency-Key as the reference. A shorter column turns a valid draw into a 500.
+        assertThat(columnLength).isGreaterThanOrEqualTo(KeycapDrawService.MAX_IDEMPOTENCY_KEY_LENGTH);
+    }
+
+    @Test
     void doesNotRecordBoxesBeforeTheShardEconomy() {
         KeycapBoxAccount wallet = KeycapBoxAccount.createFor(null, clock.instant());
         wallet.addShards(1);

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS shard_ledger (
     user_id       UUID        NOT NULL,
     delta         INTEGER     NOT NULL,
     reason        VARCHAR(40) NOT NULL,
-    ref_id        VARCHAR(80),
+    ref_id        VARCHAR(128),
     balance_after INTEGER     NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL,
     CONSTRAINT ck_shard_ledger_delta CHECK (delta <> 0)

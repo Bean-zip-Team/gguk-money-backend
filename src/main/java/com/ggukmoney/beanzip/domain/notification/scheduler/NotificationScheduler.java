@@ -117,6 +117,9 @@ public class NotificationScheduler {
             zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
     )
     public void scheduleFriendNotifications() {
+        if (!friendNotificationService.enabled()) {
+            return;
+        }
         advisoryLockRunner.runExclusively(FRIEND_LOCK_KEY, friendNotificationService::dispatchDue);
     }
 

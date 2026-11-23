@@ -51,6 +51,11 @@ public abstract class FriendIntegrationTestSupport extends FullStackIntegrationT
         registry.add("app.smart-message.templates.friend-cheer.campaign-code", () -> "clickmoney-friend-cheer");
         registry.add(
                 "app.smart-message.templates.friend-invite-success.campaign-code", () -> "clickmoney-friend-connected");
+        // 스케줄러는 테스트 컨텍스트에서도 돈다. 매분 0초에 대기 중인 친구 푸시를 실제로 보내려 하므로 끈다.
+        // 낮에 돌리면 이 테스트들이 만든 푸시가 바로 발송 대상이 된다. 발송은 필요한 테스트가 직접 부른다.
+        registry.add("app.smart-message.schedule.friend-cron", () -> "-");
+        // 그래도 어딘가에서 발송이 불리면 토스가 아니라 닫힌 로컬 포트로 가서 바로 실패하게 한다.
+        registry.add("app.smart-message.toss.base-url", () -> "http://127.0.0.1:9");
     }
 
     @BeforeEach

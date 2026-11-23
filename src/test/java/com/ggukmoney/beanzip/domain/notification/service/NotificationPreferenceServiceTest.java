@@ -6,6 +6,7 @@ import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementSta
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -34,8 +35,9 @@ class NotificationPreferenceServiceTest {
             null
     );
     private final NotificationDeliveryPersistenceService persistenceService = mock(NotificationDeliveryPersistenceService.class);
+    private final FriendPolicyConfig friendPolicy = mock(FriendPolicyConfig.class);
     private final NotificationPreferenceService service =
-            new NotificationPreferenceService(preferenceRepository, templateProperties, persistenceService);
+            new NotificationPreferenceService(preferenceRepository, templateProperties, persistenceService, friendPolicy);
 
     @Test
     void notificationTypeOnlyContainsPlannedTypes() {
@@ -131,8 +133,10 @@ class NotificationPreferenceServiceTest {
                 preferenceRepository,
                 new NotificationTemplateProperties(
                         null, null, null, null, null, null, null, "clickmoney-friend-cheer", "clickmoney-friend-connected"),
-                persistenceService
+                persistenceService,
+                friendPolicy
         );
+        when(friendPolicy.friendsEnabled()).thenReturn(true);
 
         var response = friendService.list(userId);
 
@@ -143,6 +147,25 @@ class NotificationPreferenceServiceTest {
             assertThat(item.agreementStatus()).isEqualTo(NotificationAgreementStatus.NOT_REQUESTED);
             assertThat(item.promptEligible()).isFalse();
         });
+    }
+
+    @Test
+    void theFriendConsentIsNotListedWhileTheFriendFeatureIsOff() {
+        UUID userId = UUID.randomUUID();
+        stubMissingPreferences();
+        NotificationPreferenceService friendService = new NotificationPreferenceService(
+                preferenceRepository,
+                new NotificationTemplateProperties(
+                        null, "clickmoney-asfasf", null, null, null, null, null, "clickmoney-friend-cheer", null),
+                persistenceService,
+                friendPolicy
+        );
+        when(friendPolicy.friendsEnabled()).thenReturn(false);
+
+        // The campaign code is configured ahead of launch; a toggle for screens that do not exist yet must not show.
+        assertThat(friendService.list(userId).items())
+                .extracting(item -> item.type())
+                .containsExactly(NotificationType.RANK_CHANGE);
     }
 
     @Test

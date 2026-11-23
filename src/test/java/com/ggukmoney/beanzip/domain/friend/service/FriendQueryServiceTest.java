@@ -22,9 +22,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class FriendQueryServiceTest {
@@ -115,6 +118,8 @@ class FriendQueryServiceTest {
                 new FriendProfileResponse(more.getId(), "많이"),
                 new FriendProfileResponse(some.getId(), "꽤"));
         assertThat(response.unreadCheerCount()).isEqualTo(3);
+        // The home summary is requested on every launch; it must not scan each friend's whole tap history.
+        verify(tapReader, never()).read(anyCollection(), any());
     }
 
     @Test
@@ -139,5 +144,12 @@ class FriendQueryServiceTest {
         when(friendships.findFriendIds(me)).thenReturn(ids);
         when(users.findAllById(ids)).thenReturn(friends);
         when(tapReader.read(anyCollection(), eq(TODAY))).thenReturn(taps);
+        Map<UUID, Long> tapsToday = new HashMap<>();
+        taps.forEach((userId, state) -> {
+            if (state.todayTapCount() > 0) {
+                tapsToday.put(userId, state.todayTapCount());
+            }
+        });
+        when(tapReader.todayTapCounts(anyCollection(), eq(TODAY))).thenReturn(tapsToday);
     }
 }

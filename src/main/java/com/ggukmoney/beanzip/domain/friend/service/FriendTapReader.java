@@ -27,9 +27,7 @@ public class FriendTapReader {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, Long> todayCounts = new HashMap<>();
-        taps.findEffectiveTapCounts(userIds, today)
-                .forEach(row -> todayCounts.put(row.getUserId(), row.getTapCount()));
+        Map<UUID, Long> todayCounts = todayTapCounts(userIds, today);
         Map<UUID, LocalDate> lastDates = new HashMap<>();
         taps.findLastEffectiveTapDates(userIds)
                 .forEach(row -> lastDates.put(row.getUserId(), row.getLastTapDate()));
@@ -39,6 +37,21 @@ public class FriendTapReader {
             states.put(userId, new TapState(todayCounts.getOrDefault(userId, 0L), lastDates.get(userId)));
         }
         return states;
+    }
+
+    /**
+     * 오늘 누른 수만 읽는다. 오늘 기록이 없는 사용자는 결과에 없다.
+     *
+     * <p>홈 요약은 앱을 열 때마다 불린다. 마지막으로 누른 날은 친구마다 지난 기록 전체를 훑어야 해서,
+     * 그 값이 필요 없는 곳에서는 이쪽을 쓴다.
+     */
+    public Map<UUID, Long> todayTapCounts(Collection<UUID> userIds, LocalDate today) {
+        Map<UUID, Long> todayCounts = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            taps.findEffectiveTapCounts(userIds, today)
+                    .forEach(row -> todayCounts.put(row.getUserId(), row.getTapCount()));
+        }
+        return todayCounts;
     }
 
     /**

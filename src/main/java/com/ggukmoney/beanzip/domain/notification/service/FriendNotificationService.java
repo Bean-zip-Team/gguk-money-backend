@@ -46,8 +46,11 @@ public class FriendNotificationService {
      */
     static final int SENDS_PER_RUN = 50;
     /**
-     * 보내려던 시각에서 이만큼 지나도록 한 번도 시도하지 못한 푸시는 버린다. 장애가 풀린 뒤에 묵은 푸시가
-     * 밤에 나가거나, 어제 몫과 오늘 몫이 같은 날 두 통 나가는 일을 막는다.
+     * 보내려던 시각(이미 시도했다면 마지막 시도)에서 이만큼 지난 푸시는 버린다. 장애가 풀리거나 기능을
+     * 다시 켠 뒤에 묵은 푸시가 밤에 나가거나, 어제 몫과 오늘 몫이 같은 날 두 통 나가는 일을 막는다.
+     *
+     * <p>아침 8시에는 밤사이 쌓인 푸시가 한꺼번에 풀린다. 분당 {@link #SENDS_PER_RUN} 건씩 이 시간 동안
+     * 보내므로, 밤사이 3,000건을 넘으면 넘는 만큼 버려진다. 그 규모가 되면 처리량을 올려야 한다.
      */
     static final Duration STALE_AFTER = Duration.ofHours(1);
 
@@ -100,13 +103,27 @@ public class FriendNotificationService {
         return now;
     }
 
+    /** 지금이 밤 9시~아침 8시인지. */
+    static boolean isQuietHours(Instant now, ZoneId zone) {
+        LocalTime time = now.atZone(zone).toLocalTime();
+        return time.isBefore(QUIET_UNTIL) || !time.isBefore(QUIET_FROM);
+    }
+
+    /**
+     * 친구 기능이 켜져 있는지. 스케줄러가 잠금을 잡기 전에 본다. 꺼져 있는 동안에는 매분 DB 연결을
+     * 하나씩 빌려 잠금만 잡았다 놓는 일을 하지 않는다.
+     */
+    public boolean enabled() {
+        return friendPolicy.friendsEnabled();
+    }
+
     /**
      * 보낼 시각이 된 푸시를 보낸다. 매분 실행한다.
      *
      * @return 보낸 건수
      */
     public int dispatchDue() {
-        if (!friendPolicy.friendsEnabled()) {
+        if (!enabled()) {
             // 기능을 끈 동안에는 보내지 않는다. 그동안 쌓인 행은 다시 켰을 때 묵은 것으로 버려진다.
             return 0;
         }
@@ -118,16 +135,18 @@ public class FriendNotificationService {
         }
         Map<UUID, String> providerUserIds =
                 batchReadService.loadProviderUserIds(due.stream().map(DueFriendDelivery::getUserId).toList());
+        boolean quietHours = isQuietHours(now, businessZoneId);
 
         int sent = 0;
         int retryWaiting = 0;
         int failed = 0;
+        int dropped = 0;
         for (DueFriendDelivery row : due) {
             String providerUserId = providerUserIds.get(row.getUserId());
-            String blockedBy = blockedBy(row, providerUserId);
+            String blockedBy = blockedBy(row, providerUserId, quietHours);
             if (blockedBy != null) {
                 persistenceService.markFailed(row.getId(), blockedBy, null, null);
-                failed++;
+                dropped++;
                 continue;
             }
             int attempt = row.getAttemptCount() + 1;
@@ -148,18 +167,25 @@ public class FriendNotificationService {
                 failed++;
             }
         }
-        log.info("FRIEND_NOTIFICATION_DISPATCH due={} sent={} retryWaiting={} failed={}",
-                due.size(), sent, retryWaiting, failed);
+        // dropped 는 토스에 보내 보지도 않고 닫은 건이다(묵음, 동의 해제, 탈퇴·정지 등). 사유는 failure_code 에 남는다.
+        log.info("FRIEND_NOTIFICATION_DISPATCH due={} sent={} retryWaiting={} failed={} dropped={}",
+                due.size(), sent, retryWaiting, failed, dropped);
         return sent;
     }
 
-    private static String blockedBy(DueFriendDelivery row, String providerUserId) {
+    /** 보내지 않고 닫아야 하는 사유. 보내도 되면 null 이다. */
+    private static String blockedBy(DueFriendDelivery row, String providerUserId, boolean quietHours) {
         if (Boolean.TRUE.equals(row.getExpired())) {
             return "EXPIRED";
         }
         if (row.getAttemptCount() >= MAX_ATTEMPTS) {
             // 세 번째 시도 중에 서버가 죽은 행이다. 그대로 두면 매분 다시 집힌다.
             return "MAX_ATTEMPTS_EXCEEDED";
+        }
+        if (quietHours && row.getAttemptCount() > 0) {
+            // 밤 9시 직전에 보내다 실패한 건의 재시도다. 밤에는 다시 보내지 않는다. 아침으로 미루면 그날
+            // 몫과 겹쳐 두 통이 되므로 버린다. 9시 직전에 생겨 아직 한 번도 못 보낸 건은 보낸다.
+            return "QUIET_HOURS";
         }
         if (!Boolean.TRUE.equals(row.getConsented())) {
             return "CONSENT_REVOKED";

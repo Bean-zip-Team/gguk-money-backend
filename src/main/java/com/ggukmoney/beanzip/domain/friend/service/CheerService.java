@@ -62,7 +62,7 @@ public class CheerService {
     public CheerSendResponse send(UUID fromUserId, UUID toUserId) {
         // 내 행을 잠가서 내 응원끼리는 차례로 처리한다. 하루 수와 같은 친구 중복을 세는 기준이 흔들리지 않는다.
         AppUser sender = userRewardLock.acquire(fromUserId);
-        friendAccess.requireNotSuspended(sender);
+        friendAccess.requireActive(sender);
         Instant now = clock.instant();
         LocalDate today = LocalDate.ofInstant(now, businessZoneId);
         int sentBefore = Math.toIntExact(cheers.countByFromUserIdAndCheerDate(fromUserId, today));
@@ -95,7 +95,7 @@ public class CheerService {
     @Transactional
     public CheerReplyResponse reply(UUID userId, Collection<UUID> cheerIds) {
         AppUser sender = userRewardLock.acquire(userId);
-        friendAccess.requireNotSuspended(sender);
+        friendAccess.requireActive(sender);
         Instant now = clock.instant();
         LocalDate today = LocalDate.ofInstant(now, businessZoneId);
         int sentBefore = Math.toIntExact(cheers.countByFromUserIdAndCheerDate(userId, today));
@@ -148,6 +148,7 @@ public class CheerService {
     @Transactional
     public CheerAckResponse ack(UUID userId, Collection<UUID> cheerIds) {
         AppUser receiver = userRewardLock.acquire(userId);
+        friendAccess.requireNotWithdrawn(receiver);
         List<Cheer> ackable = cheerIds.isEmpty() ? List.of() : cheers.findAckable(userId, cheerIds);
         Instant now = clock.instant();
         LocalDate today = LocalDate.ofInstant(now, businessZoneId);

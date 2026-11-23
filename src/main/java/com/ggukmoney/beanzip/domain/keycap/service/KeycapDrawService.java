@@ -50,7 +50,7 @@ import java.util.UUID;
 public class KeycapDrawService {
 
     private static final Logger log = LoggerFactory.getLogger(KeycapDrawService.class);
-    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
     private static final String POINT_REASON_KEYCAP_ALL_COMPLETE = "KEYCAP_ALL_COMPLETE_BONUS";
     private static final long ALL_COMPLETE_BONUS_POINT_AMOUNT = 1;
 

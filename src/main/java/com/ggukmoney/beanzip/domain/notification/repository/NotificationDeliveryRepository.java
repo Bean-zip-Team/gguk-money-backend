@@ -176,13 +176,19 @@ public interface NotificationDeliveryRepository extends JpaRepository<Notificati
      *
      * <p>넣을 때 동의를 확인했어도 아침 8시까지 기다리는 사이에 동의를 끄거나 탈퇴할 수 있어서 보내기
      * 직전에 다시 본다.
+     *
+     * <p>{@code expired} 는 묵은 행이다. 한 번도 시도하지 않은 행은 보내려던 시각에서, 시도한 적이 있는
+     * 행은 마지막 시도에서 {@code staleBefore} 보다 오래 지났을 때다. 발송이 한동안 멈췄다가 다시 돌 때
+     * 밀린 푸시가 한꺼번에, 엉뚱한 시각에 나가지 않게 한다.
+     *
+     * <p>{@code manual-index-contracts.sql} 의 {@code ix_notification_delivery_friend_due} 가 이 조건을 받친다.
      */
     @Query(value = """
             SELECT delivery.id AS id,
                    delivery.user_id AS userId,
                    delivery.template_set_code AS templateSetCode,
                    delivery.attempt_count AS attemptCount,
-                   (delivery.attempt_count = 0 AND delivery.next_attempt_at < :staleBefore) AS expired,
+                   COALESCE(delivery.last_attempt_at, delivery.next_attempt_at) < :staleBefore AS expired,
                    (preference.enabled AND preference.agreement_status = 'AGREED') AS consented,
                    user_record.status::text AS userStatus
             FROM notification_delivery delivery

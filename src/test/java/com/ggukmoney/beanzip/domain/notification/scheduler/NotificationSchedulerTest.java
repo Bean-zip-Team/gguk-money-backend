@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -103,6 +104,7 @@ class NotificationSchedulerTest {
         when(acquire.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true);
         when(resultSet.getBoolean(1)).thenReturn(true);
+        when(friendService.enabled()).thenReturn(true);
         NotificationScheduler scheduler = new NotificationScheduler(
                 mock(NotificationDeliveryService.class),
                 mock(WeeklyRankingResetNotificationService.class),
@@ -119,6 +121,28 @@ class NotificationSchedulerTest {
         // A key shared with another job would make the two skip each other.
         verify(acquire).setLong(1, 3_900_390L);
         verify(release).execute();
+    }
+
+    @Test
+    void doesNotEvenBorrowAConnectionForFriendPushesWhileTheFeatureIsOff() {
+        FriendNotificationService friendService = mock(FriendNotificationService.class);
+        DataSource dataSource = mock(DataSource.class);
+        when(friendService.enabled()).thenReturn(false);
+        NotificationScheduler scheduler = new NotificationScheduler(
+                mock(NotificationDeliveryService.class),
+                mock(WeeklyRankingResetNotificationService.class),
+                friendService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-11-24T05:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
+        );
+
+        scheduler.scheduleFriendNotifications();
+
+        // This job fires every minute, and the feature stays off until launch day.
+        verifyNoInteractions(dataSource);
+        verify(friendService, never()).dispatchDue();
     }
 
     @Test

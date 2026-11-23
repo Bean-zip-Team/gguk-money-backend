@@ -171,6 +171,39 @@ class AuthServiceTossLifecycleTest {
         assertThat(response.newUser()).isTrue();
         assertThat(response.invite()).isNull();
         assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
+        // Tried once more before giving up: the app deletes the code after this login, so there is no later chance.
+        verify(inviteService, times(2)).linkOnLogin(userId, true, "K7P2QX9A", "not-a-uuid");
+    }
+
+    @Test
+    void tossLoginLinksTheInviteOnTheSecondTryAfterAMomentaryFailure() {
+        UUID userId = UUID.randomUUID();
+        UUID inviterId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        when(inviteService.linkOnLogin(userId, true, "K7P2QX9A", null))
+                .thenThrow(new IllegalStateException("lock timeout"))
+                .thenReturn(Optional.of(new InviteSignupResponse(inviterId, "김민지", 10)));
+
+        AuthTokenResponse response = authService.loginWithToss(
+                new TossLoginRequest("code", "DEFAULT", null, null, "K7P2QX9A", null));
+
+        assertThat(response.invite()).isEqualTo(new InviteSignupResponse(inviterId, "김민지", 10));
+    }
+
+    @Test
+    void tossLoginWithoutAnInviteCodeDoesNotTouchTheInviteService() {
+        UUID userId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
+
+        // A visit key alone means nothing, and most logins carry neither.
+        authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, null, " ", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"));
+        authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
+
+        verifyNoInteractions(inviteService);
     }
 
     private void stubTossUser(String userKey) {

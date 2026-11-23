@@ -68,11 +68,12 @@ public class FriendQueryService {
 
     public FriendSummaryResponse summary(UUID userId) {
         List<AppUser> friends = visibleFriends(userId);
-        Map<UUID, TapState> taps = tapReader.read(friends.stream().map(AppUser::getId).toList(), today());
+        Map<UUID, Long> tapsToday =
+                tapReader.todayTapCounts(friends.stream().map(AppUser::getId).toList(), today());
         List<AppUser> tappedToday = friends.stream()
-                .filter(friend -> taps.getOrDefault(friend.getId(), TapState.NONE).todayTapCount() > 0)
+                .filter(friend -> tapsToday.getOrDefault(friend.getId(), 0L) > 0)
                 .sorted(Comparator
-                        .comparingLong((AppUser friend) -> taps.get(friend.getId()).todayTapCount()).reversed()
+                        .comparingLong((AppUser friend) -> tapsToday.get(friend.getId())).reversed()
                         .thenComparing(friend -> friend.getId().toString()))
                 .toList();
         return new FriendSummaryResponse(

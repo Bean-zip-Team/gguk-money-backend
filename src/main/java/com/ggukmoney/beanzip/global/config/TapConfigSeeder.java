@@ -88,7 +88,9 @@ public class TapConfigSeeder implements CommandLineRunner {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
             boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
-            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive.") && !KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))) {
+            // 운영 화면에서 켜는 값은 배포가 되돌리지 않는다. friends.enabled 를 되돌리면 배포할 때마다
+            // 친구 기능이 꺼지고, 보상 숫자를 되돌리면 조정한 금액이 배포와 함께 조용히 원래대로 돌아간다 (BEA-390).
+            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive.") && !key.startsWith("friends.") && !KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))) {
                 String seedValue=codeValue;
                 if (key.startsWith("keycap.passive.") && key.endsWith(".startRatio")) {
                     String prefix=key.substring(0,key.lastIndexOf('.')+1);

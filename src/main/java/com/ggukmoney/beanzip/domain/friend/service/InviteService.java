@@ -17,6 +17,7 @@ import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /** 초대의 흐름: 링크 방문(PENDING) → 가입(SUCCESS) → 초대한 사람의 확인 (BEA-390). */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InviteService {
@@ -54,6 +56,7 @@ public class InviteService {
     private final KeycapBoxAccountService wallets;
     private final UserRewardLock userRewardLock;
     private final FriendNotificationService friendNotifications;
+    private final FriendAccess friendAccess;
     private final FriendPolicyConfig policy;
     private final Clock clock;
     private final ZoneId businessZoneId;
@@ -106,12 +109,18 @@ public class InviteService {
         int written = visitKey == null
                 ? 0
                 : invites.markSuccessForVisit(UUID.randomUUID(), inviter.getId(), userId, visitKey, now);
+        boolean visitKeyAlreadyUsed = visitKey != null && written == 0;
         if (written == 0) {
             // 방문 기록과 잇지 못했다: visitKey 가 없거나, 같은 기기에서 다른 사람이 이미 그 방문으로 가입했다.
             written = invites.insertSuccess(UUID.randomUUID(), inviter.getId(), userId, now);
         }
         if (written == 0) {
             return Optional.empty();
+        }
+        if (visitKeyAlreadyUsed) {
+            // 새 토스 계정이므로 초대 성공으로 센다. 다만 한 기기에서 여러 계정으로 가입하는 것은 부계정으로
+            // 초대 보상을 모을 때의 모습이기도 해서, 운영이 찾아볼 수 있게 남긴다. 이 행은 visit_key 가 비어 있다.
+            log.warn("INVITE_VISIT_KEY_REUSED inviterId={} inviteeId={}", inviter.getId(), userId);
         }
         Invite invite = invites.findByInviteeId(userId).orElseThrow();
 
@@ -179,6 +188,7 @@ public class InviteService {
     @Transactional
     public InviteAckResponse ackSuccesses(UUID userId, Collection<UUID> inviteIds) {
         AppUser inviter = userRewardLock.acquire(userId);
+        friendAccess.requireNotWithdrawn(inviter);
         List<Invite> ackable = inviteIds.isEmpty() ? List.of() : invites.findAckable(userId, inviteIds);
         int rewardEach = inviter.getStatus() == AppUser.Status.SUSPENDED ? 0 : policy.inviteReward();
         Instant now = clock.instant();

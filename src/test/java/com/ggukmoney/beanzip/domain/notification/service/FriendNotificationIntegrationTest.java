@@ -68,6 +68,9 @@ class FriendNotificationIntegrationTest extends FullStackIntegrationTestSupport 
         registry.add("app.smart-message.templates.friend-cheer.campaign-code", () -> "clickmoney-friend-cheer");
         registry.add(
                 "app.smart-message.templates.friend-invite-success.campaign-code", () -> "clickmoney-friend-connected");
+        // The scheduler runs in the test context too. At second 0 of a minute it would send the due row
+        // just before the test's own call does, and that call would then find nothing.
+        registry.add("app.smart-message.schedule.friend-cron", () -> "-");
     }
 
     @BeforeEach
@@ -166,14 +169,20 @@ class FriendNotificationIntegrationTest extends FullStackIntegrationTestSupport 
         assertThat(deliveryRepository.claimFriendAttempt(id, NOW, lease, 3)).as("already claimed").isZero();
         assertThat(deliveryRepository.findDueFriendDeliveries(NOW, NOW.minus(Duration.ofHours(1)), 50)).isEmpty();
 
-        // A row whose send died mid-flight comes back once the lease has passed, and is never marked expired.
-        Instant afterLease = lease.plus(Duration.ofHours(2));
+        // A row whose send died mid-flight comes back once the lease has passed.
+        Instant afterLease = lease.plus(Duration.ofMinutes(10));
         assertThat(deliveryRepository.findDueFriendDeliveries(afterLease, afterLease.minus(Duration.ofHours(1)), 50))
                 .singleElement()
                 .satisfies(row -> {
                     assertThat(row.getAttemptCount()).isEqualTo(1);
                     assertThat(row.getExpired()).isFalse();
                 });
+        // If nothing ran for hours (the feature was switched off, or an outage), the retry is stale too:
+        // it is measured from its last attempt, not from having never been tried.
+        Instant hoursLater = NOW.plus(Duration.ofHours(3));
+        assertThat(deliveryRepository.findDueFriendDeliveries(hoursLater, hoursLater.minus(Duration.ofHours(1)), 50))
+                .singleElement()
+                .satisfies(row -> assertThat(row.getExpired()).isTrue());
         assertThat(deliveryRepository.claimFriendAttempt(id, afterLease, afterLease, 3)).isEqualTo(1);
         assertThat(deliveryRepository.claimFriendAttempt(id, afterLease, afterLease, 3)).isEqualTo(1);
         assertThat(deliveryRepository.claimFriendAttempt(id, afterLease, afterLease, 3)).as("fourth attempt").isZero();
@@ -183,8 +192,11 @@ class FriendNotificationIntegrationTest extends FullStackIntegrationTestSupport 
     void dispatchSendsEachDuePushOnce() {
         UUID userId = user(friend -> { });
         friendNotificationService.enqueue(userId, NotificationType.FRIEND_INVITE_SUCCESS);
-        // Whatever the wall clock says, make the row due now so the test does not depend on the time of day.
-        jdbcTemplate.update("UPDATE notification_delivery SET next_attempt_at = now() WHERE user_id = ?", userId);
+        // Whatever the wall clock says, make the row due so the test does not depend on the time of day.
+        // A minute back rather than now(): the database and the JVM do not share a clock to the millisecond.
+        jdbcTemplate.update(
+                "UPDATE notification_delivery SET next_attempt_at = now() - interval '1 minute' WHERE user_id = ?",
+                userId);
         when(smartMessageClient.sendMessage(anyString(), anyString(), anyString()))
                 .thenReturn(new SendResult(true, "content-1", null, null, false, "SUCCESS", "{}"));
 

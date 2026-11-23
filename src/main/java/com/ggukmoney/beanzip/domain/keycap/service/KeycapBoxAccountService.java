@@ -59,12 +59,14 @@ public class KeycapBoxAccountService {
      * 지갑 잔액을 바꾼 같은 트랜잭션에서 원장을 남긴다 (BEA-390).
      *
      * <p>경제 전환 전에는 같은 컬럼이 조각이 아니라 상자 개수라서 남기지 않는다. 전환 여부는 캐시된
-     * 값을 본다. 탭 배치마다 지나는 경로라 설정을 다시 읽지 않는다.
+     * 값을 먼저 본다. 탭 배치마다 지나는 경로라, 전환된 뒤에는 설정을 다시 읽지 않는다. 캐시가 '전환
+     * 전'이라고 할 때만 설정을 직접 읽어 확인한다. 기동 직후 첫 읽기에 실패하면 캐시가 최대 60초 동안
+     * 기본값(전환 전)으로 남는데, 그동안의 변동이 원장에서 빠지면 발행량 기준값에 구멍이 생긴다.
      *
      * @param delta 지급은 양수, 사용은 음수. 0이면 아무것도 하지 않는다
      */
     public void recordShardChange(UUID userId, KeycapBoxAccount wallet, int delta, ShardLedger.Reason reason, String refId) {
-        if (delta == 0 || !policy.shardEconomyAtLastRefresh()) {
+        if (delta == 0 || !(policy.shardEconomyAtLastRefresh() || policy.isShardEconomyEnabled())) {
             return;
         }
         shardLedgers.save(ShardLedger.record(userId, delta, reason, refId, wallet.getShardBalance(), clock.instant()));

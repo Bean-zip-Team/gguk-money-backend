@@ -49,10 +49,18 @@ public class ShardLedger {
     @Column(name = "reason", nullable = false, length = 40)
     private Reason reason;
 
+    /** {@link #refId} 의 최대 길이. 뽑기 멱등키(최대 100자)가 그대로 들어가므로 그보다 넉넉해야 한다. */
+    public static final int REF_ID_MAX_LENGTH = 128;
+
     /** 이 변동을 만든 건의 식별자(탭 배치, 뽑기 멱등키, 초대·응원 ID). 없으면 null 이다. */
-    @Column(name = "ref_id", length = 80)
+    @Column(name = "ref_id", length = REF_ID_MAX_LENGTH)
     private String refId;
 
+    /**
+     * 변동 직후의 지갑 잔액({@code keycap_box_account.box_balance}). 경제 전환 전에 키캡별로 모으던
+     * 진행 조각은 뽑기 때 지갑으로 옮겨지기 전까지 여기 들어 있지 않다. 그래서 그런 사용자는 앱이
+     * 보여 주는 잔액보다 작게 남는다.
+     */
     @Column(name = "balance_after", nullable = false)
     private int balanceAfter;
 

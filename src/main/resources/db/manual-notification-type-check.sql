@@ -5,6 +5,11 @@
 -- consent fails with 500 and every friend push insert fails. Safe to re-run.
 BEGIN;
 
+-- ADD CONSTRAINT takes an ACCESS EXCLUSIVE lock. Queued behind a long transaction it would hold up
+-- every read and write on these tables, so give up quickly and retry instead.
+SET LOCAL lock_timeout = '3s';
+SET LOCAL statement_timeout = '30s';
+
 ALTER TABLE notification_preference
     DROP CONSTRAINT IF EXISTS notification_preference_notification_type_check;
 ALTER TABLE notification_preference

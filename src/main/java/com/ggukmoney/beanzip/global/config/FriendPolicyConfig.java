@@ -49,8 +49,23 @@ public class FriendPolicyConfig {
     );
 
     private static final Set<String> BOOLEAN_KEYS = Set.of(KEY_ENABLED, KEY_CONTACTS_SMS_ENABLED);
-    /** 0 이면 판정이 항상 참이 되어 모든 응원이 박수·선물로 분류된다. */
-    private static final Set<String> POSITIVE_KEYS = Set.of(KEY_CHEER_CLAP_THRESHOLD, KEY_CHEER_GIFT_LAPSED_DAYS);
+
+    /**
+     * 숫자 값이 가질 수 있는 범위. 운영 화면의 입력 검증과 여기의 읽기 검증이 같은 표를 쓴다.
+     *
+     * <p>보상은 출금으로 이어지는 재화라서 위쪽도 막는다. 10 을 1000 으로 잘못 넣으면 60초 안에 모든
+     * 확인 요청이 100배를 지급한다. 상한은 기본값의 10배다. 그보다 크게 쓰려면 이 표를 고쳐서 배포한다.
+     * 박수 기준과 선물 일수는 0 이면 판정이 항상 참이 되므로 1 부터다.
+     */
+    public static final Map<String, IntRange> INT_RANGES = Map.of(
+            KEY_INVITE_REWARD, new IntRange(0, 100),
+            KEY_CHEER_DAILY_LIMIT, new IntRange(0, 100),
+            KEY_CHEER_RECEIVE_REWARD, new IntRange(0, 30),
+            KEY_CHEER_RECEIVE_DAILY_CAP, new IntRange(0, 300),
+            KEY_CHEER_SEND_FIRST_REWARD, new IntRange(0, 10),
+            KEY_CHEER_CLAP_THRESHOLD, new IntRange(1, Integer.MAX_VALUE),
+            KEY_CHEER_GIFT_LAPSED_DAYS, new IntRange(1, 365)
+    );
 
     private final AppConfigBatchLoader batchLoader;
     private final KeycapBoxPolicyConfig economy;
@@ -142,10 +157,15 @@ public class FriendPolicyConfig {
             return "true".equals(value) || "false".equals(value);
         }
         try {
-            int parsed = Integer.parseInt(value);
-            return POSITIVE_KEYS.contains(key) ? parsed >= 1 : parsed >= 0;
+            return INT_RANGES.get(key).contains(Integer.parseInt(value));
         } catch (NumberFormatException exception) {
             return false;
+        }
+    }
+
+    public record IntRange(int min, int max) {
+        public boolean contains(int value) {
+            return value >= min && value <= max;
         }
     }
 }

@@ -8,6 +8,7 @@ import com.ggukmoney.beanzip.domain.notification.entity.NotificationAgreementSta
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationPreference;
 import com.ggukmoney.beanzip.domain.notification.entity.NotificationType;
 import com.ggukmoney.beanzip.domain.notification.repository.NotificationPreferenceRepository;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,12 +26,15 @@ public class NotificationPreferenceService {
     private final NotificationPreferenceRepository preferenceRepository;
     private final NotificationTemplateProperties templateProperties;
     private final NotificationDeliveryPersistenceService persistenceService;
+    private final FriendPolicyConfig friendPolicy;
 
     public NotificationPreferenceListResponse list(UUID userId) {
         return new NotificationPreferenceListResponse(
                 Arrays.stream(NotificationType.values())
                         .filter(NotificationType::hasOwnConsent)
                         .filter(templateProperties::isConfigured)
+                        // 친구 화면이 없는데 친구 알림 토글만 보이면 안 된다. 캠페인 코드는 출시 전에 넣어 둔다.
+                        .filter(type -> type != NotificationType.FRIEND || friendPolicy.friendsEnabled())
                         .map(type -> resolvePreference(userId, type))
                         .map(preference -> toResponse(preference, promptEligible(userId, preference.getType())))
                         .toList()

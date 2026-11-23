@@ -190,6 +190,42 @@ class FriendNotificationServiceTest {
         verify(persistenceService).markFailed(23L, "REJECTED", "not agreed", "{}");
     }
 
+    @Test
+    void aRetryIsNotSentAtNightButAFirstAttemptCreatedJustBeforeNineStillGoes() {
+        // 21:04 in Korea. One push failed at 20:58 and is due for its retry; another was created at
+        // 20:59:40 and has not been tried yet.
+        Instant now = OffsetDateTime.parse("2026-11-24T21:04:00+09:00").toInstant();
+        UUID retried = UUID.randomUUID();
+        UUID fresh = UUID.randomUUID();
+        stubDue(now,
+                row(31L, retried, 1, false, true, "ACTIVE"),
+                row(32L, fresh, 0, false, true, "ACTIVE"));
+        when(batchReadService.loadProviderUserIds(any())).thenReturn(Map.of(retried, "toss-r", fresh, "toss-f"));
+        when(deliveryRepository.claimFriendAttempt(eq(32L), any(), any(), anyInt())).thenReturn(1);
+        when(smartMessageClient.sendMessage(eq("toss-f"), anyString(), anyString()))
+                .thenReturn(new SendResult(true, "content-2", null, null, false, "SUCCESS", "{}"));
+
+        assertThat(serviceAt(now).dispatchDue()).isEqualTo(1);
+
+        // Dropped, not postponed: at 08:00 it would arrive together with that day's own push.
+        verify(persistenceService).markFailed(31L, "QUIET_HOURS", null, null);
+        verify(deliveryRepository, never()).claimFriendAttempt(eq(31L), any(), any(), anyInt());
+        verify(persistenceService).markSent(32L, "content-2", "{}");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026-11-24T07:59:59+09:00, true",
+            "2026-11-24T08:00:00+09:00, false",
+            "2026-11-24T20:59:59+09:00, false",
+            "2026-11-24T21:00:00+09:00, true",
+            "2026-11-24T02:00:00+09:00, true",
+    })
+    void quietHoursRunFromNinePmToEightAm(String at, boolean quiet) {
+        assertThat(FriendNotificationService.isQuietHours(OffsetDateTime.parse(at).toInstant(), SEOUL))
+                .isEqualTo(quiet);
+    }
+
     private FriendNotificationService serviceAt(Instant now) {
         return new FriendNotificationService(
                 deliveryRepository, persistenceService, batchReadService, TEMPLATES, smartMessageClient,
