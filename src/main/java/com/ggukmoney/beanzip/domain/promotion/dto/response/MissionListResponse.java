@@ -129,7 +129,10 @@ public record MissionListResponse(
         RANK_UP,
 
         @Schema(description = "데일리 미션 알림 동의예요. 누르면 토스 동의 시트를 띄워요.")
-        NOTIFICATION_OPT_IN
+        NOTIFICATION_OPT_IN,
+
+        @Schema(description = "친구 초대예요. 내 초대 링크로 새로 가입한 친구 수를 세요. 한 번만 받는 미션이고, 앞 단계 보상을 받으면 다음 단계가 나와요. 누르면 친구 화면의 초대로 가요.")
+        FRIEND_INVITE
     }
 
     @Schema(description = "미션 주기예요.")

@@ -102,7 +102,13 @@ public class MissionDefinition {
         RANK_UP,
 
         /** 데일리 미션 알림 동의. 단발성이다. */
-        NOTIFICATION_OPT_IN
+        NOTIFICATION_OPT_IN,
+
+        /**
+         * 내 초대 링크로 새로 가입한 친구 수 (BEA-390). 단발성이고 단계가 있다. 목표가 작은 단계의 보상을
+         * 받아야 다음 단계가 보이고, 수는 단계가 바뀌어도 이어서 센다.
+         */
+        FRIEND_INVITE
     }
 
     public enum PeriodType {

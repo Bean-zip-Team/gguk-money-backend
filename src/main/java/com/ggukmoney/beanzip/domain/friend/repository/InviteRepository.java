@@ -88,6 +88,8 @@ public interface InviteRepository extends JpaRepository<Invite, Long> {
 
     Optional<Invite> findByInviteeId(UUID inviteeId);
 
+    long countByInviterIdAndStatus(UUID inviterId, Invite.Status status);
+
     /** 초대한 사람이 아직 확인하지 않은 초대 성공. 초대받은 사람이 탈퇴한 건은 빠진다. 오래된 것부터다. */
     @Query("""
             SELECT invite.publicId AS inviteId, invitee.id AS userId, invitee.nickname AS name

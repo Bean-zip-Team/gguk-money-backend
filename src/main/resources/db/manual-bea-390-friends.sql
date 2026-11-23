@@ -71,4 +71,20 @@ CREATE TABLE IF NOT EXISTS cheer (
 -- 안 읽은 응원 조회와, 확인한 날 기준 하루 상한 계산에 쓴다.
 CREATE INDEX IF NOT EXISTS ix_cheer_to_read ON cheer (to_user_id, read_at);
 
+-- 상시 미션 '새 친구 데려오기'. 미션 종류가 늘어서 CHECK 를 다시 만든다.
+-- 이 CHECK 를 고치지 않으면 아래 INSERT 가 실패한다.
+ALTER TABLE mission_definition DROP CONSTRAINT IF EXISTS ck_mission_definition_type;
+ALTER TABLE mission_definition
+    ADD CONSTRAINT ck_mission_definition_type
+    CHECK (mission_type IN ('ATTENDANCE', 'TAP_COUNT', 'RANK_UP', 'NOTIFICATION_OPT_IN', 'FRIEND_INVITE'));
+
+-- 3명 보상을 받아야 10명 단계가 보인다. 수는 이어서 센다. 금액은 UPDATE 로 바꾼다.
+-- 친구 스위치(friends.enabled)가 꺼져 있는 동안에는 목록에 나오지 않는다.
+INSERT INTO mission_definition
+    (code, mission_type, period_type, name, description, target_value, reward_point_amount, sort_order, active, created_at, updated_at)
+VALUES
+    ('FRIEND_INVITE_3',  'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 3명이 가입하면 달성돼요',   3,  50, 90, TRUE, now(), now()),
+    ('FRIEND_INVITE_10', 'FRIEND_INVITE', 'ONE_TIME', '새 친구 데려오기', '내 초대 링크로 새 친구 10명이 가입하면 달성돼요', 10, 100, 91, TRUE, now(), now())
+ON CONFLICT (code) DO NOTHING;
+
 COMMIT;

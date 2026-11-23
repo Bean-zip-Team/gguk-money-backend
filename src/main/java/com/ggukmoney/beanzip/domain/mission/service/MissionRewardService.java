@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
+import com.ggukmoney.beanzip.domain.friend.service.FriendAccess;
 import com.ggukmoney.beanzip.domain.mission.dto.response.MissionRewardListResponse;
 import com.ggukmoney.beanzip.domain.mission.entity.MissionDefinition;
 import com.ggukmoney.beanzip.domain.mission.entity.MissionReward;
@@ -45,6 +46,7 @@ public class MissionRewardService {
     private final UserService userService;
     private final MissionDefinitionCatalog missionDefinitionCatalog;
     private final SystemRankingBoostPolicy internalAccountPolicy;
+    private final FriendAccess friendAccess;
 
     /**
      * 해당 기간의 보상 행을 찾아 준다.
@@ -144,6 +146,12 @@ public class MissionRewardService {
         }
 
         AppUser user = userService.getById(userId);
+        if (isOfType(reward, MissionDefinition.MissionType.FRIEND_INVITE)) {
+            // 친구 미션은 기능이 켜져 있고 정지되지 않은 사용자에게만 보인다. 보이지 않는 동안에는 전에
+            // 달성해 둔 보상도 받을 수 없다 (BEA-390).
+            friendAccess.requireEnabled();
+            friendAccess.requireNotSuspended(user);
+        }
         reward.claim(now);
         long credited = credit(user, reward, internalUserIds(now));
         return new ClaimResult(1, credited, pointAccountService.getBalance(userId));
@@ -162,6 +170,11 @@ public class MissionRewardService {
             if (reward.hasExpiredAt(now)) {
                 // 자정 배치가 아직 돌지 않았을 뿐 이미 소멸한 보상이다. 일괄 수령이 통째로 실패하면
                 // 받을 수 있는 나머지까지 못 받으므로 이 건만 건너뛴다.
+                continue;
+            }
+            if (isOfType(reward, MissionDefinition.MissionType.FRIEND_INVITE)
+                    && !friendAccess.canEarnFriendMission(user)) {
+                // 목록에 보이지 않는 친구 미션의 보상이다. 받게 두면 화면의 받을 보상과 들어오는 금액이 어긋난다.
                 continue;
             }
             reward.claim(now);
@@ -185,7 +198,7 @@ public class MissionRewardService {
     }
 
     private long credit(AppUser user, MissionReward reward, Set<UUID> internalUserIds) {
-        if (internalUserIds.contains(user.getId()) && isRankUp(reward)) {
+        if (internalUserIds.contains(user.getId()) && isOfType(reward, MissionDefinition.MissionType.RANK_UP)) {
             // 사내 계정은 부스트로 하루에 수십 등을 올라 랭킹 상승 미션을 매일 달성한다. 주간 상금과
             // 같은 규칙으로, 수령은 정상 처리하되 포인트만 넣지 않는다.
             log.warn("MISSION_REWARD_UNPAID reason=INTERNAL_ACCOUNT userId={} missionCode={} periodKey={} amount={}",
@@ -217,9 +230,9 @@ public class MissionRewardService {
                 .orElse(Set.of());
     }
 
-    private boolean isRankUp(MissionReward reward) {
+    private boolean isOfType(MissionReward reward, MissionDefinition.MissionType missionType) {
         return missionDefinitionCatalog.findByCode(reward.getMissionCode())
-                .map(definition -> definition.missionType() == MissionDefinition.MissionType.RANK_UP)
+                .map(definition -> definition.missionType() == missionType)
                 .orElse(false);
     }
 

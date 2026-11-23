@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ public class DailyMissionQueryService {
     private final UserTapDailyRepository userTapDailyRepository;
     private final RankUpSignal rankUpSignal;
     private final NotificationOptInSignal notificationOptInSignal;
+    private final FriendInviteSignal friendInviteSignal;
     private final ZoneId businessZoneId;
     private final Clock clock;
 
@@ -140,6 +142,10 @@ public class DailyMissionQueryService {
                 hasMissionOfType(definitions, MissionDefinition.MissionType.NOTIFICATION_OPT_IN)
                         ? notificationOptInSignal.agreed(userId)
                         : Optional.empty();
+        Optional<Long> friendInvites = hasMissionOfType(definitions, MissionDefinition.MissionType.FRIEND_INVITE)
+                ? friendInviteSignal.successCountOf(userId)
+                : Optional.empty();
+        Optional<String> openFriendStage = openFriendInviteStage(definitions, today, rewards);
 
         List<Evaluated> evaluated = new ArrayList<>();
         for (MissionDefinitionView definition : definitions) {
@@ -149,9 +155,14 @@ public class DailyMissionQueryService {
                 // 한 번 수행한 단발성 미션은 다시 뜨지 않는다. 나중에 알림을 꺼도 마찬가지다.
                 continue;
             }
+            if (definition.missionType() == MissionDefinition.MissionType.FRIEND_INVITE
+                    && !definition.code().equals(openFriendStage.orElse(null))) {
+                // 앞 단계의 보상을 받기 전에는 다음 단계를 보여 주지 않는다. 건너뛰므로 보상 행도 생기지 않는다.
+                continue;
+            }
 
-            Optional<Long> current =
-                    currentValueOf(definition, todayTapDaily.isPresent(), todayTapCount, rankUp, notificationAgreed);
+            Optional<Long> current = currentValueOf(
+                    definition, todayTapDaily.isPresent(), todayTapCount, rankUp, notificationAgreed, friendInvites);
             if (current.isEmpty()) {
                 // 오늘 판정할 수 없는 미션은 목록에서 뺀다. 달성할 수 없는 미션을 0/5 로 계속 보여주면
                 // 유저는 눌러도 반응이 없는 줄 안다. 월요일의 랭킹 미션이 여기 해당한다.
@@ -190,7 +201,8 @@ public class DailyMissionQueryService {
             boolean attendedToday,
             long todayTapCount,
             Optional<Long> rankUp,
-            Optional<Boolean> notificationAgreed
+            Optional<Boolean> notificationAgreed,
+            Optional<Long> friendInvites
     ) {
         return switch (definition.missionType()) {
             // 앱을 켜면 홈이 오늘 탭 상태를 조회하면서 오늘자 행을 만든다. 그래서 행의 존재가 곧 출석이다.
@@ -198,7 +210,29 @@ public class DailyMissionQueryService {
             case TAP_COUNT -> Optional.of(todayTapCount);
             case RANK_UP -> rankUp;
             case NOTIFICATION_OPT_IN -> notificationAgreed.map(agreed -> agreed ? 1L : 0L);
+            case FRIEND_INVITE -> friendInvites;
         };
+    }
+
+    /**
+     * 지금 보여 줄 친구 초대 미션의 단계. 아직 보상을 받지 않은 단계 중 목표가 가장 작은 것이다.
+     *
+     * <p>정렬 순서에 기대지 않고 목표값으로 고른다. 코드 이름순이면 FRIEND_INVITE_10 이
+     * FRIEND_INVITE_3 보다 앞에 온다.
+     */
+    private static Optional<String> openFriendInviteStage(
+            List<MissionDefinitionView> definitions,
+            LocalDate today,
+            Map<MissionRewardService.RewardKey, MissionReward> rewards
+    ) {
+        return definitions.stream()
+                .filter(definition -> definition.missionType() == MissionDefinition.MissionType.FRIEND_INVITE)
+                .filter(definition -> {
+                    MissionReward reward = rewards.get(rewardKeyOf(definition, today));
+                    return reward == null || !reward.isClaimed();
+                })
+                .min(Comparator.comparingLong(MissionDefinitionView::targetValue))
+                .map(MissionDefinitionView::code);
     }
 
     private static boolean hasMissionOfType(
@@ -247,6 +281,7 @@ public class DailyMissionQueryService {
             case TAP_COUNT -> MissionListResponse.MissionType.TAP_COUNT;
             case RANK_UP -> MissionListResponse.MissionType.RANK_UP;
             case NOTIFICATION_OPT_IN -> MissionListResponse.MissionType.NOTIFICATION_OPT_IN;
+            case FRIEND_INVITE -> MissionListResponse.MissionType.FRIEND_INVITE;
         };
     }
 

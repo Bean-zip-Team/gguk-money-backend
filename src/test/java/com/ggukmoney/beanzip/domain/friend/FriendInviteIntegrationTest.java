@@ -6,12 +6,14 @@ import com.ggukmoney.beanzip.domain.friend.entity.Friendship;
 import com.ggukmoney.beanzip.domain.friend.repository.InviteRepository;
 import com.ggukmoney.beanzip.domain.friend.service.InviteCodeService;
 import com.ggukmoney.beanzip.domain.friend.service.InviteService;
+import com.ggukmoney.beanzip.domain.mission.service.MissionDefinitionCatalog;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -20,6 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +52,8 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
     private InviteRepository invites;
     @Autowired
     private InviteService inviteService;
+    @Autowired
+    private MissionDefinitionCatalog missionCatalog;
 
     @MockitoBean
     private TossAuthClient tossAuthClient;
@@ -387,6 +392,70 @@ class FriendInviteIntegrationTest extends FriendIntegrationTestSupport {
         // Nothing for the inviter to confirm: an existing member joining is not an invite success.
         mockMvc.perform(get("/api/invites/success/unread").header(HttpHeaders.AUTHORIZATION, bearer(inviter)))
                 .andExpect(jsonPath("$.data.invites.length()").value(0));
+    }
+
+    @Test
+    void theInviteMissionOpensStageByStageAndPaysPointsWhenClaimed() throws Exception {
+        // The two mission rows come from the SQL that operations will run, so this also proves that SQL.
+        jdbcTemplate.execute(new ClassPathResource("db/manual-bea-390-friends.sql")
+                .getContentAsString(StandardCharsets.UTF_8));
+        missionCatalog.refresh();
+        UUID inviter = signUp("김민지");
+        String code = inviteCodeService.getOrCreate(inviter);
+        String me = bearer(inviter);
+        inviteService.linkOnLogin(signUp("새친구1"), true, code, null);
+        inviteService.linkOnLogin(signUp("새친구2"), true, code, null);
+        // An existing member who opens the link becomes a friend but is not a new signup.
+        inviteService.accept(signUp("기존회원"), code);
+
+        assertThat(friendMissions(me)).singleElement().satisfies(mission -> assertThat(mission)
+                .containsEntry("code", "FRIEND_INVITE_3")
+                .containsEntry("name", "새 친구 데려오기")
+                .containsEntry("periodType", "ONE_TIME")
+                .containsEntry("rewardType", "INTERNAL_POINT")
+                .containsEntry("rewardAmount", 50)
+                .containsEntry("current", 2)
+                .containsEntry("target", 3)
+                .containsEntry("claimStatus", "LOCKED")
+                .containsEntry("rewardId", null));
+
+        inviteService.linkOnLogin(signUp("새친구3"), true, code, null);
+        Map<String, Object> achieved = friendMissions(me).getFirst();
+        assertThat(achieved).containsEntry("code", "FRIEND_INVITE_3").containsEntry("current", 3)
+                .containsEntry("claimStatus", "CLAIMABLE");
+
+        // While suspended the mission is hidden and what was earned cannot be collected.
+        jdbcTemplate.update("UPDATE app_user SET status = 'SUSPENDED', suspended_at = now() WHERE id = ?", inviter);
+        assertThat(friendMissions(me)).isEmpty();
+        mockMvc.perform(post("/api/missions/rewards/" + achieved.get("rewardId") + "/claim")
+                        .header(HttpHeaders.AUTHORIZATION, me))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+        jdbcTemplate.update("UPDATE app_user SET status = 'ACTIVE', suspended_at = NULL WHERE id = ?", inviter);
+
+        mockMvc.perform(post("/api/missions/rewards/" + achieved.get("rewardId") + "/claim")
+                        .header(HttpHeaders.AUTHORIZATION, me))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.claimedCount").value(1))
+                .andExpect(jsonPath("$.data.claimedPointAmount").value(50));
+
+        // The next stage appears only now, and it keeps counting from three.
+        assertThat(friendMissions(me)).singleElement().satisfies(mission -> assertThat(mission)
+                .containsEntry("code", "FRIEND_INVITE_10")
+                .containsEntry("rewardAmount", 100)
+                .containsEntry("current", 3)
+                .containsEntry("target", 10)
+                .containsEntry("claimStatus", "LOCKED"));
+
+        setConfig(FriendPolicyConfig.KEY_ENABLED, "false");
+        assertThat(friendMissions(me)).as("hidden while the friend feature is off").isEmpty();
+    }
+
+    private List<Map<String, Object>> friendMissions(String authorization) throws Exception {
+        String body = mockMvc.perform(get("/api/missions").header(HttpHeaders.AUTHORIZATION, authorization))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        return JsonPath.read(body, "$.data.missions[?(@.missionType == 'FRIEND_INVITE')]");
     }
 
     private ResultActions ack(String authorization, String inviteId) throws Exception {
