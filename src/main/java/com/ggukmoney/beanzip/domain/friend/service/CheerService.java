@@ -1,6 +1,11 @@
 package com.ggukmoney.beanzip.domain.friend.service;
 
+import com.ggukmoney.beanzip.domain.friend.dto.response.CheerAckResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.CheerReplyResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.CheerReplyResponse.Outcome;
 import com.ggukmoney.beanzip.domain.friend.dto.response.CheerSendResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.CheerUnreadListResponse;
+import com.ggukmoney.beanzip.domain.friend.dto.response.FriendProfileResponse;
 import com.ggukmoney.beanzip.domain.friend.entity.Cheer;
 import com.ggukmoney.beanzip.domain.friend.repository.CheerRepository;
 import com.ggukmoney.beanzip.domain.friend.service.FriendTapReader.TapState;
@@ -13,6 +18,7 @@ import com.ggukmoney.beanzip.domain.user.repository.AppUserRepository;
 import com.ggukmoney.beanzip.domain.user.service.UserRewardLock;
 import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +29,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -75,6 +84,99 @@ public class CheerService {
                 granted,
                 Math.max(0, policy.cheerDailyLimit() - sentBefore - 1)
         );
+    }
+
+    /**
+     * 받은 응원을 보낸 사람들에게 한 번에 답 응원을 보낸다.
+     *
+     * <p>한 사람씩 {@link #send} 와 같은 규칙으로 처리하고 사람마다 결과를 돌려준다. 남은 횟수를 다 쓰면
+     * 나머지는 {@code DAILY_LIMIT} 이다. 확인(ack)을 대신하지 않는다. 받은 조각은 확인을 따로 불러야 받는다.
+     */
+    @Transactional
+    public CheerReplyResponse reply(UUID userId, Collection<UUID> cheerIds) {
+        AppUser sender = userRewardLock.acquire(userId);
+        friendAccess.requireNotSuspended(sender);
+        Instant now = clock.instant();
+        LocalDate today = LocalDate.ofInstant(now, businessZoneId);
+        int sentBefore = Math.toIntExact(cheers.countByFromUserIdAndCheerDate(userId, today));
+        List<UUID> receivers = cheerIds.isEmpty()
+                ? List.of()
+                : cheers.findSenderIds(userId, cheerIds).stream().distinct().toList();
+
+        List<CheerReplyResponse.Result> results = new ArrayList<>();
+        List<Cheer> sent = new ArrayList<>();
+        for (UUID receiver : receivers) {
+            Attempt attempt = attempt(userId, receiver, today, sentBefore + sent.size(), now);
+            results.add(new CheerReplyResponse.Result(receiver, attempt.outcome()));
+            if (attempt.outcome() == Outcome.SENT) {
+                sent.add(attempt.cheer());
+            }
+        }
+
+        boolean firstOfDay = sentBefore == 0 && !sent.isEmpty();
+        int granted = firstOfDay ? rewardFirstOfDay(userId, sent.getFirst()) : 0;
+        // 받는 사람 ID 순으로 넣는다. 순서가 엇갈리면 같은 사람들에게 답하는 두 요청이 서로를 기다린다.
+        sent.stream()
+                .map(Cheer::getToUserId)
+                .sorted(Comparator.comparing(UUID::toString))
+                .forEach(receiver -> friendNotifications.enqueue(receiver, NotificationType.FRIEND_CHEER));
+        return new CheerReplyResponse(
+                results, firstOfDay, granted, Math.max(0, policy.cheerDailyLimit() - sentBefore - sent.size()));
+    }
+
+    /** 아직 확인하지 않은 응원. */
+    @Transactional(readOnly = true)
+    public CheerUnreadListResponse unread(UUID userId) {
+        return new CheerUnreadListResponse(cheers
+                .findUnread(userId, PageRequest.of(0, InviteService.MAX_IDS_PER_REQUEST)).stream()
+                .map(row -> new CheerUnreadListResponse.Item(
+                        row.getCheerId(),
+                        new FriendProfileResponse(row.getUserId(), row.getName()),
+                        row.getKind(),
+                        row.getTapCountSnapshot(),
+                        row.getCreatedAt()))
+                .toList());
+    }
+
+    /**
+     * 받은 응원을 확인하고 조각을 받는다.
+     *
+     * <p>앱은 응원 모달을 띄우기 직전에 부른다. 한 건에 정해진 수를 주고, 확인한 날(한국 시간) 기준 하루
+     * 상한까지 준다. 상한을 넘는 건은 읽음으로만 바뀌고 조각은 0 이며 다시 받을 수 없다. 내 행을 잠그고
+     * 아직 확인하지 않은 건만 처리하므로 같은 요청이 두 번 와도 한 번만 준다.
+     */
+    @Transactional
+    public CheerAckResponse ack(UUID userId, Collection<UUID> cheerIds) {
+        AppUser receiver = userRewardLock.acquire(userId);
+        List<Cheer> ackable = cheerIds.isEmpty() ? List.of() : cheers.findAckable(userId, cheerIds);
+        Instant now = clock.instant();
+        LocalDate today = LocalDate.ofInstant(now, businessZoneId);
+        boolean payable = receiver.getStatus() != AppUser.Status.SUSPENDED;
+        int rewardEach = policy.cheerReceiveReward();
+        int remaining = policy.cheerReceiveDailyCap() - Math.toIntExact(cheers.sumRewardsReadBetween(
+                userId,
+                today.atStartOfDay(businessZoneId).toInstant(),
+                today.plusDays(1).atStartOfDay(businessZoneId).toInstant()));
+
+        int granted = 0;
+        boolean capped = false;
+        for (Cheer cheer : ackable) {
+            int reward = 0;
+            if (payable && rewardEach > 0) {
+                if (remaining >= rewardEach) {
+                    reward = rewardEach;
+                    remaining -= rewardEach;
+                } else {
+                    capped = true;
+                }
+            }
+            cheer.markRead(now, reward);
+            if (reward > 0) {
+                wallets.grantShards(userId, reward, ShardLedger.Reason.CHEER_RECEIVED, cheer.getPublicId().toString());
+                granted += reward;
+            }
+        }
+        return new CheerAckResponse(granted, capped, wallets.getAvailableShardBalance(userId));
     }
 
     /**
@@ -141,13 +243,6 @@ public class CheerService {
                 && users.findById(toUserId)
                 .filter(receiver -> receiver.getStatus() != AppUser.Status.WITHDRAWN)
                 .isPresent();
-    }
-
-    enum Outcome {
-        SENT,
-        ALREADY_SENT_TODAY,
-        DAILY_LIMIT,
-        NOT_FRIENDS
     }
 
     /** @param cheer 보냈을 때만 있다 */
