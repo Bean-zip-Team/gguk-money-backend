@@ -37,7 +37,7 @@ public class TapConfigSeeder implements CommandLineRunner {
     }
 
     /** 코드가 관리하는 정책 키 접두사. 이 접두사를 쓰면서 코드에 없는 키는 폐기된 잔재로 본다. */
-    private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "keycap.draw.", "onboarding.");
+    private static final List<String> MANAGED_PREFIXES = List.of("tap.", "cashout.", "keycapBox.", "keycap.draw.", "onboarding.", "friends.");
 
     @Override
     public void run(String... args) {
@@ -49,6 +49,7 @@ public class TapConfigSeeder implements CommandLineRunner {
             managed.putAll(KeycapBoxPolicyConfig.DEFAULT_VALUES);
             managed.putAll(OnboardingRewardConfig.DEFAULT_VALUES);
             managed.putAll(KeycapPassivePolicyConfig.DEFAULT_VALUES);
+            managed.putAll(FriendPolicyConfig.DEFAULT_VALUES);
 
             syncDefaults(managed, now);
             warnOnOrphanKeys(managed.keySet());
@@ -87,7 +88,9 @@ public class TapConfigSeeder implements CommandLineRunner {
             Optional<AppConfig> latest =
                     appConfigRepository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(key, now);
             boolean overridden = latest.isPresent() && !latest.get().getConfigValue().equals(codeValue);
-            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive.") && !KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))) {
+            // 운영 화면에서 켜는 값은 배포가 되돌리지 않는다. friends.enabled 를 되돌리면 배포할 때마다
+            // 친구 기능이 꺼지고, 보상 숫자를 되돌리면 조정한 금액이 배포와 함께 조용히 원래대로 돌아간다 (BEA-390).
+            if (latest.isEmpty() || (overridden && revertOverrides && !key.startsWith("keycap.passive.") && !key.startsWith("friends.") && !KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(key))) {
                 String seedValue=codeValue;
                 if (key.startsWith("keycap.passive.") && key.endsWith(".startRatio")) {
                     String prefix=key.substring(0,key.lastIndexOf('.')+1);

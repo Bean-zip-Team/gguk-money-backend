@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,12 +23,14 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +43,7 @@ class DailyMissionQueryServiceTest {
     private final UserTapDailyRepository userTapDailyRepository = mock(UserTapDailyRepository.class);
     private final RankUpSignal rankUpSignal = mock(RankUpSignal.class);
     private final NotificationOptInSignal notificationOptInSignal = mock(NotificationOptInSignal.class);
+    private final FriendInviteSignal friendInviteSignal = mock(FriendInviteSignal.class);
 
     // 2026-09-21 14:00 KST
     private final Clock clock = Clock.fixed(Instant.parse("2026-09-21T05:00:00Z"), ZoneOffset.UTC);
@@ -47,7 +51,8 @@ class DailyMissionQueryServiceTest {
     private final MissionRewardService missionRewardService = mock(MissionRewardService.class);
 
     private final DailyMissionQueryService service = new DailyMissionQueryService(
-            catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST, clock);
+            catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal,
+            friendInviteSignal, KST, clock);
 
     private final UUID userId = UUID.randomUUID();
 
@@ -250,8 +255,8 @@ class DailyMissionQueryServiceTest {
         // 2026-09-21 16:00Z 는 UTC 로는 21일이지만 KST 로는 22일 새벽 1시다.
         Clock afterKstMidnight = Clock.fixed(Instant.parse("2026-09-21T16:00:00Z"), ZoneOffset.UTC);
         DailyMissionQueryService serviceAfterMidnight = new DailyMissionQueryService(
-                catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal, KST,
-                afterKstMidnight);
+                catalog, missionRewardService, userTapDailyRepository, rankUpSignal, notificationOptInSignal,
+                friendInviteSignal, KST, afterKstMidnight);
 
         serviceAfterMidnight.feedOf(userId);
 
@@ -315,6 +320,116 @@ class DailyMissionQueryServiceTest {
                 userId, missionCode, periodKey, rewardPointAmount, Instant.parse("2026-09-21T04:00:00Z"), null);
         reward.claim(Instant.parse("2026-09-21T04:30:00Z"));
         return reward;
+    }
+
+    @Test
+    void showsOnlyTheFirstFriendInviteStageUntilItsRewardIsClaimed() {
+        givenFriendInviteStages();
+        when(friendInviteSignal.successCountOf(userId)).thenReturn(Optional.of(2L));
+
+        List<MissionListResponse.Mission> missions = service.feedOf(userId).missions();
+
+        assertThat(missions).extracting(MissionListResponse.Mission::code)
+                .contains("FRIEND_INVITE_3")
+                .doesNotContain("FRIEND_INVITE_10");
+        assertThat(missionOf(missions, "FRIEND_INVITE_3"))
+                .extracting(
+                        MissionListResponse.Mission::missionType,
+                        MissionListResponse.Mission::periodType,
+                        MissionListResponse.Mission::current,
+                        MissionListResponse.Mission::target,
+                        MissionListResponse.Mission::status,
+                        MissionListResponse.Mission::claimStatus,
+                        MissionListResponse.Mission::rewardId)
+                .containsExactly(
+                        MissionListResponse.MissionType.FRIEND_INVITE,
+                        MissionListResponse.PeriodType.ONE_TIME,
+                        2L,
+                        3L,
+                        MissionListResponse.Status.IN_PROGRESS,
+                        MissionListResponse.ClaimStatus.LOCKED,
+                        null);
+    }
+
+    @Test
+    void reachingBothTargetsOnlyMakesTheFirstStageClaimable() {
+        givenFriendInviteStages();
+        when(friendInviteSignal.successCountOf(userId)).thenReturn(Optional.of(12L));
+
+        DailyMissionQueryService.DailyMissionFeed feed = service.feedOf(userId);
+
+        assertThat(missionOf(feed.missions(), "FRIEND_INVITE_3"))
+                .extracting(MissionListResponse.Mission::status, MissionListResponse.Mission::claimStatus)
+                .containsExactly(MissionListResponse.Status.ACHIEVED, MissionListResponse.ClaimStatus.CLAIMABLE);
+        assertThat(missionOf(feed.missions(), "FRIEND_INVITE_3").rewardId()).isNotNull();
+        assertThat(feed.missions()).extracting(MissionListResponse.Mission::code).doesNotContain("FRIEND_INVITE_10");
+        // The hidden stage gets no reward row, so claim-all cannot pay the second stage early.
+        verify(missionRewardService).createMissing(
+                eq(userId),
+                argThat(achieved -> achieved.stream()
+                        .map(MissionRewardService.AchievedMission::missionCode)
+                        .noneMatch("FRIEND_INVITE_10"::equals)),
+                anyMap(),
+                any(Instant.class));
+        // A one-time reward does not expire at midnight and counts toward what can be collected now.
+        assertThat(feed.summary().claimableRewardTotal()).isEqualTo(50L);
+        assertThat(feed.summary().totalCount()).as("the daily gauge ignores one-time missions").isEqualTo(3);
+    }
+
+    @Test
+    void opensTheSecondStageOnceTheFirstRewardIsClaimedAndKeepsTheCount() {
+        givenFriendInviteStages();
+        when(friendInviteSignal.successCountOf(userId)).thenReturn(Optional.of(5L));
+        MissionReward firstStage = MissionReward.claimable(
+                userId, "FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY, 50, Instant.parse("2026-09-20T05:00:00Z"), null);
+        firstStage.claim(Instant.parse("2026-09-20T06:00:00Z"));
+        when(missionRewardService.rewardsOf(eq(userId), anyList())).thenReturn(Map.of(
+                new MissionRewardService.RewardKey("FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY), firstStage));
+
+        List<MissionListResponse.Mission> missions = service.feedOf(userId).missions();
+
+        assertThat(missions).extracting(MissionListResponse.Mission::code)
+                .contains("FRIEND_INVITE_10")
+                .doesNotContain("FRIEND_INVITE_3");
+        assertThat(missionOf(missions, "FRIEND_INVITE_10"))
+                .extracting(MissionListResponse.Mission::current, MissionListResponse.Mission::target,
+                        MissionListResponse.Mission::status)
+                .containsExactly(5L, 10L, MissionListResponse.Status.IN_PROGRESS);
+    }
+
+    @Test
+    void hidesFriendInviteMissionsFromUsersWhoCannotEarnThem() {
+        givenFriendInviteStages();
+        // The friend feature is off, or the user is suspended.
+        when(friendInviteSignal.successCountOf(userId)).thenReturn(Optional.empty());
+        MissionReward earnedBefore = MissionReward.claimable(
+                userId, "FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY, 50, Instant.parse("2026-09-20T05:00:00Z"), null);
+        when(missionRewardService.rewardsOf(eq(userId), anyList())).thenReturn(Map.of(
+                new MissionRewardService.RewardKey("FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY), earnedBefore));
+
+        DailyMissionQueryService.DailyMissionFeed feed = service.feedOf(userId);
+
+        assertThat(feed.missions()).extracting(MissionListResponse.Mission::missionType)
+                .doesNotContain(MissionListResponse.MissionType.FRIEND_INVITE);
+        // What is not on screen must not be in the total either.
+        assertThat(feed.summary().claimableRewardTotal()).isZero();
+    }
+
+    @Test
+    void doesNotAskForInvitesWhenNoFriendInviteMissionIsActive() {
+        service.feedOf(userId);
+
+        verifyNoInteractions(friendInviteSignal);
+    }
+
+    /** 기본 미션에 친구 초대 2단계를 더한다. 10명 단계를 앞에 둬서 정렬 순서에 기대지 않는지 본다. */
+    private void givenFriendInviteStages() {
+        List<MissionDefinitionView> definitions = new ArrayList<>(catalog.activeDefinitions());
+        definitions.add(definition("FRIEND_INVITE_10", MissionDefinition.MissionType.FRIEND_INVITE,
+                MissionDefinition.PeriodType.ONE_TIME, 10, 100));
+        definitions.add(definition("FRIEND_INVITE_3", MissionDefinition.MissionType.FRIEND_INVITE,
+                MissionDefinition.PeriodType.ONE_TIME, 3, 50));
+        when(catalog.activeDefinitions()).thenReturn(definitions);
     }
 
     private void givenTodayTaps(int totalValidTapCount) {

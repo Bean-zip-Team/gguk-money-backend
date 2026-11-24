@@ -123,7 +123,9 @@ public class AuthInterceptor implements HandlerInterceptor {
                 || "/api/auth/refresh".equals(path)
                 || "/api/auth/toss/login".equals(path)
                 || "/api/auth/toss/unlink-webhook".equals(path)
-                || "/api/onboarding/keycap-boxes/open".equals(path));
+                || "/api/onboarding/keycap-boxes/open".equals(path)
+                // 초대 링크로 처음 들어온 사람은 아직 계정이 없다 (BEA-390).
+                || "/api/invites/visits".equals(path));
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

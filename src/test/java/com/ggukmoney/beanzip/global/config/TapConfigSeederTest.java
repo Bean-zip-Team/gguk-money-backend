@@ -80,4 +80,18 @@ class TapConfigSeederTest {
         new TapConfigSeeder(repository,true).run();
         verify(repository,never()).save(argThat(row->KeycapBoxPolicyConfig.KEY_SHARD_ENABLED.equals(row.getConfigKey())));
     }
+
+    @Test
+    void aDeployNeverSwitchesTheFriendFeatureOffOrResetsItsRewards() {
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(FriendPolicyConfig.KEY_ENABLED), any()))
+                .thenReturn(Optional.of(AppConfig.createFor(FriendPolicyConfig.KEY_ENABLED, "true", Instant.EPOCH)));
+        when(repository.findFirstByConfigKeyAndEffectiveAtLessThanEqualOrderByEffectiveAtDesc(eq(FriendPolicyConfig.KEY_INVITE_REWARD), any()))
+                .thenReturn(Optional.of(AppConfig.createFor(FriendPolicyConfig.KEY_INVITE_REWARD, "20", Instant.EPOCH)));
+
+        new TapConfigSeeder(repository, true).run();
+
+        // With revert-overrides on, every boot would otherwise write friends.enabled=false again.
+        verify(repository, never()).save(argThat(row -> FriendPolicyConfig.KEY_ENABLED.equals(row.getConfigKey())));
+        verify(repository, never()).save(argThat(row -> FriendPolicyConfig.KEY_INVITE_REWARD.equals(row.getConfigKey())));
+    }
 }

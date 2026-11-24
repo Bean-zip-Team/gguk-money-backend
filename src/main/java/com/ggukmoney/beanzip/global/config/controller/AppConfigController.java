@@ -26,7 +26,7 @@ public class AppConfigController {
 
     private final AppConfigService appConfigService;
 
-    @Operation(summary = "앱 설정 조회", description = "포인트, 키캡 조각, 부스터 정책 값을 조회해요. 서버는 정책 값을 60초마다 다시 읽어요. 그래서 바뀐 값은 최대 60초 늦게 반영돼요.")
+    @Operation(summary = "앱 설정 조회", description = "포인트, 키캡 조각, 부스터 정책 값과 친구 기능 스위치·숫자를 조회해요. 서버는 정책 값을 60초마다 다시 읽어요. 그래서 바뀐 값은 최대 60초 늦게 반영돼요.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회에 성공했어요."),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증에 실패했어요. 액세스 토큰이 없거나 유효하지 않아요.", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))

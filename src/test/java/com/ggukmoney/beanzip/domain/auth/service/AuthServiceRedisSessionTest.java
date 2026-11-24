@@ -39,7 +39,7 @@ class AuthServiceRedisSessionTest {
                 eq("2000")
         )).thenReturn(1L);
 
-        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null);
+        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         AuthService.AuthSession session = new AuthService.AuthSession(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -93,7 +93,7 @@ class AuthServiceRedisSessionTest {
                 eq("1782951300000")
         )).thenReturn(2L);
 
-        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null);
+        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null, null);
         UUID userId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         long revokedCount = authService.revokeAllUserSessions(
                 userId,
@@ -128,9 +128,9 @@ class AuthServiceRedisSessionTest {
                 java.time.Duration.ofMinutes(1), java.time.Duration.ofDays(30));
         Instant now = Instant.parse("2026-07-02T00:00:00Z");
 
-        new AuthService(oneHourAccess, redisService, null, null, null)
+        new AuthService(oneHourAccess, redisService, null, null, null, null)
                 .revokeAllUserSessions(UUID.randomUUID(), null, null, now, "LOGOUT_ALL");
-        new AuthService(oneMinuteAccess, redisService, null, null, null)
+        new AuthService(oneMinuteAccess, redisService, null, null, null, null)
                 .revokeAllUserSessions(UUID.randomUUID(), null, null, now, "LOGOUT_ALL");
 
         // 1시간 + 5분, 그리고 짧게 줄여도 기본 15분 + 5분 아래로는 내려가지 않는다.
@@ -145,7 +145,7 @@ class AuthServiceRedisSessionTest {
         when(redisService.get("ggukmoney:auth:revoke:user:10000000-0000-0000-0000-000000000001"))
                 .thenReturn(java.util.Optional.of("{\"revokedAtMillis\":1782950400000,\"reason\":\"LOGOUT_ALL\"}"));
 
-        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null);
+        AuthService authService = new AuthService(new JwtTokenProvider(new tools.jackson.databind.ObjectMapper(), "test-secret-test-secret-test-secret", "ggukmoney", java.time.Clock.systemUTC()), redisService, null, null, null, null);
 
         assertThat(authService.findUserRevokedAtMillis(userId)).contains(1782950400000L);
     }

@@ -5,6 +5,7 @@ import com.ggukmoney.beanzip.domain.keycap.repository.KeycapRepository;
 import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import com.ggukmoney.beanzip.domain.ranking.reward.WeeklyRankingRewardPolicy;
 import com.ggukmoney.beanzip.global.config.CashoutPolicyConfig;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import com.ggukmoney.beanzip.global.config.KeycapBoxPolicyConfig;
 import com.ggukmoney.beanzip.global.config.OnboardingRewardConfig;
 import com.ggukmoney.beanzip.global.config.PromotionPolicyConfig;
@@ -178,6 +179,17 @@ public class PolicyValueRules {
                 "지급 제외 유저 (테스터 등)",
                 raw -> mapper.readValue(raw, String[].class).length + "명");
 
+        group = "친구";
+        bool(FriendPolicyConfig.KEY_ENABLED, "친구 기능 전체 스위치 (끄면 친구·초대·응원 API 가 모두 막히고 앱에서 화면이 사라짐)");
+        bool(FriendPolicyConfig.KEY_CONTACTS_SMS_ENABLED, "연락처에서 골라 문자 보내기 (검수 반려 대비, 끄면 링크 공유만 남음)");
+        friendInteger(FriendPolicyConfig.KEY_INVITE_REWARD, "초대 성공 때 양쪽이 각각 받는 조각 수");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_DAILY_LIMIT, "하루에 응원할 수 있는 친구 수");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_RECEIVE_REWARD, "받은 응원 1건당 조각 수");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_RECEIVE_DAILY_CAP, "하루에 응원으로 받을 수 있는 조각 상한 (확인한 날 기준)");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_SEND_FIRST_REWARD, "하루 첫 응원을 보낸 사람이 받는 조각 수");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_CLAP_THRESHOLD, "박수(CLAP): 받는 사람의 오늘 탭 수가 이 값 이상");
+        friendInteger(FriendPolicyConfig.KEY_CHEER_GIFT_LAPSED_DAYS, "선물(GIFT): 받는 사람의 마지막 탭이 이 일수 이상 전");
+
         // 랭킹: 로더의 파서를 그대로 쓴다.
         group = "랭킹·알림";
         add(WeeklyRankingRewardPolicy.KEY, Kind.JSON,
@@ -221,6 +233,15 @@ public class PolicyValueRules {
     private void integer(String key, int min, String description) {
         // 로더는 Integer.parseInt 로 읽는다. int 범위를 넘으면 거부한다.
         add(key, Kind.INTEGER, min + " 이상의 정수", raw -> Integer.parseInt(raw) >= min, description, null);
+    }
+
+    /** 친구 정책의 숫자. 범위는 로더({@link FriendPolicyConfig#INT_RANGES})와 같은 표를 쓴다. */
+    private void friendInteger(String key, String description) {
+        FriendPolicyConfig.IntRange range = FriendPolicyConfig.INT_RANGES.get(key);
+        String hint = range.max() == Integer.MAX_VALUE
+                ? range.min() + " 이상의 정수"
+                : range.min() + " 이상 " + range.max() + " 이하의 정수";
+        add(key, Kind.INTEGER, hint, raw -> range.contains(Integer.parseInt(raw)), description, null);
     }
 
     private void money(String key, String description) {

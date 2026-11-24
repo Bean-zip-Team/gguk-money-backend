@@ -69,7 +69,9 @@ class NotificationDeliveryServiceTest {
             "TPL_DAILY",
             "TPL_MISSION",
             "TPL_UNUSED",
-            "clickmoney-box"
+            "clickmoney-box",
+            null,
+            null
     );
     private final TossSmartMessageClient smartMessageClient = mock(TossSmartMessageClient.class);
     private final NotificationBatchReadService batchReadService = mock(NotificationBatchReadService.class);
@@ -142,7 +144,7 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, null, "TPL_BOOSTER", null, null, null, null),
+                    new NotificationTemplateProperties(null, null, "TPL_BOOSTER", null, null, null, null, null, null),
                     smartMessageClient,
                     batchReadService,
                     dailyMissionNudgeService,
@@ -786,7 +788,7 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null, null, null),
                     smartMessageClient,
                     batchReadService,
                     dailyMissionNudgeService,
@@ -817,7 +819,7 @@ class NotificationDeliveryServiceTest {
                     tapPolicyConfig,
                     keycapBoxAccountRepository,
                     keycapBoxPolicyConfig,
-                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null),
+                    new NotificationTemplateProperties(null, "clickmoney-asfasf", null, null, null, null, null, null, null),
                     smartMessageClient,
                     batchReadService,
                     dailyMissionNudgeService,
@@ -956,6 +958,8 @@ class NotificationDeliveryServiceTest {
             case DAILY_MISSION -> "TPL_MISSION";
             case BOOSTER_UNUSED -> "TPL_UNUSED";
             case KEYCAP_BOX_OPEN_AVAILABLE -> "clickmoney-box";
+            // Friend pushes go through FriendNotificationService, not this service.
+            case FRIEND, FRIEND_CHEER, FRIEND_INVITE_SUCCESS -> throw new IllegalArgumentException(type.name());
         }, Instant.now());
         ReflectionTestUtils.setField(delivery, "id", Math.abs(dedupeKey.hashCode()) + 1L);
         return delivery;

@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 class NotificationPreferenceOptInSignalTest {
 
     private static final NotificationTemplateProperties CONFIGURED = new NotificationTemplateProperties(
-            null, null, null, null, "clickmoney-daily-mission", null, null);
+            null, null, null, null, "clickmoney-daily-mission", null, null, null, null);
 
     private final NotificationPreferenceRepository preferenceRepository = mock(NotificationPreferenceRepository.class);
     private final NotificationPreferenceOptInSignal signal =
@@ -69,7 +69,7 @@ class NotificationPreferenceOptInSignalTest {
     @Test
     void doesNotJudgeWhenTheCampaignCodeIsMissing() {
         NotificationPreferenceOptInSignal unconfiguredSignal = new NotificationPreferenceOptInSignal(
-                preferenceRepository, new NotificationTemplateProperties(null, null, null, null, null, null, null));
+                preferenceRepository, new NotificationTemplateProperties(null, null, null, null, null, null, null, null, null));
 
         // 캠페인 코드가 없으면 알림 설정 목록에 토글이 내려가지 않는다. 동의할 방법이 없는 미션을
         // 목록에 남겨 두면 유저는 영원히 미완료 상태로 보게 된다.

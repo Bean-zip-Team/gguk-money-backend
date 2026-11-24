@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.global.config.service;
 
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.config.dto.response.AppConfigResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import java.util.List;
 public class AppConfigService {
 
     private final TapPolicyConfig tapPolicyConfig;
+    private final FriendPolicyConfig friendPolicyConfig;
 
     public AppConfigResponse getAppConfig() {
         return new AppConfigResponse(
@@ -30,6 +32,14 @@ public class AppConfigService {
                 new AppConfigResponse.BoosterPolicy(
                         tapPolicyConfig.boosterDurationSeconds(),
                         tapPolicyConfig.boosterDailyLimit()
+                ),
+                friendPolicyConfig.friendsEnabled(),
+                friendPolicyConfig.contactsSmsEnabled(),
+                new AppConfigResponse.FriendPolicy(
+                        friendPolicyConfig.inviteReward(),
+                        friendPolicyConfig.cheerDailyLimit(),
+                        friendPolicyConfig.cheerReceiveReward(),
+                        friendPolicyConfig.cheerSendFirstReward()
                 )
         );
     }

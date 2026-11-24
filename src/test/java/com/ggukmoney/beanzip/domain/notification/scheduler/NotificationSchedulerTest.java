@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.notification.scheduler;
 
+import com.ggukmoney.beanzip.domain.notification.service.FriendNotificationService;
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
 import com.ggukmoney.beanzip.domain.notification.service.WeeklyRankingResetNotificationService;
 import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
@@ -17,6 +18,7 @@ import java.time.ZoneOffset;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +77,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T15:30:00Z"), ZoneOffset.UTC),
                 "Asia/Seoul",
@@ -88,6 +91,61 @@ class NotificationSchedulerTest {
     }
 
     @Test
+    void dispatchesDueFriendPushesUnderItsOwnLock() throws Exception {
+        FriendNotificationService friendService = mock(FriendNotificationService.class);
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement acquire = mock(PreparedStatement.class);
+        PreparedStatement release = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(acquire);
+        when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(release);
+        when(acquire.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true);
+        when(resultSet.getBoolean(1)).thenReturn(true);
+        when(friendService.enabled()).thenReturn(true);
+        NotificationScheduler scheduler = new NotificationScheduler(
+                mock(NotificationDeliveryService.class),
+                mock(WeeklyRankingResetNotificationService.class),
+                friendService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-11-24T05:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
+        );
+
+        scheduler.scheduleFriendNotifications();
+
+        verify(friendService).dispatchDue();
+        // A key shared with another job would make the two skip each other.
+        verify(acquire).setLong(1, 3_900_390L);
+        verify(release).execute();
+    }
+
+    @Test
+    void doesNotEvenBorrowAConnectionForFriendPushesWhileTheFeatureIsOff() {
+        FriendNotificationService friendService = mock(FriendNotificationService.class);
+        DataSource dataSource = mock(DataSource.class);
+        when(friendService.enabled()).thenReturn(false);
+        NotificationScheduler scheduler = new NotificationScheduler(
+                mock(NotificationDeliveryService.class),
+                mock(WeeklyRankingResetNotificationService.class),
+                friendService,
+                new AdvisoryLockRunner(dataSource),
+                Clock.fixed(Instant.parse("2026-11-24T05:00:00Z"), ZoneOffset.UTC),
+                "Asia/Seoul",
+                true
+        );
+
+        scheduler.scheduleFriendNotifications();
+
+        // This job fires every minute, and the feature stays off until launch day.
+        verifyNoInteractions(dataSource);
+        verify(friendService, never()).dispatchDue();
+    }
+
+    @Test
     void doesNotSendDailyMissionNotificationsWhenTheKillSwitchIsOff() throws Exception {
         NotificationDeliveryService deliveryService = mock(NotificationDeliveryService.class);
         WeeklyRankingResetNotificationService resetService = mock(WeeklyRankingResetNotificationService.class);
@@ -95,6 +153,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC),
                 "Asia/Seoul",
@@ -127,6 +186,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-07-25T00:00:00Z"), ZoneOffset.UTC),
                 "Asia/Seoul",
@@ -158,6 +218,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-08-03T01:01:00Z"), ZoneOffset.UTC),
                 "Asia/Seoul",
@@ -190,6 +251,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(now, ZoneOffset.UTC),
                 "Asia/Seoul",
@@ -220,6 +282,7 @@ class NotificationSchedulerTest {
         NotificationScheduler scheduler = new NotificationScheduler(
                 deliveryService,
                 resetService,
+                mock(FriendNotificationService.class),
                 new AdvisoryLockRunner(dataSource),
                 Clock.fixed(Instant.parse("2026-08-03T01:10:00Z"), ZoneOffset.UTC),
                 "Asia/Seoul",

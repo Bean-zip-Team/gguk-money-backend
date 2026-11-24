@@ -21,6 +21,8 @@ public class NotificationTemplateProperties {
     private final String dailyMissionCampaignCode;
     private final String boosterUnusedCampaignCode;
     private final String keycapBoxOpenAvailableCampaignCode;
+    private final String friendCheerCampaignCode;
+    private final String friendInviteSuccessCampaignCode;
 
     @Autowired
     public NotificationTemplateProperties(
@@ -30,7 +32,9 @@ public class NotificationTemplateProperties {
             @Value("${app.smart-message.templates.daily-reminder.campaign-code:}") String dailyReminderCampaignCode,
             @Value("${app.smart-message.templates.daily-mission.campaign-code:}") String dailyMissionCampaignCode,
             @Value("${app.smart-message.templates.booster-unused.campaign-code:}") String boosterUnusedCampaignCode,
-            @Value("${app.smart-message.templates.keycap-box-open-available.campaign-code:}") String keycapBoxOpenAvailableCampaignCode
+            @Value("${app.smart-message.templates.keycap-box-open-available.campaign-code:}") String keycapBoxOpenAvailableCampaignCode,
+            @Value("${app.smart-message.templates.friend-cheer.campaign-code:}") String friendCheerCampaignCode,
+            @Value("${app.smart-message.templates.friend-invite-success.campaign-code:}") String friendInviteSuccessCampaignCode
     ) {
         this.weeklyRewardAvailableCampaignCode = blankToNull(weeklyRewardAvailableCampaignCode);
         this.rankChangeCampaignCode = blankToNull(rankChangeCampaignCode);
@@ -39,6 +43,8 @@ public class NotificationTemplateProperties {
         this.dailyMissionCampaignCode = blankToNull(dailyMissionCampaignCode);
         this.boosterUnusedCampaignCode = blankToNull(boosterUnusedCampaignCode);
         this.keycapBoxOpenAvailableCampaignCode = blankToNull(keycapBoxOpenAvailableCampaignCode);
+        this.friendCheerCampaignCode = blankToNull(friendCheerCampaignCode);
+        this.friendInviteSuccessCampaignCode = blankToNull(friendInviteSuccessCampaignCode);
     }
 
     public String campaignCode(NotificationType type) {
@@ -50,6 +56,10 @@ public class NotificationTemplateProperties {
             case DAILY_MISSION -> dailyMissionCampaignCode;
             case BOOSTER_UNUSED -> boosterUnusedCampaignCode;
             case KEYCAP_BOX_OPEN_AVAILABLE -> keycapBoxOpenAvailableCampaignCode;
+            // 앱은 FRIEND 항목의 코드로 토스 동의 시트를 띄운다. 동의문 '친구 알림'이 두 캠페인에 함께
+            // 붙어 있어서 응원 캠페인 코드 하나로 요청하면 둘 다 동의된다(BEA-380 실기기 확인).
+            case FRIEND, FRIEND_CHEER -> friendCheerCampaignCode;
+            case FRIEND_INVITE_SUCCESS -> friendInviteSuccessCampaignCode;
         };
     }
 

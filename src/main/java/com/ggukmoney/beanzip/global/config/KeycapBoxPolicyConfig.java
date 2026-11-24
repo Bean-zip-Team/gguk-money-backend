@@ -51,6 +51,11 @@ public class KeycapBoxPolicyConfig {
         return current.shardEconomy();
     }
 
+    /**
+     * The phase as of the last refresh, for bookkeeping that tolerates a minute of staleness
+     * (shard ledger rows, the friend feature gate). Mutations must use {@link #isShardEconomyEnabled()}.
+     */
+    public boolean shardEconomyAtLastRefresh() { return cache.shardEconomy(); }
     private Snapshot readSnapshot(Instant now) {
         var rows = new ArrayList<>(batchLoader.loadWithHistory(DEFAULT_VALUES.keySet(), KEY_SHARD_ENABLED, now));
         rows.sort(Comparator.comparing(AppConfig::getEffectiveAt)
