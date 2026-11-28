@@ -3,6 +3,8 @@ package com.ggukmoney.beanzip.domain.auth.service;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
+import com.ggukmoney.beanzip.domain.friend.service.InviteService;
 import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossUnlinkWebhookRequest;
@@ -17,6 +19,7 @@ import com.ggukmoney.beanzip.global.config.TapPolicyConfig;
 import com.ggukmoney.beanzip.global.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -44,6 +47,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -68,6 +73,7 @@ class AuthServiceTossLifecycleTest {
     private TapPolicyConfig tapPolicyConfig;
     private AuthLoginTransactionService authLoginTransactionService;
     private AuthWithdrawalTransactionService authWithdrawalTransactionService;
+    private InviteService inviteService;
     private AuthService authService;
 
     @BeforeEach
@@ -82,12 +88,14 @@ class AuthServiceTossLifecycleTest {
         tapPolicyConfig = mock(TapPolicyConfig.class);
         authLoginTransactionService = mock(AuthLoginTransactionService.class);
         authWithdrawalTransactionService = mock(AuthWithdrawalTransactionService.class);
+        inviteService = mock(InviteService.class);
         authService = new AuthService(
                 jwtTokenProvider,
                 redisService,
                 tossAuthClient,
                 authLoginTransactionService,
-                authWithdrawalTransactionService
+                authWithdrawalTransactionService,
+                inviteService
         );
         ReflectionTestUtils.setField(authService, "tossWebhookSecret", "webhook-secret");
     }
@@ -124,6 +132,118 @@ class AuthServiceTossLifecycleTest {
         assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
         verify(authLoginTransactionService).loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of("service_terms_v1", "privacy_v2"), "search");
         verify(redisService).putAllHash(anyString(), anyMap());
+    }
+
+    @Test
+    void tossLoginLinksTheInviteAfterSignupAndReturnsItsResult() {
+        UUID userId = UUID.randomUUID();
+        UUID inviterId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        when(inviteService.linkOnLogin(userId, true, "K7P2QX9A", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"))
+                .thenReturn(Optional.of(new InviteSignupResponse(inviterId, "김민지", 10)));
+
+        AuthTokenResponse response = authService.loginWithToss(new TossLoginRequest(
+                "code", "DEFAULT", null, null, "K7P2QX9A", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"));
+
+        assertThat(response.invite()).isEqualTo(new InviteSignupResponse(inviterId, "김민지", 10));
+        // The invite is linked only after the signup transaction has returned.
+        InOrder order = inOrder(authLoginTransactionService, inviteService);
+        order.verify(authLoginTransactionService).loginWithTossUser(any(), any(), any(), any(), any(), any());
+        order.verify(inviteService).linkOnLogin(any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void tossLoginStillSucceedsWhenLinkingTheInviteFails() {
+        UUID userId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        // The visit key is passed through as text, so a malformed one never fails the request either.
+        when(inviteService.linkOnLogin(userId, true, "K7P2QX9A", "not-a-uuid"))
+                .thenThrow(new IllegalStateException("invite table is unavailable"));
+
+        AuthTokenResponse response = authService.loginWithToss(
+                new TossLoginRequest("code", "DEFAULT", null, null, "K7P2QX9A", "not-a-uuid"));
+
+        assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.newUser()).isTrue();
+        assertThat(response.invite()).isNull();
+        assertThat(jwtTokenProvider.parseToken(response.accessToken()).userId()).isEqualTo(userId);
+        // Tried once more before giving up: the app deletes the code after this login, so there is no later chance.
+        verify(inviteService, times(2)).linkOnLogin(userId, true, "K7P2QX9A", "not-a-uuid");
+    }
+
+    @Test
+    void tossLoginLinksTheInviteOnTheSecondTryAfterAMomentaryFailure() {
+        UUID userId = UUID.randomUUID();
+        UUID inviterId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        when(inviteService.linkOnLogin(userId, true, "K7P2QX9A", null))
+                .thenThrow(new IllegalStateException("lock timeout"))
+                .thenReturn(Optional.of(new InviteSignupResponse(inviterId, "김민지", 10)));
+
+        AuthTokenResponse response = authService.loginWithToss(
+                new TossLoginRequest("code", "DEFAULT", null, null, "K7P2QX9A", null));
+
+        assertThat(response.invite()).isEqualTo(new InviteSignupResponse(inviterId, "김민지", 10));
+    }
+
+    @Test
+    void aLostInviteLeavesWhatIsNeededToRepairItByHandInTheLog() {
+        UUID userId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, true, false));
+        when(inviteService.linkOnLogin(any(), anyBoolean(), any(), any()))
+                .thenThrow(new IllegalStateException("invite table is unavailable"));
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            // The code is accepted with stray spaces, so it is logged without them. The visit key is request
+            // text that was never validated; anything that is not shaped like a key is not written out.
+            authService.loginWithToss(new TossLoginRequest(
+                    "code", "DEFAULT", null, null, " K7P2QX9A ", "x\nINVITE_LINK_FAILED userId=forged"));
+            authService.loginWithToss(new TossLoginRequest(
+                    "code", "DEFAULT", null, null, "K7P2QX9A", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"));
+
+            assertThat(appender.list)
+                    .filteredOn(event -> event.getFormattedMessage().startsWith("INVITE_LINK_FAILED"))
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .containsExactly(
+                            "INVITE_LINK_FAILED userId=" + userId + " newUser=true inviteCode=K7P2QX9A visitKey=(malformed)",
+                            "INVITE_LINK_FAILED userId=" + userId
+                                    + " newUser=true inviteCode=K7P2QX9A visitKey=3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void tossLoginWithoutAnInviteCodeDoesNotTouchTheInviteService() {
+        UUID userId = UUID.randomUUID();
+        stubTossUser("user-key-1");
+        when(authLoginTransactionService.loginWithTossUser("user-key-1", "Bean", "https://img", null, List.of(), null))
+                .thenReturn(new AuthLoginTransactionService.LoginTransactionResult(userId, false, false));
+
+        // A visit key alone means nothing, and most logins carry neither.
+        authService.loginWithToss(new TossLoginRequest("code", "DEFAULT", null, null, " ", "3f6c2a9e-8d1b-4c7e-9a52-1b0d6e4f7a21"));
+        authService.loginWithToss(new TossLoginRequest("code", "DEFAULT"));
+
+        verifyNoInteractions(inviteService);
+    }
+
+    private void stubTossUser(String userKey) {
+        when(tossAuthClient.generateToken("code", "DEFAULT")).thenReturn(new TossAuthClient.TossToken("toss-access"));
+        when(tossAuthClient.loginMe("toss-access"))
+                .thenReturn(new TossAuthClient.TossLoginMe(userKey, "Bean", "https://img", List.of()));
     }
 
     @Test

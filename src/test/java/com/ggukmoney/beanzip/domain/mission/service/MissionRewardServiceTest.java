@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.mission.service;
 
+import com.ggukmoney.beanzip.domain.friend.service.FriendAccess;
 import com.ggukmoney.beanzip.domain.mission.dto.response.MissionRewardListResponse;
 import com.ggukmoney.beanzip.domain.mission.entity.MissionDefinition;
 import com.ggukmoney.beanzip.domain.mission.entity.MissionReward;
@@ -10,6 +11,7 @@ import com.ggukmoney.beanzip.domain.point.service.PointLedgerService;
 import com.ggukmoney.beanzip.domain.ranking.boost.SystemRankingBoostPolicy;
 import com.ggukmoney.beanzip.domain.user.entity.AppUser;
 import com.ggukmoney.beanzip.domain.user.service.UserService;
+import com.ggukmoney.beanzip.global.config.FriendPolicyConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -47,9 +49,10 @@ class MissionRewardServiceTest {
     private final MissionDefinitionCatalog missionDefinitionCatalog = mock(MissionDefinitionCatalog.class);
     private final SystemRankingBoostPolicy internalAccountPolicy = mock(SystemRankingBoostPolicy.class);
 
+    private final FriendPolicyConfig friendPolicy = mock(FriendPolicyConfig.class);
     private final MissionRewardService service = new MissionRewardService(
             missionRewardRepository, pointAccountService, pointLedgerService, userService,
-            missionDefinitionCatalog, internalAccountPolicy);
+            missionDefinitionCatalog, internalAccountPolicy, new FriendAccess(friendPolicy));
 
     private final UUID userId = UUID.randomUUID();
     private final PointAccount account = mock(PointAccount.class);
@@ -119,6 +122,67 @@ class MissionRewardServiceTest {
 
         verify(pointAccountService).credit(userId, 100L);
         assertThat(rankUp.isClaimed()).isTrue();
+    }
+
+    @Test
+    void paysTheFriendInviteRewardToAUserWhoCanSeeTheMission() {
+        friendMissionReward();
+        when(friendPolicy.friendsEnabled()).thenReturn(true);
+        MissionReward reward = claimableReward("FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY, 50, null);
+        when(missionRewardRepository.findByUserIdAndPublicIdForUpdate(userId, reward.getPublicId()))
+                .thenReturn(Optional.of(reward));
+
+        service.claim(userId, reward.getPublicId(), NOW);
+
+        assertThat(reward.isClaimed()).isTrue();
+        verify(pointAccountService).credit(userId, 50L);
+    }
+
+    @Test
+    void refusesTheFriendInviteRewardWhileTheUserCannotSeeTheMission() {
+        friendMissionReward();
+        MissionReward reward = claimableReward("FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY, 50, null);
+        when(missionRewardRepository.findByUserIdAndPublicIdForUpdate(userId, reward.getPublicId()))
+                .thenReturn(Optional.of(reward));
+
+        when(friendPolicy.friendsEnabled()).thenReturn(false);
+        assertThatThrownBy(() -> service.claim(userId, reward.getPublicId(), NOW))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("409 CONFLICT \"FRIENDS_DISABLED\"");
+
+        when(friendPolicy.friendsEnabled()).thenReturn(true);
+        when(user.getStatus()).thenReturn(AppUser.Status.SUSPENDED);
+        assertThatThrownBy(() -> service.claim(userId, reward.getPublicId(), NOW))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessage("403 FORBIDDEN \"ACCOUNT_SUSPENDED\"");
+
+        // Left claimable: it was earned, and it can be collected once the mission is visible again.
+        assertThat(reward.isClaimable()).isTrue();
+        verify(pointAccountService, never()).credit(any(), anyLong());
+    }
+
+    @Test
+    void claimAllLeavesAHiddenFriendInviteRewardAndPaysTheRest() {
+        friendMissionReward();
+        when(friendPolicy.friendsEnabled()).thenReturn(true);
+        when(user.getStatus()).thenReturn(AppUser.Status.SUSPENDED);
+        MissionReward friendInvite = claimableReward("FRIEND_INVITE_3", MissionReward.ONE_TIME_PERIOD_KEY, 50, null);
+        MissionReward attendance = claimableReward("ATTENDANCE", "2026-09-21", 100, MIDNIGHT);
+        when(missionRewardRepository.findClaimablesForUpdate(userId, NOW)).thenReturn(List.of(friendInvite, attendance));
+
+        MissionRewardService.ClaimResult result = service.claimAll(userId, NOW);
+
+        // The list does not show the friend mission to a suspended user, so its reward must not arrive either.
+        assertThat(result.claimedCount()).isEqualTo(1);
+        assertThat(result.claimedPointAmount()).isEqualTo(100L);
+        assertThat(friendInvite.isClaimable()).isTrue();
+        assertThat(attendance.isClaimed()).isTrue();
+    }
+
+    private void friendMissionReward() {
+        when(missionDefinitionCatalog.findByCode("FRIEND_INVITE_3")).thenReturn(Optional.of(new MissionDefinitionView(
+                "FRIEND_INVITE_3", MissionDefinition.MissionType.FRIEND_INVITE, MissionDefinition.PeriodType.ONE_TIME,
+                "새 친구 데려오기", null, 3L, 50L, 90)));
     }
 
     private void internalAccounts(Set<UUID> ids) {

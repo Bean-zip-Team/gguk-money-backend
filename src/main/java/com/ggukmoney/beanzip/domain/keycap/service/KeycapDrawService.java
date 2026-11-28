@@ -3,6 +3,7 @@ package com.ggukmoney.beanzip.domain.keycap.service;
 import com.ggukmoney.beanzip.domain.keycap.dto.response.KeycapDrawResponse;
 import com.ggukmoney.beanzip.domain.keycap.entity.Keycap;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapDraw;
 import com.ggukmoney.beanzip.domain.keycap.entity.UserKeycap;
 import com.ggukmoney.beanzip.domain.keycap.repository.KeycapDrawRepository;
@@ -49,7 +50,7 @@ import java.util.UUID;
 public class KeycapDrawService {
 
     private static final Logger log = LoggerFactory.getLogger(KeycapDrawService.class);
-    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
     private static final String POINT_REASON_KEYCAP_ALL_COMPLETE = "KEYCAP_ALL_COMPLETE_BONUS";
     private static final long ALL_COMPLETE_BONUS_POINT_AMOUNT = 1;
 
@@ -127,6 +128,7 @@ public class KeycapDrawService {
         }
 
         wallet.consumeShards(price);
+        keycapBoxAccountService.recordShardChange(userId, wallet, -price, ShardLedger.Reason.DRAW_SPEND, idempotencyKey);
         userKeycapRepository.flush();
         passiveService.refreshEquipmentLocked(userId,context);
 

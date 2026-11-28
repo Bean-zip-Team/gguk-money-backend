@@ -59,7 +59,7 @@ class KeycapSchedulerCapacityIntegrationTest extends FullStackIntegrationTestSup
         registry.add("spring.datasource.hikari.connection-timeout", () -> "3000");
         registry.add("spring.task.scheduling.pool.size", () -> "5");
         // Invoke real entry points deterministically below instead of depending on the wall-clock minute.
-        for (String job : List.of("morning", "evening", "daily-mission", "keycap-box", "weekly-reset")) {
+        for (String job : List.of("morning", "evening", "daily-mission", "keycap-box", "weekly-reset", "friend")) {
             registry.add("app.smart-message.schedule." + job + "-cron", () -> "-");
         }
     }

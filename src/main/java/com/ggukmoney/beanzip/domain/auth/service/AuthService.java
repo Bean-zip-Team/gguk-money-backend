@@ -1,5 +1,7 @@
 package com.ggukmoney.beanzip.domain.auth.service;
 
+import com.ggukmoney.beanzip.domain.friend.dto.response.InviteSignupResponse;
+import com.ggukmoney.beanzip.domain.friend.service.InviteService;
 import com.ggukmoney.beanzip.domain.auth.client.TossAuthClient;
 import com.ggukmoney.beanzip.domain.auth.dto.request.RefreshTokenRequest;
 import com.ggukmoney.beanzip.domain.auth.dto.request.TossLoginRequest;
@@ -38,6 +40,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthService {
 
+    /** 로그인 뒤 초대 연결을 시도하는 횟수. 순간적인 실패(잠금 대기 초과, 연결 끊김)를 한 번 넘기는 정도다. */
+    private static final int INVITE_LINK_ATTEMPTS = 2;
+
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private static final String TOKEN_TYPE = "Bearer";
@@ -61,6 +66,7 @@ public class AuthService {
     private final TossAuthClient tossAuthClient;
     private final AuthLoginTransactionService authLoginTransactionService;
     private final AuthWithdrawalTransactionService authWithdrawalTransactionService;
+    private final InviteService inviteService;
 
     @Value("${app.auth.toss.webhook-secret:}")
     private String tossWebhookSecret;
@@ -104,7 +110,53 @@ public class AuthService {
                 request.signupReferrer()
         );
 
-        return issueSessionTokens(result.userId(), result.newUser(), result.onboardingRewardApplied());
+        return issueSessionTokens(
+                result.userId(), result.newUser(), result.onboardingRewardApplied(), linkInvite(result, request));
+    }
+
+    /**
+     * 로그인에 딸려 온 초대 코드를 처리한다 (BEA-390).
+     *
+     * <p>가입과 로그인은 위 트랜잭션에서 이미 끝났다. 초대 처리는 그 뒤에 따로 돌리고, 실패해도 로그인을
+     * 실패시키지 않는다. 초대 링크로 들어온 사람의 가입이 초대 처리의 오류 때문에 막히면 안 된다.
+     *
+     * <p>대신 실패하면 그 초대는 되살릴 길이 없다. 앱은 로그인이 성공하면 보관한 코드를 지우고, 다음
+     * 로그인은 신규 가입이 아니기 때문이다. 그래서 한 번 더 시도하고(같은 요청을 다시 처리해도 한 번만
+     * 지급한다), 그래도 실패하면 손으로 복구할 수 있게 코드와 visitKey 를 로그에 남긴다.
+     */
+    private InviteSignupResponse linkInvite(
+            AuthLoginTransactionService.LoginTransactionResult result, TossLoginRequest request
+    ) {
+        if (!StringUtils.hasText(request.inviteCode())) {
+            // 대부분의 로그인에는 초대 코드가 없다. 트랜잭션을 열지 않고 넘어간다.
+            return null;
+        }
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return inviteService
+                        .linkOnLogin(result.userId(), result.newUser(), request.inviteCode(), request.visitKey())
+                        .orElse(null);
+            } catch (RuntimeException exception) {
+                if (attempt < INVITE_LINK_ATTEMPTS) {
+                    log.warn("INVITE_LINK_RETRY userId={} cause={}", result.userId(), exception.toString());
+                    continue;
+                }
+                log.error("INVITE_LINK_FAILED userId={} newUser={} inviteCode={} visitKey={}",
+                        result.userId(), result.newUser(),
+                        loggable(request.inviteCode()), loggable(request.visitKey()), exception);
+                return null;
+            }
+        }
+    }
+
+    /** 두 값은 검증 없이 받는 요청 문자열이다. 코드나 UUID 의 모양일 때만 로그에 그대로 쓴다. */
+    private static String loggable(String value) {
+        if (value == null) {
+            return null;
+        }
+        // 초대 코드는 앞뒤 공백이 있어도 받아들이므로 여기서도 잘라 낸 뒤에 본다.
+        String trimmed = value.trim();
+        return trimmed.matches("[A-Za-z0-9_-]{1,64}") ? trimmed : "(malformed)";
     }
 
     public AuthTokenResponse refresh(RefreshTokenRequest request) {
@@ -269,7 +321,9 @@ public class AuthService {
         }
     }
 
-    private AuthTokenResponse issueSessionTokens(UUID userId, boolean newUser, boolean onboardingRewardApplied) {
+    private AuthTokenResponse issueSessionTokens(
+            UUID userId, boolean newUser, boolean onboardingRewardApplied, InviteSignupResponse invite
+    ) {
         UUID sessionId = UUID.randomUUID();
         String refreshJti = UUID.randomUUID().toString();
         String accessJti = UUID.randomUUID().toString();
@@ -308,7 +362,8 @@ public class AuthService {
                 accessClaims.expiresAt(),
                 refreshClaims.expiresAt(),
                 newUser,
-                onboardingRewardApplied
+                onboardingRewardApplied,
+                invite
         );
     }
 

@@ -25,6 +25,13 @@ CREATE INDEX CONCURRENTLY ix_notification_delivery_sent_cooldown
 ON notification_delivery (user_id, notification_type, requested_at DESC)
 WHERE status = 'SENT';
 
+-- Matches NotificationDeliveryRepository.findDueFriendDeliveries (BEA-390), which runs every minute
+-- once friends.enabled is on. Without it each run scans the whole delivery history.
+CREATE INDEX CONCURRENTLY ix_notification_delivery_friend_due
+ON notification_delivery (next_attempt_at, id)
+WHERE notification_type IN ('FRIEND_CHEER', 'FRIEND_INVITE_SUCCESS')
+  AND status IN ('PENDING', 'RETRY_WAITING');
+
 CREATE UNIQUE INDEX CONCURRENTLY uq_promotion_grant_toss_key
 ON promotion_grant (toss_promotion_key)
 WHERE toss_promotion_key IS NOT NULL;

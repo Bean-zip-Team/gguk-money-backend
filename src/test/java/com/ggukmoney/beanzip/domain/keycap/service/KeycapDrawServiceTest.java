@@ -120,6 +120,9 @@ class KeycapDrawServiceTest {
         assertThat(response.shardBalance()).isEqualTo(2);
         assertThat(response.drawnAt()).isEqualTo(NOW);
         assertThat(wallet.getShardBalance()).isEqualTo(2);
+        // BEA-390: the spend is written to the shard ledger with the draw's idempotency key.
+        verify(keycapBoxAccountService).recordShardChange(userId, wallet, -5,
+                com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger.Reason.DRAW_SPEND, "draw-1");
 
         ArgumentCaptor<UserKeycap> saved = ArgumentCaptor.forClass(UserKeycap.class);
         verify(userKeycapRepository).save(saved.capture());
@@ -171,6 +174,7 @@ class KeycapDrawServiceTest {
                 .isEqualTo("KEYCAP_SHARD_INSUFFICIENT");
 
         assertThat(wallet.getShardBalance()).isEqualTo(4);
+        verify(keycapBoxAccountService, never()).recordShardChange(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any());
         verify(keycapRewardSelector, never()).select(any());
         verify(keycapDrawRepository, never()).save(any());
     }

@@ -84,6 +84,24 @@ class AppConfigValueValidatorTest {
     }
 
     @Test
+    void capsFriendRewardsAgainstFatFingerMistakes() {
+        // Shards and mission points lead to cash-out, so a mistyped 1000 must not go live within a minute.
+        assertRejected("friends.invite.reward", "10", "1000");
+        assertRejected("friends.cheer.receiveReward", "3", "31");
+        assertRejected("friends.cheer.receiveDailyCap", "30", "301");
+        assertRejected("friends.cheer.sendFirstReward", "1", "11");
+        assertRejected("friends.cheer.dailyLimit", "10", "101");
+        assertRejected("friends.invite.reward", "10", "-1");
+        // Zero would turn every cheer into a clap or a gift.
+        assertRejected("friends.cheer.clapThreshold", "1000", "0");
+        assertRejected("friends.cheer.giftLapsedDays", "3", "0");
+        assertThat(change("friends.invite.reward", "10", "100")).isEqualTo("100");
+        assertThat(change("friends.invite.reward", "10", "0")).isEqualTo("0");
+        assertThat(change("friends.cheer.clapThreshold", "1000", "50000")).isEqualTo("50000");
+        assertThat(change("friends.enabled", "false", "true")).isEqualTo("true");
+    }
+
+    @Test
     void rejectsAnUnchangedValue() {
         assertRejected("tap.point.dailyCap", "150", "150");
         assertRejected("ranking.weeklyReward.policy", "{\"enabled\":true,\"rewards\":{\"1\":10000}}",

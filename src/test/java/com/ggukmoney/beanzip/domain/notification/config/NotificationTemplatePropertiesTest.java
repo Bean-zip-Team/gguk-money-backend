@@ -16,7 +16,9 @@ class NotificationTemplatePropertiesTest {
                 null,
                 "clickmoney-daily-mission",
                 null,
-                "clickmoney-box"
+                "clickmoney-box",
+                null,
+                null
         );
 
         assertThat(properties.campaignCode(NotificationType.RANK_CHANGE)).isEqualTo("clickmoney-asfasf");
@@ -27,8 +29,20 @@ class NotificationTemplatePropertiesTest {
     }
 
     @Test
+    void friendConsentUsesTheCheerCampaignCodeAndEachPushKeepsItsOwn() {
+        NotificationTemplateProperties properties = new NotificationTemplateProperties(
+                null, null, null, null, null, null, null, " clickmoney-friend-cheer ", "clickmoney-friend-connected");
+
+        // The app opens the Toss consent sheet with the FRIEND item's code; one consent covers both campaigns.
+        assertThat(properties.campaignCode(NotificationType.FRIEND)).isEqualTo("clickmoney-friend-cheer");
+        assertThat(properties.campaignCode(NotificationType.FRIEND_CHEER)).isEqualTo("clickmoney-friend-cheer");
+        assertThat(properties.campaignCode(NotificationType.FRIEND_INVITE_SUCCESS))
+                .isEqualTo("clickmoney-friend-connected");
+    }
+
+    @Test
     void unsetCampaignIsNotConfigured() {
-        NotificationTemplateProperties properties = new NotificationTemplateProperties(null, null, null, null, null, null, null);
+        NotificationTemplateProperties properties = new NotificationTemplateProperties(null, null, null, null, null, null, null, null, null);
 
         assertThat(properties.campaignCode(NotificationType.WEEKLY_REWARD_AVAILABLE)).isNull();
         assertThat(properties.isConfigured(NotificationType.WEEKLY_REWARD_AVAILABLE)).isFalse();

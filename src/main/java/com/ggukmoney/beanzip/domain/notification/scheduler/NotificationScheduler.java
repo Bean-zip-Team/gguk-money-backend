@@ -1,5 +1,6 @@
 package com.ggukmoney.beanzip.domain.notification.scheduler;
 
+import com.ggukmoney.beanzip.domain.notification.service.FriendNotificationService;
 import com.ggukmoney.beanzip.domain.notification.service.NotificationDeliveryService;
 import com.ggukmoney.beanzip.domain.notification.service.WeeklyRankingResetNotificationService;
 import com.ggukmoney.beanzip.global.scheduler.AdvisoryLockRunner;
@@ -21,9 +22,11 @@ public class NotificationScheduler {
     private static final long KEYCAP_BOX_LOCK_KEY = 1_590_001L;
     private static final long WEEKLY_RANKING_RESET_LOCK_KEY = 1_580_309L;
     private static final long DAILY_MISSION_LOCK_KEY = 2_990_021L;
+    private static final long FRIEND_LOCK_KEY = 3_900_390L;
 
     private final NotificationDeliveryService notificationDeliveryService;
     private final WeeklyRankingResetNotificationService weeklyRankingResetNotificationService;
+    private final FriendNotificationService friendNotificationService;
     private final AdvisoryLockRunner advisoryLockRunner;
     private final Clock clock;
     private final ZoneId scheduleZoneId;
@@ -32,6 +35,7 @@ public class NotificationScheduler {
     public NotificationScheduler(
             NotificationDeliveryService notificationDeliveryService,
             WeeklyRankingResetNotificationService weeklyRankingResetNotificationService,
+            FriendNotificationService friendNotificationService,
             AdvisoryLockRunner advisoryLockRunner,
             Clock clock,
             // 크론이 도는 시간대와 같은 값이어야 한다. 둘이 갈리면 밤 9시에 깨어나서 어제 날짜로 보낸다.
@@ -42,6 +46,7 @@ public class NotificationScheduler {
     ) {
         this.notificationDeliveryService = notificationDeliveryService;
         this.weeklyRankingResetNotificationService = weeklyRankingResetNotificationService;
+        this.friendNotificationService = friendNotificationService;
         this.advisoryLockRunner = advisoryLockRunner;
         this.clock = clock;
         this.scheduleZoneId = ZoneId.of(scheduleZone);
@@ -100,6 +105,22 @@ public class NotificationScheduler {
             notificationDeliveryService.dispatchWeeklyResetDue(100);
             weeklyRankingResetNotificationService.completeOneDrainedBatch();
         });
+    }
+
+    /**
+     * 보낼 시각이 된 친구 푸시를 보낸다 (BEA-390).
+     *
+     * <p>낮에 생긴 푸시는 다음 실행 때 나가고, 밤 9시~아침 8시에 생긴 푸시는 아침 8시부터 나간다.
+     */
+    @Scheduled(
+            cron = "${app.smart-message.schedule.friend-cron:0 * * * * *}",
+            zone = "${app.smart-message.schedule.zone:Asia/Seoul}"
+    )
+    public void scheduleFriendNotifications() {
+        if (!friendNotificationService.enabled()) {
+            return;
+        }
+        advisoryLockRunner.runExclusively(FRIEND_LOCK_KEY, friendNotificationService::dispatchDue);
     }
 
     private LocalDate today() {

@@ -13,7 +13,9 @@ public record NotificationPreferenceResponse(
                 + "`DAILY_REMINDER`는 비활동 사용자를 부르는 아침 리마인드예요. "
                 + "`DAILY_MISSION`은 데일리 미션 저녁 리마인드예요(BEA-299). "
                 + "`BOOSTER_UNUSED`는 부스터를 다 쓰지 않은 사용자에게 저녁에 보내는 알림이에요. "
-                + "`KEYCAP_BOX_OPEN_AVAILABLE`은 키캡 상자 개봉 가능 알림이에요.",
+                + "`KEYCAP_BOX_OPEN_AVAILABLE`은 키캡 상자 개봉 가능 알림이에요. "
+                + "`FRIEND`는 친구 알림이에요. 동의 한 번으로 응원 도착 푸시와 친구 연결 푸시를 모두 받아요. "
+                + "발송에만 쓰는 `FRIEND_CHEER`, `FRIEND_INVITE_SUCCESS`는 이 응답에 나오지 않고 요청의 `type`으로 보낼 수도 없어요.",
                 example = "RANK_CHANGE")
         NotificationType type,
         @Schema(description = "알림이 켜져 있는지 여부예요. 알림은 켜져 있고 동의 상태가 `AGREED`일 때만 보내요. 설정 기록이 없으면 false예요.", example = "true")

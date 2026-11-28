@@ -1,6 +1,7 @@
 package com.ggukmoney.beanzip.domain.tap.service;
 
 import com.ggukmoney.beanzip.domain.keycap.entity.KeycapBoxAccount;
+import com.ggukmoney.beanzip.domain.keycap.entity.ShardLedger;
 import com.ggukmoney.beanzip.domain.keycap.passive.ClickCriticalSchedule;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassivePolicy.Effects;
 import com.ggukmoney.beanzip.domain.keycap.passive.KeycapPassiveRoller;
@@ -124,7 +125,11 @@ public class TapRewardService {
         progressService.save(progress);
         sessionService.save(session);
         if (awarded>0) points.save(account);
-        if (shards>0) wallets.save(wallet);
+        if (shards>0) {
+            wallets.save(wallet);
+            wallets.recordShardChange(user.getId(), wallet, shards,
+                    automatic ? ShardLedger.Reason.PASSIVE_DROP : ShardLedger.Reason.TAP_DROP, String.valueOf(operationId));
+        }
         if (count>0) events.publishEvent(new RankingScoreSyncRequestedEvent(user.getId(),now));
         return new Award(clicks.effectiveCount(),clicks.criticalCount(),awarded,shards,daily,progress,session,account,wallet);
     }
